@@ -99,7 +99,10 @@ See [endpoints](aa). This documentation page will also be available at https://l
 ---
 
 ## Installation
+
 ### a. Mandatory Steps
+
+---
 
 #### 1. Download the source code
 
@@ -160,6 +163,9 @@ docker compose --profile auth-service-with-redis up
 
 
 ### b. Conditional or Optional Steps
+
+---
+
 #### 1. Configure built-in TLS (Conditional)
 Configure the application to use built-in TLS(__Note that__ if you don't use built-in TLS, you cannot use mTLS and API-key authentication)
 
