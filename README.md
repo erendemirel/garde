@@ -55,8 +55,11 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 3. Run `docker compose --profile auth-service-with-redis up`
 
 For endpoint documentation, see [endpoints](aa)
+
 For detailed installation guide, refer to [installation](a)
+
 For integration guide, refer to [integration guide](a)
+
 For troubleshooting, refer to [troubleshooting guide](a)
 
 --- 
@@ -64,6 +67,8 @@ For troubleshooting, refer to [troubleshooting guide](a)
 ## Endpoint Documentation
 
 See [endpoints](aa). This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain in your `.env` file, use those instead of localhost and 8443).
+
+---
 
 ## Installation
 ### a. Mandatory Steps
