@@ -54,13 +54,13 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 3. Run `docker compose --profile auth-service-with-redis up`
 
-For endpoint documentation, see [endpoints](aa)
+For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)
 
-For detailed installation guide, refer to [installation](a)
+For detailed installation guide, refer to [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)
 
-For integration guide, refer to [integration guide](a)
+For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)
 
-For troubleshooting, refer to [troubleshooting guide](a)
+For troubleshooting, refer to [troubleshooting guide](https://github.com/erendemirel/garde/blob/master/docs/TROUBLESHOOTING.md)
 
 --- 
 
@@ -208,7 +208,7 @@ Set in `/configs/groups.json`:
 ```
 
 #### 5. Other Configurations (Optional)
-See [example .env file](aaa) for full list of optional parameters:
+See [example .env file](https://github.com/erendemirel/garde/blob/master/.env) for full list of optional parameters:
 ```ini
 GIN_MODE, CORS_ALLOW_ORIGINS, ENFORCE_MFA, ADMIN_USERS, RATE_LIMIT, DISABLE_RAPID_REQUEST_CHECK, DISABLE_USER_AGENT_CHECK, DISABLE_IP_BLACKLISTING, DISABLE_MULTIPLE_IP_CHECK
 ```
@@ -251,9 +251,9 @@ curl -X POST https://your-domain/login -H "Content-Type: application/json" -d "{
 
 ## Example Configuration Files
 
-- Secrets (required): [.env](aaaa)
-- Permissions List (optional): [permissions.json](aaaa)
-- Groups List (optional): [groups.json](aaaa)
+- Secrets (required): [.env](https://github.com/erendemirel/garde/blob/master/.env)
+- Permissions List (optional): [permissions.json](https://github.com/erendemirel/garde/blob/master/configs/permissions.json)
+- Groups List (optional): [groups.json](https://github.com/erendemirel/garde/blob/master/configs/groups.json)
 
 
 ## Security Mandates
@@ -282,7 +282,7 @@ curl -X POST https://your-domain/login -H "Content-Type: application/json" -d "{
 
 ## Contributing
 
-See [contribution guide](a)
+See [contribution guide](https://github.com/erendemirel/garde/blob/master/docs/CONTRIBUTING.md)
 
 
 
