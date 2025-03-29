@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"auth_service/pkg/errors"
+	"garde/pkg/errors"
 
 	"github.com/google/uuid"
 )

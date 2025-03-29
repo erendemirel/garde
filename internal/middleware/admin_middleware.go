@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"auth_service/internal/models"
-	"auth_service/internal/service"
-	"auth_service/pkg/errors"
+	"garde/internal/models"
+	"garde/internal/service"
+	"garde/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 )

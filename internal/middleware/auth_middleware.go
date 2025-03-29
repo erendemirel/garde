@@ -1,10 +1,10 @@
 package middleware
 
 import (
-	"auth_service/internal/models"
-	"auth_service/internal/service"
-	"auth_service/pkg/errors"
-	"auth_service/pkg/session"
+	"garde/internal/models"
+	"garde/internal/service"
+	"garde/pkg/errors"
+	"garde/pkg/session"
 	"fmt"
 	"net/http"
 	"os"

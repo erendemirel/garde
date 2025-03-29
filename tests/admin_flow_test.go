@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"auth_service/internal/models"
+	"garde/internal/models"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"

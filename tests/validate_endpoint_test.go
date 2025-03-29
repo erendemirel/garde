@@ -1,8 +1,8 @@
 package integration
 
 import (
-	"auth_service/internal/middleware"
-	"auth_service/internal/models"
+	"garde/internal/middleware"
+	"garde/internal/models"
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"

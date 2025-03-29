@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
-	"auth_service/internal/models"
+	"garde/internal/models"
 )
 
 // Hide implementation details from error responses during panic

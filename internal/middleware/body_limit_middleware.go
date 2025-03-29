@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"auth_service/internal/models"
-	"auth_service/pkg/errors"
+	"garde/internal/models"
+	"garde/pkg/errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"auth_service/internal/models"
-	"auth_service/internal/repository"
+	"garde/internal/models"
+	"garde/internal/repository"
 	"fmt"
 	"net/http"
 	"os"

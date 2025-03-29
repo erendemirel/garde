@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"auth_service/internal/middleware"
-	"auth_service/internal/models"
-	"auth_service/internal/service"
-	"auth_service/pkg/errors"
-	"auth_service/pkg/session"
-	"auth_service/pkg/validation"
+	"garde/internal/middleware"
+	"garde/internal/models"
+	"garde/internal/service"
+	"garde/pkg/errors"
+	"garde/pkg/session"
+	"garde/pkg/validation"
 	"bytes"
 	"fmt"
 	"io"

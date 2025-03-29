@@ -116,8 +116,8 @@ SUPERUSER_PASSWORD=password_of_superuser_account   # Must meet password complexi
 - Build and run the app:
 ```bash
 go mod download
-go build -o auth_service ./cmd
-./auth_service
+go build -o garde ./cmd
+./garde
 ```
 ##### With the project's docker-compose:
 

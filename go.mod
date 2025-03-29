@@ -1,4 +1,4 @@
-module auth_service
+module garde
 
 go 1.23.0
 

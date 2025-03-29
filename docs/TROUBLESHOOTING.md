@@ -910,7 +910,7 @@ class SessionValidator:
         if cache.has(session_id) and not cache.is_expired(session_id):
             return cache.get(session_id).valid
             
-        valid = validate_with_auth_service(session_id)
+        valid = validate_with_garde(session_id)
         cache.set(session_id, {
             valid: valid,
             expires_at: now() + CACHE_TTL

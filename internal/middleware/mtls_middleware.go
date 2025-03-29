@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"auth_service/internal/models"
-	"auth_service/pkg/errors"
+	"garde/internal/models"
+	"garde/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 )

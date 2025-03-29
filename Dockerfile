@@ -9,12 +9,12 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=1 GOOS=linux go build -o auth_service ./cmd/main.go
+RUN CGO_ENABLED=1 GOOS=linux go build -o garde ./cmd/main.go
 
 FROM alpine:3.19 AS service
 WORKDIR /app
 RUN apk add --no-cache ca-certificates
-COPY --from=builder /build/auth_service .
+COPY --from=builder /build/garde .
 RUN mkdir -p /app/certs /app/configs
-RUN chmod +x /app/auth_service
-CMD ["./auth_service"] 
+RUN chmod +x /app/garde
+CMD ["./garde"] 

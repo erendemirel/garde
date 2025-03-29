@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"auth_service/internal/models"
-	"auth_service/pkg/session"
+	"garde/internal/models"
+	"garde/pkg/session"
 	"context"
 	"encoding/json"
 	"errors"

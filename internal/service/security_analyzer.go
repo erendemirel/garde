@@ -1,8 +1,8 @@
 package service
 
 import (
-	"auth_service/internal/repository"
-	"auth_service/pkg/session"
+	"garde/internal/repository"
+	"garde/pkg/session"
 	"context"
 	"fmt"
 	"os"

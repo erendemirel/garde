@@ -18,8 +18,8 @@ If you have write access to the repository:
 If you don't have write access to the repository:
 
 - Fork the repository on GitHub to your own account
-- Clone your fork locally: `git clone https://github.com/your-username/auth_service.git`
-- Add the original repository as an upstream remote: `git remote add upstream https://github.com/original-owner/auth_service.git`
+- Clone your fork locally: `git clone https://github.com/your-username/garde.git`
+- Add the original repository as an upstream remote: `git remote add upstream https://github.com/original-owner/garde.git`
 - Push your branch to your fork: `git push origin feature/your-feature-name`
 - Open a pull request from your branch to the main repository's main branch.
 

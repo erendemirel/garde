@@ -1,11 +1,11 @@
 package service
 
 import (
-	"auth_service/internal/models"
-	"auth_service/internal/repository"
-	"auth_service/pkg/crypto"
-	"auth_service/pkg/mfa"
-	"auth_service/pkg/session"
+	"garde/internal/models"
+	"garde/internal/repository"
+	"garde/pkg/crypto"
+	"garde/pkg/mfa"
+	"garde/pkg/session"
 	"context"
 	"fmt"
 	"math/rand"
@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"auth_service/pkg/errors"
-	"auth_service/pkg/mail"
-	"auth_service/pkg/validation"
+	"garde/pkg/errors"
+	"garde/pkg/mail"
+	"garde/pkg/validation"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

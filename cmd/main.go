@@ -1,12 +1,12 @@
 package main
 
 import (
-	"auth_service/internal/handlers"
-	"auth_service/internal/middleware"
-	"auth_service/internal/repository"
-	"auth_service/internal/service"
-	"auth_service/pkg/errors"
-	"auth_service/pkg/validation"
+	"garde/internal/handlers"
+	"garde/internal/middleware"
+	"garde/internal/repository"
+	"garde/internal/service"
+	"garde/pkg/errors"
+	"garde/pkg/validation"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -16,9 +16,9 @@ import (
 	"os"
 	"strings"
 
-	_ "auth_service/endpoint_documentation" // Swagger docs
+	_ "garde/endpoint_documentation" // Swagger docs
 
-	"auth_service/internal/models"
+	"garde/internal/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"

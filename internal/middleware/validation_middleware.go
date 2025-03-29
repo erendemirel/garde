@@ -1,9 +1,9 @@
 package middleware
 
 import (
-	"auth_service/internal/models"
-	"auth_service/pkg/errors"
-	"auth_service/pkg/validation"
+	"garde/internal/models"
+	"garde/pkg/errors"
+	"garde/pkg/validation"
 	"bytes"
 	"fmt"
 	"io"
