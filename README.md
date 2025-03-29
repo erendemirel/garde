@@ -5,30 +5,49 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 ---
 
 ## Features
-- Built-in security features
-- Secure implementation
-- Session-based authentication with server side management using http-only cookies
-- MFA
-- Supports browser-based authentication, API call-based authentication, API key-based authentication
-- mTLS
+
+> Built-in security features
+
+> Secure implementation
+
+> Session-based authentication with server side management using http-only cookies
+
+> MFA
+
+> Supports browser-based authentication, API call-based authentication, API key-based authentication
+
+> mTLS
 
 
 ### Security Features
 
-- Rate limiter
-- Rapid request detection
-- Automated behaviour detection
-- Multiple IP session detection
-- Session blacklisting mechanism
-- Request body size limiting
-- Request headers, query parameters, path parameters and body sanitization
-- mTLS for internal service communication
-- MFA
-- Only superuser and admins can use administrative endpoints
-- Regular users cannot update themselves or any other user. They can only request an update from an admin
-- HTTP security headers
-- Locking on too many failed login attempts
-- No "role"s or "permission group"s or "scope"s or any other problematic concepts that cause paradoxes
+> Rate limiter
+
+> Rapid request detection
+
+> Automated behaviour detection
+
+> Multiple IP session detection
+
+> Session blacklisting mechanism
+
+> Request body size limiting
+
+> Request headers, query parameters, path parameters and body sanitization
+
+> mTLS for internal service communication
+
+> MFA
+
+> Only superuser and admins can use administrative endpoints
+
+> Regular users cannot update themselves or any other user. They can only request an update from an admin
+
+> HTTP security headers
+
+> Locking on too many failed login attempts
+
+> No "role"s or "permission group"s or "scope"s or any other problematic concepts that cause paradoxes
 
 
 ### Implementation Security
