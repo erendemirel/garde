@@ -1,6 +1,6 @@
 # API Integration Guide
 
-This guide explains how to integrate and use the authentication API in your applications.
+This guide explains how to integrate and use garde in your applications.
 
 ## Authentication Methods
 
