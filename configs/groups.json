@@ -1,0 +1,14 @@
+{
+    "x": {
+        "name": "X Group",
+        "description": "Users of group x"
+    },
+    "y": {
+        "name": "Y Role",
+        "description": "y role"
+    },
+    "z": {
+        "name": "Z Users",
+        "description": "z users"
+    }
+} 

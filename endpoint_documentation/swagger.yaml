@@ -1,0 +1,910 @@
+definitions:
+  models.ChangePasswordRequest:
+    properties:
+      mfa_code:
+        type: string
+      new_password:
+        minLength: 8
+        type: string
+      old_password:
+        minLength: 8
+        type: string
+    required:
+    - new_password
+    - old_password
+    type: object
+  models.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  models.CreateUserResponse:
+    properties:
+      user_id:
+        type: string
+    type: object
+  models.DisableMFARequest:
+    properties:
+      mfa_code:
+        type: string
+    required:
+    - mfa_code
+    type: object
+  models.ErrorDetails:
+    properties:
+      message:
+        type: string
+    type: object
+  models.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/models.ErrorDetails'
+    type: object
+  models.ListUsersResponse:
+    properties:
+      users:
+        items:
+          $ref: '#/definitions/models.UserResponse'
+        type: array
+    type: object
+  models.LoginRequest:
+    properties:
+      email:
+        type: string
+      mfa_code:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  models.LoginResponse:
+    properties:
+      session_id:
+        type: string
+    type: object
+  models.MFAResponse:
+    properties:
+      qr_code_url:
+        type: string
+      secret:
+        type: string
+    type: object
+  models.MFAVerifyRequest:
+    properties:
+      code:
+        type: string
+      email:
+        description: Required only for unauthenticated requests
+        type: string
+    required:
+    - code
+    type: object
+  models.PasswordResetRequest:
+    properties:
+      email:
+        type: string
+      mfa_code:
+        type: string
+      new_password:
+        minLength: 8
+        type: string
+      otp:
+        type: string
+    required:
+    - email
+    - new_password
+    - otp
+    type: object
+  models.RequestOTPRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  models.RequestUpdateFields:
+    properties:
+      groups:
+        additionalProperties:
+          type: boolean
+        type: object
+      permissions:
+        additionalProperties:
+          type: boolean
+        type: object
+    type: object
+  models.RequestUpdateRequest:
+    properties:
+      updates:
+        $ref: '#/definitions/models.RequestUpdateFields'
+    required:
+    - updates
+    type: object
+  models.RevokeSessionRequest:
+    properties:
+      mfa_code:
+        type: string
+      user_id:
+        type: string
+    required:
+    - user_id
+    type: object
+  models.SessionValidationResponse:
+    properties:
+      valid:
+        type: boolean
+    type: object
+  models.SuccessResponse:
+    properties:
+      data: {}
+    type: object
+  models.UpdateRequestResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  models.UpdateUserRequest:
+    properties:
+      approve_update:
+        type: boolean
+      groups:
+        additionalProperties:
+          type: boolean
+        type: object
+      mfa_enforced:
+        type: boolean
+      permissions:
+        additionalProperties:
+          type: boolean
+        type: object
+      reject_update:
+        type: boolean
+      status:
+        $ref: '#/definitions/models.UserStatus'
+    type: object
+  models.UserGroups:
+    additionalProperties:
+      type: boolean
+    type: object
+  models.UserPermissions:
+    additionalProperties:
+      type: boolean
+    type: object
+  models.UserResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      groups:
+        $ref: '#/definitions/models.UserGroups'
+      id:
+        type: string
+      last_login:
+        type: string
+      mfa_enabled:
+        type: boolean
+      mfa_enforced:
+        type: boolean
+      pending_updates:
+        $ref: '#/definitions/models.UserUpdateRequest'
+      permissions:
+        $ref: '#/definitions/models.UserPermissions'
+      status:
+        $ref: '#/definitions/models.UserStatus'
+      updated_at:
+        type: string
+    type: object
+  models.UserStatus:
+    enum:
+    - ok
+    - locked by admin
+    - locked by security
+    - pending admin approval
+    - admin approval rejected
+    type: string
+    x-enum-varnames:
+    - UserStatusOk
+    - UserStatusLockedByAdmin
+    - UserStatusLockedBySecurity
+    - UserStatusPendingApproval
+    - UserStatusApprovalRejected
+  models.UserUpdateFields:
+    properties:
+      groups:
+        $ref: '#/definitions/models.UserGroups'
+      permissions:
+        $ref: '#/definitions/models.UserPermissions'
+    type: object
+  models.UserUpdateRequest:
+    properties:
+      fields:
+        $ref: '#/definitions/models.UserUpdateFields'
+      requested_at:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Authentication service with MFA support and mail service
+  title: garde
+  version: "1.0"
+paths:
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user and returns a session token. No mTLS required
+        for this endpoint.
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Returns session ID and sets session cookie
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.LoginResponse'
+              type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Authentication failed, invalid credentials, MFA required, or
+            invalid MFA code
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "429":
+          description: Too many login attempts
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Login user
+      tags:
+      - Public Routes
+  /logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidates the current session. No mTLS required for this endpoint.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session invalidated successfully
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: No active session
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Logout user
+      tags:
+      - Protected Routes
+  /sessions/revoke:
+    post:
+      consumes:
+      - application/json
+      description: Revokes all active sessions for a user. Requires permissions.json
+        and groups.json files to be present for permission checks (except for superuser).
+      parameters:
+      - description: Session revocation request with user ID
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.RevokeSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sessions revoked successfully
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden - insufficient permissions
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error or permissions system not loaded
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Revoke user sessions
+      tags:
+      - Protected and Admin-Only Routes
+  /users:
+    get:
+      consumes:
+      - application/json
+      description: Returns users with their details and pending requests. Admins see
+        users in their groups, superusers see all. Requires permissions.json and groups.json
+        files to be present for permission checks (except for superuser).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of users
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.ListUsersResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden - insufficient permissions
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error or permissions system not loaded
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: List users
+      tags:
+      - Protected and Admin-Only Routes
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account with pending approval status. No mTLS
+        required for this endpoint.
+      parameters:
+      - description: User registration details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Returns created user ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.CreateUserResponse'
+              type: object
+        "400":
+          description: Invalid request format, email format, password requirements
+            not met, or email already exists
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: User creation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Create new user
+      tags:
+      - Public Routes
+  /users/{user_id}:
+    get:
+      consumes:
+      - application/json
+      description: Returns details for a specific user. Admins can only access users
+        in their groups. Superuser can access all users. Requires permissions.json
+        and groups.json files to be present for permission checks (except for superuser).
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User information
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.UserResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden - insufficient permissions
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error or permissions system not loaded
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Get user details
+      tags:
+      - Protected and Admin-Only Routes
+    put:
+      consumes:
+      - application/json
+      description: Update user details or process pending update requests. Requires
+        admin privileges. Requires permissions.json and groups.json files to be present
+        for permission checks (except for superuser).
+      parameters:
+      - description: Target User ID to update
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Update details including approve/reject flags for pending requests
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User updated successfully
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden - insufficient permissions
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: User update in progress or concurrent update detected
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error or permissions system not loaded
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Update user information
+      tags:
+      - Protected and Admin-Only Routes
+  /users/me:
+    get:
+      consumes:
+      - application/json
+      description: Returns the authenticated user's information. No mTLS required
+        for this endpoint.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Current user information
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.UserResponse'
+              type: object
+        "401":
+          description: Unauthorized or invalid session
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Get current user information
+      tags:
+      - Protected Routes
+  /users/mfa/disable:
+    post:
+      consumes:
+      - application/json
+      description: Disables Multi-Factor Authentication for the authenticated user
+        if not enforced. No mTLS required for this endpoint.
+      parameters:
+      - description: MFA verification code
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.DisableMFARequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: MFA disabled successfully
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: Invalid MFA code or invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized or MFA enforced by policy
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Disable MFA
+      tags:
+      - Protected Routes
+  /users/mfa/setup:
+    post:
+      consumes:
+      - application/json
+      description: Sets up Multi-Factor Authentication for a user. No mTLS required
+        for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated
+        and unauthenticated access.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Returns MFA secret and QR code URL
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.MFAResponse'
+              type: object
+        "400":
+          description: MFA already enabled or setup failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized when using authenticated mode
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Setup MFA
+      tags:
+      - Conditional Routes (Public or Protected)
+  /users/mfa/verify:
+    post:
+      consumes:
+      - application/json
+      description: Verifies MFA code and enables MFA for the user. No mTLS required
+        for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated
+        and unauthenticated access.
+      parameters:
+      - description: MFA verification code
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.MFAVerifyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: MFA enabled successfully
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: Invalid MFA code, invalid request format, or MFA already enabled
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized when using authenticated mode
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Verify and enable MFA
+      tags:
+      - Conditional Routes (Public or Protected)
+  /users/password/change:
+    post:
+      consumes:
+      - application/json
+      description: Changes the user's password. No mTLS required for this endpoint.
+      parameters:
+      - description: Change password request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password changed successfully
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: Invalid request format, old password incorrect, or password
+            requirements not met
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized or invalid session
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: MFA required or invalid MFA code
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Change password
+      tags:
+      - Protected Routes
+  /users/password/otp:
+    post:
+      consumes:
+      - application/json
+      description: Sends a one-time password to user's primary email. No mTLS required
+        for this endpoint.
+      parameters:
+      - description: Request OTP
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.RequestOTPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP sent successfully (or no-op if email doesn't exist)
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: Invalid email format or request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Request OTP for password reset
+      tags:
+      - Public Routes
+  /users/password/reset:
+    post:
+      consumes:
+      - application/json
+      description: Resets the user's password using OTP, and optionally MFA. No mTLS
+        required for this endpoint.
+      parameters:
+      - description: Password reset request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PasswordResetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset successful but pending admin approval
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "400":
+          description: Invalid request format, invalid OTP, invalid MFA code, or password
+            requirements not met
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Unauthorized, too many unsuccessful attempts
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Reset password
+      tags:
+      - Public Routes
+  /users/request-update-from-admin:
+    post:
+      consumes:
+      - application/json
+      description: User requests changes from an admin to their permissions or groups.
+        No mTLS required for this endpoint.
+      parameters:
+      - description: Update request details (permissions/groups)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.RequestUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Update request submitted successfully
+          schema:
+            $ref: '#/definitions/models.UpdateRequestResponse'
+        "400":
+          description: Invalid request format or empty update request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized or invalid session
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Update request already pending
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Request update for user information
+      tags:
+      - Protected Routes
+  /validate:
+    get:
+      consumes:
+      - application/json
+      description: Validates a session token. Require API key + mTLS. No other type
+        of authentication is supported
+      parameters:
+      - description: Session ID (required only for API requests with API key)
+        in: query
+        name: session_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session validation result with user ID and expiry
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SessionValidationResponse'
+              type: object
+        "400":
+          description: Invalid session ID format or missing session ID for API request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid session, missing mTLS certificate for
+            API requests, or invalid API key
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden - insufficient permissions (user not in admin's groups)
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error or permissions system not loaded
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - ApiKey: []
+      - Bearer: []
+      summary: Validate a session
+      tags:
+      - For Internal Services
+securityDefinitions:
+  ApiKey:
+    in: header
+    name: X-API-Key
+    type: apiKey
+  Bearer:
+    in: header
+    name: Authorization
+    type: apiKey
+  SessionCookie:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -1,0 +1,69 @@
+services:
+
+  auth-service-only:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: service
+    ports:
+      - "${PORT:-8443}:8443"
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./configs:/app/configs:ro 
+      - ./.env:/app/.env:ro
+    environment:
+      DOCKER_PROFILE: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - auth_network
+    profiles:
+      - auth-service-without-redis  
+
+  auth-service-with-redis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: service
+    ports:
+      - "${PORT:-8443}:8443"
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./configs:/app/configs:ro 
+      - ./.env:/app/.env:ro
+    environment:
+      DOCKER_PROFILE: with-redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_started
+        required: false
+    restart: unless-stopped
+    networks:
+      - auth_network
+      - redis_network
+    profiles:
+      - auth-service-with-redis
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - redis_network
+    profiles:
+      - auth-service-with-redis
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  auth_network:
+    name: auth_service_network
+    driver: bridge
+  redis_network:
+    name: redis_service_network
+    driver: bridge 

@@ -1,0 +1,21 @@
+{
+    "a_permission": {
+        "name": "A Permission",
+        "description": "Ability to perform A actions",
+        "groups": ["x", "z"]
+    },
+    "another_permission": {
+        "name": "Another permission",
+        "description": "Ability to perform something",
+        "groups": ["y"]
+    },
+    "permission_b": {
+        "name": "Permission B",
+        "description": "Users who have this permission can perform B",
+        "groups": []
+    },
+    "some_permission": {
+        "name": "Some Permission",
+        "description": "To allow something"
+    }
+} 
