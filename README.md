@@ -52,16 +52,25 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ### Implementation Security
 
-- Hashed IP addresses and user agents for storage
-- Hiding implementation details from error responses during panic
-- No persistence functions that passes user inputs to the database
-- Validation checks for all user inputs
-- No descriptive error messages in responses, only logging internally
-- Session tokens never stored in plain text
-- Separate blacklist mechanism for revoked sessions
-- Automatic cleanup of expired security records
-- Rate limit information in response headers
-- Confusing responses to make it difficult for an attacker to guess whether a user exists or not when querying for a user by email
+> Hashed IP addresses and user agents for storage
+
+> Hiding implementation details from error responses during panic
+
+> No persistence functions that passes user inputs to the database
+
+> Validation checks for all user inputs
+
+> No descriptive error messages in responses, only logging internally
+
+> Session tokens never stored in plain text
+
+> Separate blacklist mechanism for revoked sessions
+
+> Automatic cleanup of expired security records
+
+> Rate limit information in response headers
+
+> Confusing responses to make it difficult for an attacker to guess whether a user exists or not when querying for a user by email
 
 ---
 
