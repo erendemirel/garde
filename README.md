@@ -21,79 +21,53 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ## Features
 
-> Built-in security features
-
-> Secure implementation
-
-> Session-based authentication with server side management using http-only cookies
-
-> MFA
-
-> Supports browser-based authentication, API call-based authentication, API key-based authentication
-
-> mTLS
-
+- Built-in security features 
 <details>
-<summary> __Security Features__ </summary>
-<br>
+  <summary>Click here to expand built-in security features</summary>
+  
+ > Rate limiter
+ > Rapid request detection
+ > Automated behaviour detection
+ > Multiple IP session detection
+ > Session blacklisting mechanism
+ > Request body size limiting
+ > Request headers, query parameters, path parameters and body sanitization
+ > mTLS for internal service communication
+ > MFA
+ > Only superuser and admins can use administrative endpoints
+ > Regular users cannot update themselves or any other user. They can only request an update from an admin
+ > HTTP security headers
+ > Locking on too many failed login attempts
 
-> Rate limiter
+ > [!NOTE]  
+ > garde doesn't use "role"s or "permission group"s or "scope"s as these concepts cause paradoxes that lead to insecure implementations
 
-> Rapid request detection
+ </details>
 
-> Automated behaviour detection
-
-> Multiple IP session detection
-
-> Session blacklisting mechanism
-
-> Request body size limiting
-
-> Request headers, query parameters, path parameters and body sanitization
-
-> mTLS for internal service communication
-
-> MFA
-
-> Only superuser and admins can use administrative endpoints
-
-> Regular users cannot update themselves or any other user. They can only request an update from an admin
-
-> HTTP security headers
-
-> Locking on too many failed login attempts
-
-> No "role"s or "permission group"s or "scope"s or any other problematic concepts that cause paradoxes
+- Secure implementation 
+<details>
+  <summary>Click here to expand secure implementation detais</summary>
+  
+ > Hashed IP addresses and user agents for storage
+ > Hiding implementation details from error responses during panic
+ > No persistence functions that passes user inputs to the database
+ > Validation checks for all user inputs
+ > No descriptive error messages in responses, only logging internally
+ > Session tokens never stored in plain text
+ > Separate blacklist mechanism for revoked sessions
+ > Automatic cleanup of expired security records
+ > Rate limit information in response headers
+ > Confusing responses to make it difficult for an attacker to guess whether a user exists or not when querying for a user by email
 
 </details>
 
+- Session-based authentication with server side management using http-only cookies
 
-<details>
-<summary> __Implementation Security__ </summary>
-<br>
+- MFA
 
-> Hashed IP addresses and user agents for storage
+- Supports three types of authentication modes, browser-based authentication, API call-based authentication, API key-based authentication
 
-> Hiding implementation details from error responses during panic
-
-> No persistence functions that passes user inputs to the database
-
-> Validation checks for all user inputs
-
-> No descriptive error messages in responses, only logging internally
-
-> Session tokens never stored in plain text
-
-> Separate blacklist mechanism for revoked sessions
-
-> Automatic cleanup of expired security records
-
-> Rate limit information in response headers
-
-> Confusing responses to make it difficult for an attacker to guess whether a user exists or not when querying for a user by email
-
-</details>
-
+- mTLS
 
 ---
 
@@ -105,19 +79,26 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 3. Run `docker compose --profile auth-service-with-redis up`
 
-For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)
+> [!TIP]
+> For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)
 
-For detailed installation guide, refer to [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)
+> [!TIP]
+> For detailed installation guide, refer to [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)
 
-For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)
+> [!TIP]
+> For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)
 
-For troubleshooting, refer to [troubleshooting guide](https://github.com/erendemirel/garde/blob/master/docs/TROUBLESHOOTING.md)
+> [!TIP]
+> For troubleshooting, refer to [troubleshooting guide](https://github.com/erendemirel/garde/blob/master/docs/TROUBLESHOOTING.md)
 
 --- 
 
 ## Endpoint Documentation
 
-See [endpoints](https://garde-api-docs.netlify.app). This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain in your `.env` file, use those instead of localhost and 8443).
+See [endpoints](https://garde-api-docs.netlify.app)
+
+> [!TIP]
+> This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain in your `.env` file, use those instead of localhost and 8443).
 
 ---
 
@@ -190,7 +171,10 @@ docker compose --profile auth-service-with-redis up
 ---
 
 #### 1. Configure built-in TLS (Conditional)
-Configure the application to use built-in TLS(__Note that__ if you don't use built-in TLS, you cannot use mTLS and API-key authentication)
+Configure the application to use built-in TLS
+
+> [!IMPORTANT]  
+> if you don't use built-in TLS, you cannot use mTLS and API-key authentication
 
 - Gather your SSL certificates:
 
@@ -206,7 +190,10 @@ TLS_KEY_PATH=path_to_your_server_private_key
 PORT=your_https_port  # Optional. The port the application will listen on. Default is 8443
 ```
 #### 2. Configure mTLS and set API key (Conditional)
-Required only if auth service will communicate with internal services. __Note that__ built-in TLS must be enabled for mTLS and API-key authentication to work
+Required only if auth service will communicate with internal services
+
+> [!IMPORTANT]  
+> Built-in TLS must be enabled for mTLS and API-key authentication to work
 
 Set in `.env`:
 ```ini
@@ -215,7 +202,10 @@ API_KEY=your_api_key  # Must be at least 20 characters long and contain at least
 ```
 
 #### 3. Mail Server Configuration (Conditional)
-Without sending emails, the auth service cannot reset users' passwords.
+Set configurations to be able to send mails. Resetting password functionality requires sending a mail
+
+> [!IMPORTANT]  
+> Without sending emails, garde cannot reset users' passwords
 
 ##### DNS Records Required
 - MX record pointing to mail.your-domain.com
@@ -239,7 +229,10 @@ The permissions list defines all permissions that your authentication API instan
 
 The groups list helps organize users and admins. Admins can only manage users who share at least one group with them. Note that admins can edit users even when they're not initially in the same group, but only when adding those users to their group for the first time, meaning if an admin wants to manage a user, they first need to add that user to the their own group.
 
-Both the permissions and groups systems are optional. To disable either system, simply remove the corresponding file (`permissions.json` and/or `groups.json`) from your `/configs` directory. For more information, refer to the integration guide and review the sample JSON files in the `/configs` directory.
+Both the permissions and groups systems are optional. 
+
+> [!TIP]
+> To disable either system, simply remove the corresponding file (`permissions.json` and/or `groups.json`) from your `/configs` directory. For more information, refer to the integration guide and review the sample JSON files in the `/configs` directory
 
 ##### Permissions
 Set in `/configs/permissions.json`:
@@ -295,7 +288,8 @@ location / {
 - Allow inbound: Your auth API instance port
 - Allow outbound: Redis (if using your own), mail server (if enabled)
 
-A restart is needed for any changes to take effect.
+> [!IMPORTANT]  
+> A restart is needed for any changes to take effect
 
 ## Verifying Installation
 
