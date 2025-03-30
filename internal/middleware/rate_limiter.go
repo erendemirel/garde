@@ -1,9 +1,10 @@
 package middleware
 
 import (
+	"fmt"
 	"garde/internal/models"
 	"garde/internal/repository"
-	"fmt"
+	"garde/pkg/errors"
 	"net/http"
 	"os"
 	"time"
@@ -39,22 +40,14 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 
 		err := rl.repo.IncrementRequestCount(c.Request.Context(), key, rateLimitWindow)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-				Details: models.ErrorDetails{
-					Message: "Internal server error",
-				},
-			})
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
 			c.Abort()
 			return
 		}
 
 		count, err := rl.repo.GetRequestCount(c.Request.Context(), key, rateLimitWindow)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-				Details: models.ErrorDetails{
-					Message: "Internal server error",
-				},
-			})
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
 			c.Abort()
 			return
 		}
@@ -66,11 +59,7 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 				"count": fmt.Sprintf("%d", count),
 			}, time.Hour)
 
-			c.JSON(http.StatusTooManyRequests, models.ErrorResponse{
-				Details: models.ErrorDetails{
-					Message: "Rate limit exceeded. Please try again later.",
-				},
-			})
+			c.JSON(http.StatusTooManyRequests, models.NewErrorResponse(errors.ErrTooManyRequests))
 			c.Abort()
 			return
 		}
