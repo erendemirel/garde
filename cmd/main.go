@@ -28,7 +28,7 @@ import (
 
 // @title garde
 // @version 1.0
-// @description Authentication service with MFA support and mail service
+// @description Lightweight and secure authentication service
 // @securityDefinitions.apikey ApiKey
 // @in header
 // @name X-API-Key
