@@ -7,8 +7,6 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 ## Table of Contents
 
 - [Features](#features)
-  - [Security Features](#security-features)
-  - [Implementation Security](#implementation-security)
 - [Quick Start](#quick-start)
 - [Endpoint Documentation](#endpoint-documentation)
 - [Installation](#installation)
@@ -35,8 +33,9 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 > mTLS
 
-
-### Security Features
+<details>
+<summary> __Security Features__ </summary>
+<br>
 
 > Rate limiter
 
@@ -66,8 +65,12 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 > No "role"s or "permission group"s or "scope"s or any other problematic concepts that cause paradoxes
 
+</details>
 
-### Implementation Security
+
+<details>
+<summary> __Implementation Security__ </summary>
+<br>
 
 > Hashed IP addresses and user agents for storage
 
@@ -88,6 +91,9 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 > Rate limit information in response headers
 
 > Confusing responses to make it difficult for an attacker to guess whether a user exists or not when querying for a user by email
+
+</details>
+
 
 ---
 
