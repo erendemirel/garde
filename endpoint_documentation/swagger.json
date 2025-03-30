@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Authentication service with MFA support and mail service",
+        "description": "Lightweight and secure authentication service",
         "title": "garde",
         "contact": {},
         "version": "1.0"

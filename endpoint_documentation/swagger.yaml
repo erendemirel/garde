@@ -234,7 +234,7 @@ definitions:
     type: object
 info:
   contact: {}
-  description: Authentication service with MFA support and mail service
+  description: Lightweight and secure authentication service
   title: garde
   version: "1.0"
 paths:

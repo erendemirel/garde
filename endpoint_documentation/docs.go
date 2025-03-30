@@ -1430,7 +1430,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "",
 	Schemes:          []string{},
 	Title:            "garde",
-	Description:      "Authentication service with MFA support and mail service",
+	Description:      "Lightweight and secure authentication service",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
