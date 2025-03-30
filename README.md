@@ -68,6 +68,8 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 - mTLS
 
+- Minimal dependencies with simple configuration
+
 ---
 
 ## Quick Start
