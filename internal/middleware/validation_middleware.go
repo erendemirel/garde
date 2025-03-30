@@ -1,11 +1,11 @@
 package middleware
 
 import (
+	"bytes"
+	"fmt"
 	"garde/internal/models"
 	"garde/pkg/errors"
 	"garde/pkg/validation"
-	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 
@@ -27,8 +27,6 @@ const (
 //	}
 func ValidateRequestParameters() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Added logging for debug
-		fmt.Printf("ValidateRequestParameters for path: %s\n", c.FullPath())
 
 		// Validate context first
 		if err := validateContext(c); err != nil {
@@ -282,7 +280,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			// Check if permission exists in our loaded permissions
 			if !permissionSet[perm] {
 				fmt.Printf("Invalid permission requested: %s\n", string(perm))
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": %s", string(perm))
+				return fmt.Errorf(errors.ErrInvalidPermissionRequested+": %s", string(perm))
 			}
 		}
 		fmt.Printf("Permissions validation successful\n")
@@ -309,7 +307,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			// Check if group exists in our loaded groups
 			if !groupSet[group] {
 				fmt.Printf("Invalid group requested: %s\n", string(group))
-				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": %s", string(group))
+				return fmt.Errorf(errors.ErrInvalidGroupRequested+": %s", string(group))
 			}
 		}
 		fmt.Printf("Groups validation successful\n")
@@ -352,7 +350,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 			// Check if permission exists in our loaded permissions
 			if !permissionSet[perm] {
 				fmt.Printf("Invalid permission requested: %s\n", string(perm))
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": %s", string(perm))
+				return fmt.Errorf(errors.ErrInvalidPermissionRequested+": %s", string(perm))
 			}
 		}
 		fmt.Printf("Permissions validation successful\n")
@@ -383,10 +381,9 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 			// Check if group exists in our loaded groups
 			if !groupSet[group] {
 				fmt.Printf("Invalid group requested: %s\n", string(group))
-				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": %s", string(group))
+				return fmt.Errorf(errors.ErrInvalidGroupRequested+": %s", string(group))
 			}
 		}
-		fmt.Printf("Groups validation successful\n")
 	} else {
 		fmt.Printf("No groups provided in update user request\n")
 	}
@@ -394,7 +391,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 	return nil
 }
 
-func GetValidatedRequest[T any](c *gin.Context) (T, bool) {  // Safely retrieves and type-asserts the validated request from context
+func GetValidatedRequest[T any](c *gin.Context) (T, bool) { // Safely retrieves and type-asserts the validated request from context
 	val, exists := c.Get(ContextKeyValidatedRequest)
 	if !exists {
 		var zero T
