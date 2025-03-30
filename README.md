@@ -107,7 +107,7 @@ See [endpoints](aa). This documentation page will also be available at https://l
 #### 1. Download the source code
 
 #### 2. Configure and start Redis
-##### Using an external Redis instance (if you have your own Redis instance):
+##### a. Using an external Redis instance (if you have your own Redis instance):
 
 - Set in `.env`:
 ```ini
@@ -117,7 +117,7 @@ REDIS_PASSWORD=your_redis_server_password
 REDIS_DB=redis_database_to_use  # Optional
 ```
 
-##### Using the bundled Redis container (included in the project's docker-compose):
+##### b. Using the bundled Redis container (included in the project's docker-compose):
 
 - Set in `.env`:
 ```ini
