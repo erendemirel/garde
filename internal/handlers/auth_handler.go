@@ -678,12 +678,6 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 		}
 	}
 
-	// Debug the request structure
-	fmt.Printf("Request in handler: %+v\n", req)
-	fmt.Printf("Updates field: %+v\n", req.Updates)
-	fmt.Printf("Permissions field (raw): %v, IsNil: %v\n", req.Updates.Permissions, req.Updates.Permissions == nil)
-	fmt.Printf("Groups field (raw): %v, IsNil: %v\n", req.Updates.Groups, req.Updates.Groups == nil)
-
 	// Call service
 	if err := h.authService.RequestUpdate(c.Request.Context(), userID.(string), &req); err != nil {
 		fmt.Printf("Service RequestUpdate returned error: %v\n", err)
