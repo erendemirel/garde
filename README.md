@@ -4,6 +4,23 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ---
 
+## Table of Contents
+
+- [Features](#features)
+  - [Security Features](#security-features)
+  - [Implementation Security](#implementation-security)
+- [Quick Start](#quick-start)
+- [Endpoint Documentation](#endpoint-documentation)
+- [Installation](#installation)
+  - [Mandatory Steps](#mandatory-steps)
+  - [Conditional or Optional Steps](#conditional-or-optional-steps)
+- [Verifying Installation](#verifying-installation)
+- [Example Configuration Files](#example-configuration-files)
+- [Security Mandates](#security-mandates)
+- [Contributing](#contributing)
+
+---
+
 ## Features
 
 > Built-in security features
