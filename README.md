@@ -22,44 +22,43 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 ## Features
 
 - Built-in security features 
-<details>
-  <summary>Click here to expand built-in security features</summary>
+  <details>
+    <summary>Click here to expand built-in security features</summary>
   
- > Rate limiter
- > Rapid request detection
- > Automated behaviour detection
- > Multiple IP session detection
- > Session blacklisting mechanism
- > Request body size limiting
- > Request headers, query parameters, path parameters and body sanitization
- > mTLS for internal service communication
- > MFA
- > Only superuser and admins can use administrative endpoints
- > Regular users cannot update themselves or any other user. They can only request an update from an admin
- > HTTP security headers
- > Locking on too many failed login attempts
+      > Rate limiter
+      > Rapid request detection
+      > Automated behaviour detection
+      > Multiple IP session detection
+      > Session blacklisting mechanism
+      > Request body size limiting
+      > Request headers, query parameters, path parameters and body sanitization
+      > mTLS for internal service communication
+      > MFA
+      > Only superuser and admins can use administrative endpoints
+      > Regular users cannot update themselves or any other user. They can only request an update from an admin
+      > HTTP security headers
+      > Locking on too many failed login attempts
 
- > [!NOTE]  
- > garde doesn't use "role"s or "permission group"s or "scope"s as these concepts cause paradoxes that lead to insecure implementations
+  > garde doesn't use "role"s or "permission group"s or "scope"s as these concepts cause paradoxes that lead to insecure implementations
 
- </details>
+   </details>
 
 - Secure implementation 
-<details>
-  <summary>Click here to expand secure implementation detais</summary>
+  <details>
+    <summary>Click here to expand secure implementation details</summary>
   
- > Hashed IP addresses and user agents for storage
- > Hiding implementation details from error responses during panic
- > No persistence functions that passes user inputs to the database
- > Validation checks for all user inputs
- > No descriptive error messages in responses, only logging internally
- > Session tokens never stored in plain text
- > Separate blacklist mechanism for revoked sessions
- > Automatic cleanup of expired security records
- > Rate limit information in response headers
- > Confusing responses to make it difficult for an attacker to guess whether a user exists or not when querying for a user by email
+      > Hashed IP addresses and user agents for storage
+      > Hiding implementation details from error responses during panic
+      > No persistence functions that passes user inputs to the database
+      > Validation checks for all user inputs
+      > No descriptive error messages in responses, only logging internally
+      > Session tokens never stored in plain text
+      > Separate blacklist mechanism for revoked sessions
+      > Automatic cleanup of expired security records
+      > Rate limit information in response headers
+      > Confusing responses to make it difficult for an attacker to guess whether a user exists when querying for a user by email
 
-</details>
+  </details>
 
 - Session-based authentication with server side management using http-only cookies
 
@@ -80,15 +79,9 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 3. Run `docker compose --profile auth-service-with-redis up`
 
 > [!TIP]
-> For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)
-
-> [!TIP]
-> For detailed installation guide, refer to [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)
-
-> [!TIP]
-> For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)
-
-> [!TIP]
+> For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)<br>
+> For detailed installation guide, refer to [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)<br>
+> For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)<br>
 > For troubleshooting, refer to [troubleshooting guide](https://github.com/erendemirel/garde/blob/master/docs/TROUBLESHOOTING.md)
 
 --- 
@@ -171,10 +164,10 @@ docker compose --profile auth-service-with-redis up
 ---
 
 #### 1. Configure built-in TLS (Conditional)
-Configure the application to use built-in TLS
+Configure the application to use built-in TLS.
 
 > [!IMPORTANT]  
-> if you don't use built-in TLS, you cannot use mTLS and API-key authentication
+> If you don't use built-in TLS, you cannot use mTLS and API-key authentication
 
 - Gather your SSL certificates:
 
@@ -190,7 +183,7 @@ TLS_KEY_PATH=path_to_your_server_private_key
 PORT=your_https_port  # Optional. The port the application will listen on. Default is 8443
 ```
 #### 2. Configure mTLS and set API key (Conditional)
-Required only if auth service will communicate with internal services
+Required only if auth service will communicate with internal services.
 
 > [!IMPORTANT]  
 > Built-in TLS must be enabled for mTLS and API-key authentication to work
@@ -202,9 +195,9 @@ API_KEY=your_api_key  # Must be at least 20 characters long and contain at least
 ```
 
 #### 3. Mail Server Configuration (Conditional)
-Set configurations to be able to send mails. Resetting password functionality requires sending a mail
+Set configurations to be able to send mails. Resetting password functionality requires sending a mail.
 
-> [!IMPORTANT]  
+> [!WARNING]  
 > Without sending emails, garde cannot reset users' passwords
 
 ##### DNS Records Required
@@ -228,6 +221,9 @@ In addition to configurations stored in the `.env` file, there are also configur
 The permissions list defines all permissions that your authentication API instance will support, such as access to specific menus in your application dashboard or any other permission you'd like your users to have. If you want to use permissions, you must define them in this file.
 
 The groups list helps organize users and admins. Admins can only manage users who share at least one group with them. Note that admins can edit users even when they're not initially in the same group, but only when adding those users to their group for the first time, meaning if an admin wants to manage a user, they first need to add that user to the their own group.
+
+> [!NOTE]
+> Superuser is exempt from permissions-groups logic
 
 Both the permissions and groups systems are optional. 
 
