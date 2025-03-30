@@ -29,6 +29,7 @@ const (
 	ErrInvalidRequest     = "invalid request"
 	ErrUserCreationFailed = "user creation failed"
 	ErrRequestTooLarge    = "request body exceeds maximum allowed size"
+	ErrTooManyRequests    = "too many requests"
 )
 
 // Generic error message
@@ -38,13 +39,13 @@ const (
 
 // User management errors
 const (
-	ErrUserNotFound         = "user not found"
-	ErrEmailAlreadyExists   = "email already exists"
-	ErrSuperUserInitFailed  = "failed to initialize superuser"
-	ErrPermissionsNotLoaded = "permissions system not loaded"
-	ErrGroupsNotLoaded      = "groups system not loaded"
+	ErrUserNotFound               = "user not found"
+	ErrEmailAlreadyExists         = "email already exists"
+	ErrSuperUserInitFailed        = "failed to initialize superuser"
+	ErrPermissionsNotLoaded       = "permissions system not loaded"
+	ErrGroupsNotLoaded            = "groups system not loaded"
 	ErrInvalidPermissionRequested = "invalid permission requested"
-	ErrInvalidGroupRequested = "invalid group requested"
+	ErrInvalidGroupRequested      = "invalid group requested"
 )
 
 // Input validation errors

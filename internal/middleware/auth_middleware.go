@@ -1,11 +1,11 @@
 package middleware
 
 import (
+	"fmt"
 	"garde/internal/models"
 	"garde/internal/service"
 	"garde/pkg/errors"
 	"garde/pkg/session"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -31,17 +31,13 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			header := c.GetHeader(AuthHeaderKey)
 			if header == "" {
 				fmt.Printf("Auth middleware: Missing authentication\n")
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-					"error": "Missing authentication",
-				})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 				return
 			}
 
 			if !strings.HasPrefix(header, SessionPrefix) {
 				fmt.Printf("Auth middleware: Invalid format\n")
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-					"error": "Invalid authorization format",
-				})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrInvalidRequest))
 				return
 			}
 
@@ -67,9 +63,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			)
 
 			fmt.Printf("Auth middleware: Session validation failed\n")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid or expired session",
-			})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
 			return
 		}
 
@@ -81,9 +75,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 				for _, pattern := range patterns {
 					securityAnalyzer.RecordPattern(c.Request.Context(), validationResult.UserID, pattern, ip, userAgent)
 				}
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-					"error": "Suspicious activity detected",
-				})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrAccessRestricted))
 				return
 			}
 
@@ -180,9 +172,7 @@ func SecurityMiddleware(securityAnalyzer *service.SecurityAnalyzer) gin.HandlerF
 			for _, pattern := range patterns {
 				securityAnalyzer.RecordPattern(c.Request.Context(), tempID, pattern, ip, userAgent)
 			}
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error": "Too many requests",
-			})
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, models.NewErrorResponse(errors.ErrTooManyRequests))
 			return
 		}
 
