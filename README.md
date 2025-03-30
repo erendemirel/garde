@@ -78,7 +78,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 1. Download the source code
 
-2. Set mandatory parameters in [`.env`](a)
+2. Set mandatory parameters in [`.env`](https://github.com/erendemirel/garde/blob/master/.env)
 
 3. Run `docker compose --profile auth-service-with-redis up`
 
@@ -143,7 +143,7 @@ SUPERUSER_PASSWORD=password_of_superuser_account   # Must meet password complexi
 
 ##### Without the project's docker-compose:
 
-- [Install](https://go.dev/doc/install) Go
+- Install [Go](https://go.dev/doc/install)
 - Build and run the app:
 ```bash
 go mod download
