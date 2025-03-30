@@ -624,7 +624,7 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 // @Security SessionCookie
 // @Security Bearer
 // @Param request body models.RequestUpdateRequest true "Update request details (permissions/groups)"
-// @Success 200 {object} models.UpdateRequestResponse "Update request submitted successfully"
+// @Success 200 {object} models.SuccessResponse "Update request submitted successfully"
 // @Failure 400 {object} models.ErrorResponse "Invalid request format or empty update request"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized or invalid session"
 // @Failure 404 {object} models.ErrorResponse "User not found"
@@ -635,7 +635,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	// Extract user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"message": errors.ErrUnauthorized}})
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 		return
 	}
 
@@ -656,14 +656,14 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 		// Direct binding
 		if err := c.ShouldBindJSON(&req); err != nil {
 			fmt.Printf("Direct binding failed: %v\n", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "invalid request format"}})
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
 
 		// Validate request manually
 		if req.Updates.Permissions == nil && req.Updates.Groups == nil {
 			fmt.Println("Both Permissions and Groups are nil - invalid request")
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "invalid request - must specify permissions or groups"}})
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
 	}
@@ -671,10 +671,10 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	// Call service
 	if err := h.authService.RequestUpdate(c.Request.Context(), userID.(string), &req); err != nil {
 		fmt.Printf("Service RequestUpdate returned error: %v\n", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "invalid request"}})
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 		return
 	}
 
 	// Return success response
-	c.JSON(http.StatusOK, gin.H{"message": "Update request submitted successfully"})
+	c.JSON(http.StatusOK, models.NewSuccessResponse("Update request submitted successfully"))
 }
