@@ -1,14 +1,14 @@
 package handlers
 
 import (
+	"bytes"
+	"fmt"
 	"garde/internal/middleware"
 	"garde/internal/models"
 	"garde/internal/service"
 	"garde/pkg/errors"
 	"garde/pkg/session"
 	"garde/pkg/validation"
-	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -632,16 +632,12 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Operation failed"
 // @Router /users/request-update-from-admin [post]
 func (h *AuthHandler) RequestUpdate(c *gin.Context) {
-	fmt.Println("Entering RequestUpdate handler")
-
 	// Extract user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		fmt.Println("Failed to get user_id from context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"message": errors.ErrUnauthorized}})
 		return
 	}
-	fmt.Printf("RequestUpdate handler called for userID: %v\n", userID)
 
 	// Try both approaches - middleware validation and direct binding
 	var req models.RequestUpdateRequest
@@ -649,14 +645,10 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	// Check if middleware validation worked
 	validatedReq, validationExists := middleware.GetValidatedRequest[models.RequestUpdateRequest](c)
 	if validationExists {
-		fmt.Println("Found validated request from middleware")
 		req = validatedReq
 	} else {
-		fmt.Println("No validated request found, using direct binding")
-
 		// Read raw body for debugging
 		bodyBytes, _ := io.ReadAll(c.Request.Body)
-		fmt.Printf("Raw request body: %s\n", string(bodyBytes))
 
 		// Restore body for binding
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
@@ -667,8 +659,6 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "invalid request format"}})
 			return
 		}
-
-		fmt.Printf("Direct binding succeeded: %+v\n", req)
 
 		// Validate request manually
 		if req.Updates.Permissions == nil && req.Updates.Groups == nil {
