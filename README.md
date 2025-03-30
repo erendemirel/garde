@@ -100,7 +100,7 @@ See [endpoints](aa). This documentation page will also be available at https://l
 
 ## Installation
 
-### a. Mandatory Steps
+### Mandatory Steps
 
 ---
 
@@ -141,7 +141,7 @@ SUPERUSER_PASSWORD=password_of_superuser_account   # Must meet password complexi
 
 #### 5. Run the application
 
-##### Without the project's docker-compose:
+##### a. Without the project's docker-compose:
 
 - Install [Go](https://go.dev/doc/install)
 - Build and run the app:
@@ -150,7 +150,7 @@ go mod download
 go build -o garde ./cmd
 ./garde
 ```
-##### With the project's docker-compose:
+##### b. With the project's docker-compose:
 
 - If you are going to use your own Redis instance (external Redis):
 ```bash
@@ -162,7 +162,7 @@ docker compose --profile auth-service-with-redis up
 ```
 
 
-### b. Conditional or Optional Steps
+### Conditional or Optional Steps
 
 ---
 
