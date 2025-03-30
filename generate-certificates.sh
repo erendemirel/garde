@@ -1,20 +1,16 @@
 #!/bin/bash
 set -e
 
-# Function to log messages with timestamps
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
 log "Starting certificate generation"
 
-# Create certs directory if it doesn't exist
 mkdir -p certs
 
-# Generate certificates with auth-service in the SAN field
 log "Generating certificates with auth-service in the SAN field..."
 
-# Generate CA certificate
 log "Generating CA certificate..."
 cat > certs/ca.cnf << EOF
 [req]
