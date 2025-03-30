@@ -111,7 +111,7 @@ For troubleshooting, refer to [troubleshooting guide](https://github.com/erendem
 
 ## Endpoint Documentation
 
-See [endpoints](aa). This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain in your `.env` file, use those instead of localhost and 8443).
+See [endpoints](https://garde-api-docs.netlify.app). This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain in your `.env` file, use those instead of localhost and 8443).
 
 ---
 
