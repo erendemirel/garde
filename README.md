@@ -80,7 +80,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 3. Run `docker compose --profile auth-service-with-redis up`
 
-> [!TIP]
+> [!NOTE]
 > For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)<br>
 > For detailed installation guide, refer to [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)<br>
 > For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)<br>
