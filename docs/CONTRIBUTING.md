@@ -33,6 +33,7 @@ Tests are organized under `tests` directory.
 You can use the built-in docker file:
 ```bash
 docker-compose --profile auth-service-with-redis build
+./generate-certificates.sh
 docker-compose --profile auth-service-with-redis up
 ```
 
@@ -40,7 +41,7 @@ Or you can start your own application or Redis instance. In this case, make sure
 
 2. Run the test:
 ```bash
-go test -v ./tests/....  # Or via your IDE
+go test -v ./tests  # Or via your IDE
 ```
 
 #### Tests That Require mTLS (API-key auth flow)
@@ -56,6 +57,7 @@ For manual testing or debugging:
 2. Start Redis and the auth service(after setting up `.env`):
 ```bash
 docker-compose --profile auth-service-with-redis build
+./generate-certificates.sh
 docker-compose --profile auth-service-with-redis up
 ```
 
