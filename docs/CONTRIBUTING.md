@@ -4,18 +4,14 @@
 
 There are two main ways to contribute to this project:
 
-### 1. Direct Contribution (Team Members and Trusted Contributors)
-
-If you have write access to the repository:
+### 1. Direct Contribution (If you have write access to the repository)
 
 - Clone the repository directly: `git clone ....`
 - Create a branch for your changes: `git checkout -b ....`
 - Make your changes, commit them, and push directly to the repository
 - Open a pull request from your branch to the main branch
 
-### 2. Fork and Pull Request (External Contributors)
-
-If you don't have write access to the repository:
+### 2. Fork and Pull Request (If you don't have write access to the repository)
 
 - Fork the repository on GitHub to your own account
 - Clone your fork locally: `git clone https://github.com/your-username/garde.git`

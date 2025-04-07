@@ -82,7 +82,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 > [!NOTE]
 > For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)<br>
-> For detailed installation guide, refer to [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)<br>
+> For detailed installation guide, see [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)<br>
 > For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)<br>
 > For troubleshooting, refer to [troubleshooting guide](https://github.com/erendemirel/garde/blob/master/docs/TROUBLESHOOTING.md)
 
@@ -128,10 +128,10 @@ REDIS_DB=redis_database_to_use  # Optional
 
 - Set in `.env`:
 ```ini
-DOMAIN_NAME=your_domain  # Can be any value if you are not going to use built-in TLS (See "Configure TLS" section below for detailed information)
+DOMAIN_NAME=your_domain  # Can be any value if you are not going to use built-in TLS (See "Configure built-in TLS" section below for detailed information)
 ```
 
-#### 4. Set superuser credentials and encryption key
+#### 4. Set superuser credentials
 Set in `.env`:
 ```ini
 SUPERUSER_EMAIL=email_of_superuser_account
