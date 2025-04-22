@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"fmt"
 	"garde/internal/middleware"
 	"garde/internal/models"
@@ -9,7 +8,6 @@ import (
 	"garde/pkg/errors"
 	"garde/pkg/session"
 	"garde/pkg/validation"
-	"io"
 	"net/http"
 	"os"
 	"time"
@@ -647,12 +645,6 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	if validationExists {
 		req = validatedReq
 	} else {
-		// Read raw body for debugging
-		bodyBytes, _ := io.ReadAll(c.Request.Body)
-
-		// Restore body for binding
-		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
 		// Direct binding
 		if err := c.ShouldBindJSON(&req); err != nil {
 			fmt.Printf("Direct binding failed: %v\n", err)
