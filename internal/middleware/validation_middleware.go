@@ -17,7 +17,7 @@ const (
 	ContextKeyValidationFailed = "validationFailed"
 )
 
-// ValidateRequestParameters middleware handles input validation and sanitization for all endpoints.
+// Handles input validation and sanitization for all endpoints.
 // Validated requests are stored in the context with key "validatedRequest" and can be retrieved
 // in handlers using:
 //
