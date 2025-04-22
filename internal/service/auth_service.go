@@ -1,13 +1,13 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"garde/internal/models"
 	"garde/internal/repository"
 	"garde/pkg/crypto"
 	"garde/pkg/mfa"
 	"garde/pkg/session"
-	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -160,8 +160,6 @@ func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
 }
 
 func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAgent string) (*ValidationResult, error) {
-	fmt.Printf("Validating session: %s (first 10 chars) from IP: %s\n", sessionID[:10], ip)
-
 	// First check if session is blacklisted
 	isBlacklisted, err := s.repo.IsSessionBlacklisted(ctx, sessionID)
 	if err != nil {
@@ -1067,10 +1065,10 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		return nil, fmt.Errorf(errors.ErrUserNotFound)
 	}
 
-	fmt.Printf("GetUser - Target user: %+v\n", targetUser)
+	fmt.Printf("GetUser - Target user ID: %s\n", targetUser.ID)
 	fmt.Printf("GetUser - Target user has pending updates: %v\n", targetUser.PendingUpdates != nil)
 	if targetUser.PendingUpdates != nil {
-		fmt.Printf("GetUser - Pending updates content: %+v\n", targetUser.PendingUpdates)
+		fmt.Printf("GetUser - Pending update request made at: %s\n", targetUser.PendingUpdates.RequestedAt.Format(time.RFC3339))
 	}
 
 	// Superusers can see any user
@@ -1088,7 +1086,8 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 			Groups:         targetUser.Groups,
 			PendingUpdates: targetUser.PendingUpdates,
 		}
-		fmt.Printf("GetUser - Response for superuser: %+v\n", response)
+		// Log minimal info for superuser response
+		fmt.Printf("GetUser - Prepared response for superuser (user ID: %s)\n", response.ID)
 		fmt.Printf("GetUser - Response has pending updates: %v\n", response.PendingUpdates != nil)
 		return response, nil
 	}
@@ -1116,32 +1115,16 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		Groups:         targetUser.Groups,
 		PendingUpdates: targetUser.PendingUpdates,
 	}
-	fmt.Printf("GetUser - Response for admin: %+v\n", response)
-	fmt.Printf("GetUser - Response has pending updates: %v\n", response.PendingUpdates != nil)
+
 	return response, nil
 }
 
 func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *models.RequestUpdateRequest) error {
-	fmt.Printf("RequestUpdate service called for userID: %s\n", userID)
-	fmt.Printf("Raw request pointer: %p\n", req)
 
 	// Immediately check if request is nil
 	if req == nil {
 		fmt.Println("Request is nil")
 		return fmt.Errorf(errors.ErrInvalidRequest)
-	}
-
-	// Log detailed info about the request structure
-	fmt.Printf("Request: %+v\n", req)
-	fmt.Printf("Updates: %+v\n", req.Updates)
-	fmt.Printf("Permissions count: %d\n", len(req.Updates.Permissions))
-	fmt.Printf("Groups count: %d\n", len(req.Updates.Groups))
-
-	if len(req.Updates.Permissions) > 0 {
-		fmt.Printf("Permissions content: %+v\n", req.Updates.Permissions)
-	}
-	if len(req.Updates.Groups) > 0 {
-		fmt.Printf("Groups content: %+v\n", req.Updates.Groups)
 	}
 
 	// Get current user
@@ -1151,12 +1134,11 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		return fmt.Errorf(errors.ErrUserNotFound)
 	}
 
-	fmt.Printf("User before update: %+v\n", user)
 	fmt.Printf("User has PendingUpdates before: %v\n", user.PendingUpdates != nil)
 
 	// Don't allow superuser to request updates
 	if user.Email == os.Getenv("SUPERUSER_EMAIL") {
-		fmt.Printf("Superuser attempted to request updates: %s\n", user.Email)
+		fmt.Printf("Superuser (ID: %s) attempted to request updates\n", userID)
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1191,12 +1173,11 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		Fields:      userUpdateFields,
 	}
 
-	fmt.Printf("Creating update request: %+v\n", updateReq)
+	fmt.Printf("Creating update request for user ID: %s\n", userID)
 
 	// Store update request
 	user.PendingUpdates = updateReq
-	fmt.Printf("User after setting PendingUpdates: %+v\n", user)
-	fmt.Printf("User has PendingUpdates after: %v\n", user.PendingUpdates != nil)
+	fmt.Printf("User now has pending updates\n")
 
 	// Update the user's status to pending approval if not already
 	if user.Status != models.UserStatusPendingApproval {

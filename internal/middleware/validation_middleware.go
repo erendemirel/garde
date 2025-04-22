@@ -111,7 +111,7 @@ func handleRequestValidation[T any](c *gin.Context, req *T, validator func(*T) e
 
 	// Bind JSON
 	if err := c.ShouldBindJSON(req); err != nil {
-		fmt.Printf("JSON binding failed: %v with request: %+v\n", err, req)
+		fmt.Printf("Warning: JSON binding failed")
 		c.Set(ContextKeyValidationFailed, true)
 		c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 		return
@@ -152,7 +152,6 @@ func validateLoginRequest(req *models.LoginRequest) error {
 }
 
 func validateCreateUserRequest(req *models.CreateUserRequest) error {
-	fmt.Printf("Validating create user request: %+v\n", req)
 	if err := validation.ValidateEmail(req.Email); err != nil {
 		fmt.Printf("Email validation failed: %v\n", err)
 		return err
@@ -329,7 +328,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 
 	// Validate permissions if provided and permissions system is loaded
 	if req.Permissions != nil && len(*req.Permissions) > 0 {
-		fmt.Printf("Validating permissions: %+v\n", *req.Permissions)
+		fmt.Printf("Validating permissions (count: %d)\n", len(*req.Permissions))
 
 		if !models.IsPermissionsLoaded() {
 			fmt.Printf("Permissions system is not loaded\n")
@@ -360,7 +359,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 
 	// Validate groups if provided and groups system is loaded
 	if req.Groups != nil && len(*req.Groups) > 0 {
-		fmt.Printf("Validating groups: %+v\n", *req.Groups)
+		fmt.Printf("Validating groups (count: %d)\n", len(*req.Groups))
 
 		if !models.IsGroupsLoaded() {
 			fmt.Printf("Groups system is not loaded\n")
