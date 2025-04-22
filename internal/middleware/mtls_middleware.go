@@ -72,7 +72,6 @@ func MTLSMiddleware() gin.HandlerFunc {
 	}
 }
 
-// extractDomain extracts the domain from a certificate CommonName
 func extractDomain(cn string) string {
 	// Remove any prefixes (like service names) from CN
 	parts := strings.Split(cn, ".")
