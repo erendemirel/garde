@@ -31,23 +31,10 @@ func TestValidateEndpoint(t *testing.T) {
 	os.Setenv("TESTING_MODE", "true")
 	os.Setenv("DOMAIN_NAME", "auth-service") // To match the CN in the client cert
 
-	// Print out key environment variables for debugging
-	t.Logf("Environment variables:")
-	t.Logf("TESTING_MODE: %s", os.Getenv("TESTING_MODE"))
-	t.Logf("DOMAIN_NAME: %s", os.Getenv("DOMAIN_NAME"))
-	t.Logf("USE_TLS: %s", os.Getenv("USE_TLS"))
-	t.Logf("TLS_CERT_PATH: %s", os.Getenv("TLS_CERT_PATH"))
-	t.Logf("TLS_KEY_PATH: %s", os.Getenv("TLS_KEY_PATH"))
-	t.Logf("TLS_CA_PATH: %s", os.Getenv("TLS_CA_PATH"))
-
 	// Get API key from .env
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {
 		t.Fatal("API_KEY environment variable not set")
-	}
-	// Print just the first few characters of the API key for debugging
-	if len(apiKey) > 8 {
-		t.Logf("API_KEY (first 8 chars): %s...", apiKey[:8])
 	}
 
 	// Check if TLS is enabled
@@ -263,12 +250,6 @@ func TestValidateEndpoint(t *testing.T) {
 			req.Header.Set(middleware.APIKeyHeader, apiKey) // Make sure this EXACTLY matches the format expected
 			// Add Authorization header with Bearer token
 			req.Header.Set(middleware.AuthHeaderKey, middleware.SessionPrefix+sessionID)
-
-			// Print the exact API key value for debugging
-			t.Logf("Using API key: '%s'", apiKey)
-			t.Logf("API key header name: '%s'", middleware.APIKeyHeader)
-			t.Logf("Using session ID in Authorization header: '%s'", sessionID)
-			t.Logf("All request headers: %v", req.Header)
 
 			// Log the request before sending
 			t.Logf("Sending mTLS request to %s with API key and Authorization header", req.URL.String())
