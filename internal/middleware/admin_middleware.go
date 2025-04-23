@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -24,7 +24,7 @@ func AdminMiddleware(authService *service.AuthService) gin.HandlerFunc {
 		} else {
 			header := c.GetHeader("Authorization")
 			if header == "" || !strings.HasPrefix(header, "Bearer ") {
-				fmt.Printf("No session cookie or valid Authorization header found\n")
+				slog.Debug("No session cookie or valid Authorization header found")
 				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 				return
 			}
@@ -34,17 +34,17 @@ func AdminMiddleware(authService *service.AuthService) gin.HandlerFunc {
 		// Validate session and get userID
 		validationResult, err := authService.ValidateSession(c, sessionID, c.ClientIP(), c.Request.UserAgent())
 		if err != nil || validationResult == nil || !validationResult.Response.Valid {
-			fmt.Printf("Session validation failed\n")
+			slog.Debug("Session validation failed", "error", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}
 		userID := validationResult.UserID
-		fmt.Printf("Session validated successfully for user: %s\n", userID)
+		slog.Debug("Session validated successfully", "user_id", userID)
 
 		// Get user from repository
 		user, err := authService.GetCurrentUser(c, userID)
 		if err != nil {
-			fmt.Printf("Failed to get user: %v\n", err)
+			slog.Warn("Failed to get user", "user_id", userID, "error", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}
@@ -68,6 +68,7 @@ func AdminMiddleware(authService *service.AuthService) gin.HandlerFunc {
 
 		// If not superuser or admin, deny access
 		if !isSuperUser && !isAdmin {
+			slog.Info("Unauthorized access attempt to admin route", "user_id", userID, "email", user.Email)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}

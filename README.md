@@ -196,7 +196,18 @@ TLS_CA_PATH=path_to_your_client_ca_cert  # Comma-separated paths for multiple CA
 API_KEY=your_api_key  # Must be at least 20 characters long and contain at least one uppercase letter, one lowercase letter, one number and one special character
 ```
 
-#### 3. Mail Server Configuration (Conditional)
+#### 3. Configure Log Level (Optional)
+Control the verbosity of application logs for troubleshooting and monitoring.
+
+Set in `.env`:
+```ini
+LOG_LEVEL=INFO  # Values: DEBUG, INFO, WARN, ERROR (default is INFO)
+```
+
+> [!TIP]
+> Available log levels are: DEBUG, INFO, WARN, ERROR
+
+#### 4. Mail Server Configuration (Conditional)
 Set configurations to be able to send mails. Resetting password functionality requires sending a mail.
 
 > [!WARNING]  
@@ -216,7 +227,7 @@ SMTP_PASSWORD=your-app-specific-password
 SMTP_FROM=your-email@gmail.com
 ```
 
-#### 4. Permissions and Groups System (Conditional)
+#### 5. Permissions and Groups System (Conditional)
 
 In addition to configurations stored in the `.env` file, there are also configurations for application and business logic. These include permissions and groups, defined in JSON files under the `/configs` directory: `permissions.json` and `groups.json`.
 
@@ -255,13 +266,13 @@ Set in `/configs/groups.json`:
 }
 ```
 
-#### 5. Other Configurations (Optional)
+#### 6. Other Configurations (Optional)
 See [example .env file](https://github.com/erendemirel/garde/blob/master/.env) for full list of optional parameters:
 ```ini
 GIN_MODE, CORS_ALLOW_ORIGINS, ENFORCE_MFA, ADMIN_USERS, RATE_LIMIT, DISABLE_RAPID_REQUEST_CHECK, DISABLE_USER_AGENT_CHECK, DISABLE_IP_BLACKLISTING, DISABLE_MULTIPLE_IP_CHECK
 ```
 
-#### 6. Network Configuration (When required)
+#### 7. Network Configuration (When required)
 ##### Required Ports
 ```ini
 ${PORT:-8443}  # HTTP(S) port (defaults to 8443 if PORT not set)

@@ -1,12 +1,13 @@
 package repository
 
 import (
-	"garde/internal/models"
-	"garde/pkg/session"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"garde/internal/models"
+	"garde/pkg/session"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -40,11 +41,11 @@ func NewRedisRepository() (*RedisRepository, error) {
 	// Test connection
 	ctx := context.Background()
 	if err := client.Ping(ctx).Err(); err != nil {
-		fmt.Printf("Redis connection error: %v\n", err)
+		slog.Error("Redis connection error", "error", err)
 		return nil, err
 	}
 
-	fmt.Printf("Successfully connected to Redis at %s:%s\n", host, port)
+	slog.Info("Successfully connected to Redis", "host", host, "port", port)
 	return &RedisRepository{client: client}, nil
 }
 
@@ -137,25 +138,25 @@ func (r *RedisRepository) StoreSessionData(ctx context.Context, sessionID string
 
 func (r *RedisRepository) GetSessionData(ctx context.Context, sessionID string) (*session.SessionData, error) {
 	key := "session:" + sessionID
-	fmt.Printf("Retrieving session data for key: %s\n", key)
+	slog.Debug("Retrieving session data", "session_key", key[:15]+"...")
 
 	jsonData, err := r.client.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			fmt.Printf("Session not found in Redis: %s\n", key)
+			slog.Debug("Session not found in Redis", "session_key", key[:15]+"...")
 			return nil, errors.New("session not found")
 		}
-		fmt.Printf("Redis error retrieving session: %v\n", err)
+		slog.Error("Redis error retrieving session", "error", err)
 		return nil, err
 	}
 
 	var sessionData session.SessionData
 	if err := json.Unmarshal([]byte(jsonData), &sessionData); err != nil {
-		fmt.Printf("Failed to unmarshal session data: %v\n", err)
+		slog.Error("Failed to unmarshal session data", "error", err)
 		return nil, fmt.Errorf("failed to unmarshal session data")
 	}
 
-	fmt.Printf("Successfully retrieved session for user: %s\n", sessionData.UserID)
+	slog.Debug("Successfully retrieved session", "user_id", sessionData.UserID)
 	return &sessionData, nil
 }
 

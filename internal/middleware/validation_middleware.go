@@ -7,6 +7,7 @@ import (
 	"garde/pkg/errors"
 	"garde/pkg/validation"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -76,15 +77,17 @@ func ValidateRequestParameters() gin.HandlerFunc {
 			case "/sessions/revoke":
 				handleRequestValidation(c, &models.RevokeSessionRequest{}, validateRevokeSessionRequest)
 			case "/users/request-update-from-admin":
-				fmt.Println("Validating request update from admin")
+				slog.Debug("Validating request update from admin")
 				handleRequestValidation(c, &models.RequestUpdateRequest{}, validateUpdateRequest)
 			default:
 				// Log the unrecognized path for troubleshooting
-				fmt.Printf("Path not matched in validation middleware: %s (Full path: %s)\n", c.Request.URL.Path, c.FullPath())
+				slog.Debug("Path not matched in validation middleware",
+					"path", c.Request.URL.Path,
+					"full_path", c.FullPath())
 
 				// Special case for request-update-from-admin
 				if c.Request.URL.Path == "/users/request-update-from-admin" {
-					fmt.Println("Detected request-update-from-admin via URL path")
+					slog.Debug("Detected request-update-from-admin via URL path")
 					handleRequestValidation(c, &models.RequestUpdateRequest{}, validateUpdateRequest)
 				} else if c.Request.Method == "PUT" && c.Param("user_id") != "" {
 					handleRequestValidation(c, &models.UpdateUserRequest{}, validateUpdateUserRequest)
@@ -100,7 +103,7 @@ func handleRequestValidation[T any](c *gin.Context, req *T, validator func(*T) e
 
 	bodyBytes, err := c.GetRawData()
 	if err != nil {
-		fmt.Printf("Failed to read request body: %v\n", err)
+		slog.Warn("Failed to read request body", "error", err, "path", c.Request.URL.Path)
 		c.Set(ContextKeyValidationFailed, true)
 		c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 		return
@@ -111,14 +114,14 @@ func handleRequestValidation[T any](c *gin.Context, req *T, validator func(*T) e
 
 	// Bind JSON
 	if err := c.ShouldBindJSON(req); err != nil {
-		fmt.Printf("Warning: JSON binding failed")
+		slog.Debug("JSON binding failed", "path", c.Request.URL.Path, "error", err)
 		c.Set(ContextKeyValidationFailed, true)
 		c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 		return
 	}
 
 	if err := validator(req); err != nil {
-		fmt.Printf("Validation failed: %v\n", err)
+		slog.Debug("Validation failed", "error", err, "path", c.Request.URL.Path)
 		c.Set(ContextKeyValidationFailed, true)
 		c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
@@ -133,17 +136,17 @@ func handleRequestValidation[T any](c *gin.Context, req *T, validator func(*T) e
 
 func validateLoginRequest(req *models.LoginRequest) error {
 	if err := validation.ValidateEmail(req.Email); err != nil {
-		fmt.Printf("Email validation failed: %v\n", err)
+		slog.Debug("Email validation failed", "error", err)
 		return err
 	}
 	if err := validation.ValidatePassword(req.Password); err != nil {
-		fmt.Printf("Password validation failed: %v\n", err)
+		slog.Debug("Password validation failed", "error", err)
 		return err
 	}
 	if req.MFACode != "" {
 		sanitized, err := validation.Sanitize(req.MFACode)
 		if err != nil {
-			fmt.Printf("MFA code sanitization failed: %v\n", err)
+			slog.Debug("MFA code sanitization failed", "error", err)
 			return err
 		}
 		req.MFACode = sanitized
@@ -153,11 +156,11 @@ func validateLoginRequest(req *models.LoginRequest) error {
 
 func validateCreateUserRequest(req *models.CreateUserRequest) error {
 	if err := validation.ValidateEmail(req.Email); err != nil {
-		fmt.Printf("Email validation failed: %v\n", err)
+		slog.Debug("Email validation failed", "error", err)
 		return err
 	}
 	if err := validation.ValidatePassword(req.Password); err != nil {
-		fmt.Printf("Password validation failed: %v\n", err)
+		slog.Debug("Password validation failed", "error", err)
 		return err
 	}
 	return nil
@@ -256,14 +259,14 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 
 	// Check if both Permissions and Groups are nil
 	if len(req.Updates.Permissions) == 0 && len(req.Updates.Groups) == 0 {
-		fmt.Printf("Both Permissions and Groups are empty - invalid request\n")
+		slog.Debug("Both Permissions and Groups are empty - invalid request")
 		return fmt.Errorf(errors.ErrInvalidRequest)
 	}
 
 	// Validate permissions if provided and permissions system is loaded
 	if len(req.Updates.Permissions) > 0 {
 		if !models.IsPermissionsLoaded() {
-			fmt.Printf("Permissions system is not loaded\n")
+			slog.Debug("Permissions system is not loaded")
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
 
@@ -274,23 +277,23 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			permissionSet[p] = true
 		}
 
-		fmt.Printf("Permissions system is loaded, checking permissions\n")
+		slog.Debug("Permissions system is loaded, checking permissions")
 		for perm := range req.Updates.Permissions {
 			// Check if permission exists in our loaded permissions
 			if !permissionSet[perm] {
-				fmt.Printf("Invalid permission requested: %s\n", string(perm))
+				slog.Debug("Invalid permission requested", "permission", string(perm))
 				return fmt.Errorf(errors.ErrInvalidPermissionRequested+": %s", string(perm))
 			}
 		}
-		fmt.Printf("Permissions validation successful\n")
+		slog.Debug("Permissions validation successful")
 	} else {
-		fmt.Printf("No permissions provided in update request\n")
+		slog.Debug("No permissions provided in update request")
 	}
 
 	// Validate groups if provided and groups system is loaded
 	if len(req.Updates.Groups) > 0 {
 		if !models.IsGroupsLoaded() {
-			fmt.Printf("Groups system is not loaded\n")
+			slog.Debug("Groups system is not loaded")
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 
@@ -301,17 +304,17 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			groupSet[g] = true
 		}
 
-		fmt.Printf("Groups system is loaded, checking group info\n")
+		slog.Debug("Groups system is loaded, checking group info")
 		for group := range req.Updates.Groups {
 			// Check if group exists in our loaded groups
 			if !groupSet[group] {
-				fmt.Printf("Invalid group requested: %s\n", string(group))
+				slog.Debug("Invalid group requested", "group", string(group))
 				return fmt.Errorf(errors.ErrInvalidGroupRequested+": %s", string(group))
 			}
 		}
-		fmt.Printf("Groups validation successful\n")
+		slog.Debug("Groups validation successful")
 	} else {
-		fmt.Printf("No groups provided in update request\n")
+		slog.Debug("No groups provided in update request")
 	}
 
 	return nil
@@ -322,16 +325,16 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 	if req.Permissions == nil && req.Groups == nil &&
 		req.Status == nil && req.MFAEnforced == nil &&
 		!req.ApproveUpdate && !req.RejectUpdate {
-		fmt.Printf("No update parameters provided - invalid request\n")
+		slog.Debug("No update parameters provided - invalid request")
 		return fmt.Errorf(errors.ErrInvalidRequest)
 	}
 
 	// Validate permissions if provided and permissions system is loaded
 	if req.Permissions != nil && len(*req.Permissions) > 0 {
-		fmt.Printf("Validating permissions (count: %d)\n", len(*req.Permissions))
+		slog.Debug("Validating permissions", "count", len(*req.Permissions))
 
 		if !models.IsPermissionsLoaded() {
-			fmt.Printf("Permissions system is not loaded\n")
+			slog.Debug("Permissions system is not loaded")
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
 
@@ -342,27 +345,27 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 			permissionSet[p] = true
 		}
 
-		fmt.Printf("Permissions system is loaded, checking permissions\n")
+		slog.Debug("Permissions system is loaded, checking permissions")
 		for permStr := range *req.Permissions {
 			perm := models.Permission(permStr)
 
 			// Check if permission exists in our loaded permissions
 			if !permissionSet[perm] {
-				fmt.Printf("Invalid permission requested: %s\n", string(perm))
+				slog.Debug("Invalid permission requested", "permission", string(perm))
 				return fmt.Errorf(errors.ErrInvalidPermissionRequested+": %s", string(perm))
 			}
 		}
-		fmt.Printf("Permissions validation successful\n")
+		slog.Debug("Permissions validation successful")
 	} else {
-		fmt.Printf("No permissions provided in update user request\n")
+		slog.Debug("No permissions provided in update user request")
 	}
 
 	// Validate groups if provided and groups system is loaded
 	if req.Groups != nil && len(*req.Groups) > 0 {
-		fmt.Printf("Validating groups (count: %d)\n", len(*req.Groups))
+		slog.Debug("Validating groups", "count", len(*req.Groups))
 
 		if !models.IsGroupsLoaded() {
-			fmt.Printf("Groups system is not loaded\n")
+			slog.Debug("Groups system is not loaded")
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 
@@ -373,18 +376,18 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 			groupSet[g] = true
 		}
 
-		fmt.Printf("Groups system is loaded, checking group info\n")
+		slog.Debug("Groups system is loaded, checking group info")
 		for groupStr := range *req.Groups {
 			group := models.UserGroup(groupStr)
 
 			// Check if group exists in our loaded groups
 			if !groupSet[group] {
-				fmt.Printf("Invalid group requested: %s\n", string(group))
+				slog.Debug("Invalid group requested", "group", string(group))
 				return fmt.Errorf(errors.ErrInvalidGroupRequested+": %s", string(group))
 			}
 		}
 	} else {
-		fmt.Printf("No groups provided in update user request\n")
+		slog.Debug("No groups provided in update user request")
 	}
 
 	return nil

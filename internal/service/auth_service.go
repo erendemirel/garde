@@ -8,6 +8,7 @@ import (
 	"garde/pkg/crypto"
 	"garde/pkg/mfa"
 	"garde/pkg/session"
+	"log/slog"
 	"math/rand"
 	"os"
 	"strings"
@@ -50,7 +51,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		// Check if IP is blocked
 		isBlocked, err := s.repo.IsIPBlocked(ctx, ip)
 		if err != nil {
-			fmt.Printf("Failed to check IP block status: %v\n", err)
+			slog.Debug("Failed to check IP block status", "error", err)
 		}
 		if isBlocked {
 			return nil, fmt.Errorf(errors.ErrAccessRestricted)
@@ -80,7 +81,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		// Record failed attempt
 		failedAttempts, err := s.repo.RecordFailedLogin(ctx, req.Email, ip)
 		if err != nil {
-			fmt.Printf("Failed to record failed login: %v\n", err)
+			slog.Debug("Failed to record failed login", "error", err, "email", req.Email, "ip", ip)
 		}
 
 		// Block if threshold exceeded
@@ -123,7 +124,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	// Update last login time
 	user.LastLogin = time.Now()
 	if err := s.repo.StoreUser(ctx, user); err != nil {
-		fmt.Printf("Failed to update last login time: %v\n", err)
+		slog.Debug("Failed to update last login time", "error", err, "user_id", user.ID)
 	}
 
 	return &models.LoginResponse{
@@ -147,13 +148,13 @@ func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
 			return fmt.Errorf(errors.ErrAuthFailed)
 		}
 		// Log that we fell back to blacklisting
-		fmt.Printf("Session deletion failed, added to blacklist: %v\n", err)
+		slog.Warn("Session deletion failed, added to blacklist", "error", err, "session_id", sessionID)
 	}
 
 	// Clean up all security records
 	if err := s.securityAnalyzer.CleanupSecurityRecords(ctx, sessionData.UserID, "", ""); err != nil {
 		// Log but don't fail the logout
-		fmt.Printf("Failed to cleanup security records: %v\n", err)
+		slog.Debug("Failed to cleanup security records", "error", err, "user_id", sessionData.UserID)
 	}
 
 	return nil
@@ -163,7 +164,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	// First check if session is blacklisted
 	isBlacklisted, err := s.repo.IsSessionBlacklisted(ctx, sessionID)
 	if err != nil {
-		fmt.Printf("Error checking blacklist: %v\n", err)
+		slog.Debug("Error checking blacklist", "error", err)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -172,7 +173,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	}
 
 	if isBlacklisted {
-		fmt.Printf("Session is blacklisted: %s (first 10 chars)\n", sessionID[:10])
+		slog.Debug("Session is blacklisted", "session_id_prefix", sessionID[:10])
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -183,7 +184,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	// Get session data
 	sessionData, err := s.repo.GetSessionData(ctx, sessionID)
 	if err != nil {
-		fmt.Printf("Error getting session data: %v\n", err)
+		slog.Debug("Error getting session data", "error", err)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -191,7 +192,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
-	fmt.Printf("Session found for user: %s\n", sessionData.UserID)
+	slog.Debug("Session found", "user_id", sessionData.UserID)
 
 	// Use pattern detector for sophisticated validation
 	patterns := s.securityAnalyzer.DetectSuspiciousPatterns(ctx, sessionData.UserID, ip, userAgent)
@@ -203,15 +204,15 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 
 		// Blacklist this specific session
 		if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-			fmt.Printf("Failed to blacklist suspicious session: %v\n", err)
+			slog.Warn("Failed to blacklist suspicious session", "error", err, "session_id", sessionID)
 		}
 
 		// Then try to delete it
 		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			fmt.Printf("Failed to delete suspicious session: %v\n", err)
+			slog.Warn("Failed to delete suspicious session", "error", err, "session_id", sessionID)
 		}
 
-		fmt.Printf("Suspicious patterns detected for session %s: %v\n", sessionID, patterns)
+		slog.Info("Suspicious patterns detected for session", "session_id_prefix", sessionID[:10], "patterns", patterns)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -230,7 +231,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 
 	// Check session age
 	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
-		fmt.Printf("Session %s has expired\n", sessionID)
+		slog.Debug("Session has expired", "session_id_prefix", sessionID[:10])
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
@@ -239,7 +240,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
-	fmt.Printf("Session validation successful for user: %s\n", sessionData.UserID)
+	slog.Debug("Session validation successful", "user_id", sessionData.UserID)
 
 	return &ValidationResult{
 		Response: &models.SessionValidationResponse{
@@ -402,14 +403,14 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	// Get admin user for group checks
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
-		fmt.Printf("Failed to get admin user by ID: %v\n", err)
+		slog.Warn("Failed to get admin user by ID", "error", err, "admin_id", adminID)
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
 	// Get the target user
 	targetUser, err := s.repo.GetUserByID(ctx, targetUserID)
 	if err != nil {
-		fmt.Printf("Failed to get target user by ID: %v\n", err)
+		slog.Warn("Failed to get target user by ID", "error", err, "target_user_id", targetUserID)
 		return fmt.Errorf(errors.ErrUserNotFound)
 	}
 
@@ -420,7 +421,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	// Check if admin has permission to modify this user
 	if !isSuperUser && !isAdmin {
-		fmt.Printf("Unauthorized to update - User is neither superuser nor admin\n")
+		slog.Info("Unauthorized update attempt", "reason", "user is neither superuser nor admin", "admin_id", adminID)
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -435,12 +436,12 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		if req.Groups != nil {
 			for group, enabled := range *req.Groups {
 				if enabled && !admin.Groups[group] {
-					fmt.Printf("Unauthorized to update - Admin not in group %s\n", group)
+					slog.Info("Unauthorized update attempt", "reason", "admin not in group", "group", group, "admin_id", adminID)
 					return fmt.Errorf(errors.ErrUnauthorized)
 				}
 			}
 		} else if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
-			fmt.Printf("Unauthorized to update - Admin doesn't share groups with target user\n")
+			slog.Info("Unauthorized update attempt", "reason", "admin doesn't share groups with target user", "admin_id", adminID, "target_user_id", targetUserID)
 			return fmt.Errorf(errors.ErrUnauthorized)
 		}
 	}
@@ -452,7 +453,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		"timestamp": time.Now(),
 	}, 10, 30*24*time.Hour)
 	if err != nil {
-		fmt.Printf("Failed to record audit log: %v\n", err)
+		slog.Warn("Failed to record audit log", "error", err)
 	}
 
 	// Store original state for comparison
@@ -520,10 +521,10 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			// Blacklist and delete each session
 			for _, sessionID := range sessions {
 				if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-					fmt.Printf("Failed to blacklist session %s: %v\n", sessionID, err)
+					slog.Warn("Failed to blacklist session", "error", err, "session_id", sessionID)
 				}
 				if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-					fmt.Printf("Failed to delete session %s: %v\n", sessionID, err)
+					slog.Warn("Failed to delete session", "error", err, "session_id", sessionID)
 				}
 			}
 		}
@@ -672,10 +673,10 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 
 		for _, sessionID := range sessions {
 			if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-				fmt.Printf("Failed to blacklist session %s: %v\n", sessionID, err)
+				slog.Warn("Failed to blacklist session", "error", err, "session_id", sessionID)
 			}
 			if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-				fmt.Printf("Failed to delete session %s: %v\n", sessionID, err)
+				slog.Warn("Failed to delete session", "error", err, "session_id", sessionID)
 			}
 		}
 		return nil
@@ -691,10 +692,10 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 
 		for _, sessionID := range sessions {
 			if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-				fmt.Printf("Failed to blacklist session %s: %v\n", sessionID, err)
+				slog.Warn("Failed to blacklist session", "error", err, "session_id", sessionID)
 			}
 			if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-				fmt.Printf("Failed to delete session %s: %v\n", sessionID, err)
+				slog.Warn("Failed to delete session", "error", err, "session_id", sessionID)
 			}
 		}
 		return nil
@@ -775,7 +776,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	// Revoke all sessions after password change
 	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
 	if err != nil {
-		fmt.Printf("Failed to get active sessions: %v\n", err)
+		slog.Debug("Failed to get active sessions", "error", err)
 		return nil // Continue with login despite session revocation failure
 	}
 
@@ -893,7 +894,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	for _, sessionID := range sessions {
 		// Skip the current session to prevent the connection from being terminated
 		if sessionID == currentSessionID {
-			fmt.Printf("Preserving current session: %s\n", sessionID[:10])
+			slog.Debug("Preserving current session", "session_id_prefix", sessionID[:10])
 			continue
 		}
 
@@ -1065,10 +1066,13 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		return nil, fmt.Errorf(errors.ErrUserNotFound)
 	}
 
-	fmt.Printf("GetUser - Target user ID: %s\n", targetUser.ID)
-	fmt.Printf("GetUser - Target user has pending updates: %v\n", targetUser.PendingUpdates != nil)
+	slog.Debug("Getting user details",
+		"target_user_id", targetUser.ID,
+		"has_pending_updates", targetUser.PendingUpdates != nil)
+
 	if targetUser.PendingUpdates != nil {
-		fmt.Printf("GetUser - Pending update request made at: %s\n", targetUser.PendingUpdates.RequestedAt.Format(time.RFC3339))
+		slog.Debug("Pending update details",
+			"requested_at", targetUser.PendingUpdates.RequestedAt.Format(time.RFC3339))
 	}
 
 	// Superusers can see any user
@@ -1086,9 +1090,9 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 			Groups:         targetUser.Groups,
 			PendingUpdates: targetUser.PendingUpdates,
 		}
-		// Log minimal info for superuser response
-		fmt.Printf("GetUser - Prepared response for superuser (user ID: %s)\n", response.ID)
-		fmt.Printf("GetUser - Response has pending updates: %v\n", response.PendingUpdates != nil)
+		slog.Debug("Prepared response for superuser",
+			"user_id", response.ID,
+			"has_pending_updates", response.PendingUpdates != nil)
 		return response, nil
 	}
 
@@ -1123,28 +1127,30 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 
 	// Immediately check if request is nil
 	if req == nil {
-		fmt.Println("Request is nil")
+		slog.Warn("Request update failed", "reason", "request is nil", "user_id", userID)
 		return fmt.Errorf(errors.ErrInvalidRequest)
 	}
 
 	// Get current user
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		fmt.Printf("Error getting user: %v\n", err)
+		slog.Warn("Request update failed", "error", err, "user_id", userID)
 		return fmt.Errorf(errors.ErrUserNotFound)
 	}
 
-	fmt.Printf("User has PendingUpdates before: %v\n", user.PendingUpdates != nil)
+	slog.Debug("Processing update request",
+		"user_id", userID,
+		"has_pending_updates", user.PendingUpdates != nil)
 
 	// Don't allow superuser to request updates
 	if user.Email == os.Getenv("SUPERUSER_EMAIL") {
-		fmt.Printf("Superuser (ID: %s) attempted to request updates\n", userID)
+		slog.Info("Superuser attempted to request updates", "user_id", userID)
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
 	// Verify both permissions and groups are not empty
 	if len(req.Updates.Permissions) == 0 && len(req.Updates.Groups) == 0 {
-		fmt.Printf("Both Permissions and Groups are empty - invalid request\n")
+		slog.Warn("Invalid update request", "reason", "empty permissions and groups", "user_id", userID)
 		return fmt.Errorf(errors.ErrInvalidRequest)
 	}
 
@@ -1173,16 +1179,16 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		Fields:      userUpdateFields,
 	}
 
-	fmt.Printf("Creating update request for user ID: %s\n", userID)
+	slog.Debug("Creating update request", "user_id", userID)
 
 	// Store update request
 	user.PendingUpdates = updateReq
-	fmt.Printf("User now has pending updates\n")
+	slog.Debug("Added pending updates to user")
 
 	// Update the user's status to pending approval if not already
 	if user.Status != models.UserStatusPendingApproval {
 		user.Status = models.UserStatusPendingApproval
-		fmt.Printf("Setting user status to pending approval\n")
+		slog.Debug("Setting user status to pending approval")
 	}
 
 	// Always update timestamp to force Redis to save the change
@@ -1190,30 +1196,30 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 
 	// Ensure updates are stored to Redis
 	if err := s.repo.StoreUser(ctx, user); err != nil {
-		fmt.Printf("Error storing user update: %v\n", err)
+		slog.Error("Failed to store user update", "error", err, "user_id", userID)
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
 	// Verify the update was saved by retrieving the user again
 	updatedUser, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		fmt.Printf("Error verifying user update: %v\n", err)
+		slog.Error("Failed to verify user update", "error", err, "user_id", userID)
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
 	if updatedUser.PendingUpdates == nil {
-		fmt.Printf("Warning: PendingUpdates not found after save operation. Retrying...\n")
+		slog.Warn("PendingUpdates not found after save operation. Retrying...", "user_id", userID)
 
 		// Try again with a direct update
 		updatedUser.PendingUpdates = updateReq
 		updatedUser.UpdatedAt = time.Now()
 		if err := s.repo.StoreUser(ctx, updatedUser); err != nil {
-			fmt.Printf("Error in retry storing user update: %v\n", err)
+			slog.Error("Failed in retry storing user update", "error", err, "user_id", userID)
 			return fmt.Errorf(errors.ErrOperationFailed)
 		}
 	}
 
-	fmt.Printf("Update request stored successfully\n")
+	slog.Info("Update request stored successfully", "user_id", userID)
 	return nil
 }
 

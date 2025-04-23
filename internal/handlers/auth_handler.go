@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"fmt"
 	"garde/internal/middleware"
 	"garde/internal/models"
 	"garde/internal/service"
 	"garde/pkg/errors"
 	"garde/pkg/session"
 	"garde/pkg/validation"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -647,14 +647,14 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	} else {
 		// Direct binding
 		if err := c.ShouldBindJSON(&req); err != nil {
-			fmt.Printf("Direct binding failed: %v\n", err)
+			slog.Error("Direct binding failed", "error", err)
 			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
 
 		// Validate request manually
 		if req.Updates.Permissions == nil && req.Updates.Groups == nil {
-			fmt.Println("Both Permissions and Groups are nil - invalid request")
+			slog.Error("Both Permissions and Groups are nil - invalid request")
 			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
@@ -662,7 +662,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 
 	// Call service
 	if err := h.authService.RequestUpdate(c.Request.Context(), userID.(string), &req); err != nil {
-		fmt.Printf("Service RequestUpdate returned error: %v\n", err)
+		slog.Error("Service RequestUpdate returned error", "error", err)
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 		return
 	}

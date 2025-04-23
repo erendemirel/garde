@@ -1,10 +1,11 @@
 package service
 
 import (
-	"garde/internal/repository"
-	"garde/pkg/session"
 	"context"
 	"fmt"
+	"garde/internal/repository"
+	"garde/pkg/session"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -35,31 +36,48 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID,
 
 	// 1. Check for rapid requests (potential automated attack)
 	if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") != "true" {
-		requestCount, _ := d.repo.GetRequestCount(ctx, userID, time.Minute)
+		requestCount, err := d.repo.GetRequestCount(ctx, userID, time.Minute)
+		if err != nil {
+			slog.Debug("Failed to get request count", "error", err, "user_id", userID)
+		}
 		if requestCount > session.RapidRequestThreshold {
+			slog.Warn("Rapid request pattern detected", "user_id", userID, "count", requestCount)
 			patterns = append(patterns, session.ActivityRapidRequests)
 		}
 	}
 
 	// 2. Check for automated behavior (requests too fast for human)
 	if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") != "true" {
-		lastRequestTime, _ := d.repo.GetLastRequestTime(ctx, userID)
+		lastRequestTime, err := d.repo.GetLastRequestTime(ctx, userID)
+		if err != nil {
+			slog.Debug("Failed to get last request time", "error", err, "user_id", userID)
+		}
 		if !lastRequestTime.IsZero() && time.Since(lastRequestTime) < session.AutomatedRequestTimeout {
+			slog.Warn("Automated behavior pattern detected", "user_id", userID, "time_since_last", time.Since(lastRequestTime))
 			patterns = append(patterns, session.ActivityAutomatedBehavior)
 		}
 	}
 
 	// 3. Check for unusual User-Agent patterns
 	if d.isUnusualUserAgent(userAgent) {
+		slog.Warn("Unusual user agent detected", "user_id", userID, "user_agent", userAgent)
 		patterns = append(patterns, session.ActivityUnusualUserAgent)
 	}
 
 	// 4. Check for multiple IP sessions
 	if os.Getenv("DISABLE_MULTIPLE_IP_CHECK") != "true" {
-		hasActiveSession, activeIP, _ := d.repo.GetActiveSessionInfo(ctx, userID)
+		hasActiveSession, activeIP, err := d.repo.GetActiveSessionInfo(ctx, userID)
+		if err != nil {
+			slog.Debug("Failed to get active session info", "error", err, "user_id", userID)
+		}
 		if hasActiveSession && activeIP != session.HashString(ip) {
+			slog.Warn("Multiple IP session pattern detected", "user_id", userID, "new_ip_hash", session.HashString(ip))
 			patterns = append(patterns, multipleIPPattern)
 		}
+	}
+
+	if len(patterns) > 0 {
+		slog.Info("Suspicious patterns detected", "user_id", userID, "patterns", patterns)
 	}
 
 	return patterns
@@ -102,41 +120,52 @@ func (d *SecurityAnalyzer) isUnusualUserAgent(userAgent string) bool {
 }
 
 func (d *SecurityAnalyzer) TrackRequest(ctx context.Context, userID string) error {
-
 	if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") == "true" {
 		return nil
 	}
 
 	if err := d.repo.IncrementRequestCount(ctx, userID, requestCountTTL); err != nil {
+		slog.Debug("Failed to increment request count", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to increment request count")
 	}
 	if err := d.repo.UpdateLastRequestTime(ctx, userID, lastRequestTimeTTL); err != nil {
+		slog.Debug("Failed to update last request time", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to update last request time")
 	}
 	return nil
 }
 
 func (d *SecurityAnalyzer) RecordPattern(ctx context.Context, userID, pattern, ip, userAgent string) error {
+	slog.Info("Recording security pattern", "user_id", userID, "pattern", pattern, "ip", ip)
+
 	// Record for active security measures (TTL-based)
 	if err := d.repo.RecordSuspiciousActivity(ctx, userID, pattern, map[string]string{
 		"ip":         ip,
 		"user_agent": userAgent,
 		"pattern":    pattern,
 	}, suspiciousActivityTTL); err != nil {
+		slog.Error("Failed to record suspicious activity", "error", err, "user_id", userID, "pattern", pattern)
 		return err
 	}
 
 	// Also record in audit log (last N records with longer TTL)
-	return d.repo.RecordAuditLog(ctx, userID, map[string]interface{}{
+	if err := d.repo.RecordAuditLog(ctx, userID, map[string]interface{}{
 		"type":       "security_pattern",
 		"pattern":    pattern,
 		"ip":         ip,
 		"user_agent": userAgent,
 		"timestamp":  time.Now(),
-	}, maxAuditRecords, auditLogTTL)
+	}, maxAuditRecords, auditLogTTL); err != nil {
+		slog.Error("Failed to record audit log", "error", err, "user_id", userID, "pattern", pattern)
+		return err
+	}
+
+	return nil
 }
 
 func (d *SecurityAnalyzer) CleanupSecurityRecords(ctx context.Context, userID, email, ip string) error {
+	slog.Debug("Cleaning up security records", "user_id", userID, "email", email, "ip", ip)
+
 	// Clean up analyzer-specific records
 	analyzerKeys := []string{
 		fmt.Sprintf("request_count:%s", userID),
@@ -167,6 +196,7 @@ func (d *SecurityAnalyzer) CleanupSecurityRecords(ctx context.Context, userID, e
 	if len(validKeys) > 0 {
 		for _, key := range validKeys {
 			if err := d.repo.DeleteKey(ctx, key); err != nil {
+				slog.Warn("Failed to delete security record", "error", err, "key", key)
 				return fmt.Errorf("failed to cleanup security records")
 			}
 		}

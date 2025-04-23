@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"fmt"
 	"garde/internal/models"
 	"garde/internal/service"
 	"garde/pkg/errors"
 	"garde/pkg/session"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -30,13 +30,13 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			// Fallback to Authorization header
 			header := c.GetHeader(AuthHeaderKey)
 			if header == "" {
-				fmt.Printf("Auth middleware: Missing authentication\n")
+				slog.Debug("Auth middleware: Missing authentication", "path", c.Request.URL.Path)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 				return
 			}
 
 			if !strings.HasPrefix(header, SessionPrefix) {
-				fmt.Printf("Auth middleware: Invalid format\n")
+				slog.Debug("Auth middleware: Invalid format", "path", c.Request.URL.Path)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrInvalidRequest))
 				return
 			}
@@ -62,7 +62,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 				true,
 			)
 
-			fmt.Printf("Auth middleware: Session validation failed\n")
+			slog.Debug("Auth middleware: Session validation failed", "path", c.Request.URL.Path, "ip", ip)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
 			return
 		}
@@ -81,7 +81,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 
 			// Track legitimate request
 			if err := securityAnalyzer.TrackRequest(c.Request.Context(), validationResult.UserID); err != nil {
-				fmt.Printf("Failed to track request: %v\n", err)
+				slog.Warn("Failed to track request", "error", err, "user_id", validationResult.UserID)
 			}
 		}
 
@@ -178,7 +178,7 @@ func SecurityMiddleware(securityAnalyzer *service.SecurityAnalyzer) gin.HandlerF
 
 		// Track request
 		if err := securityAnalyzer.TrackRequest(c.Request.Context(), tempID); err != nil {
-			fmt.Printf("Failed to track request: %v\n", err)
+			slog.Warn("Failed to track request", "error", err, "ip_hash", tempID[:8])
 		}
 
 		c.Next()

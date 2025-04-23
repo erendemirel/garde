@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -15,11 +15,11 @@ import (
 // Verifies that the request includes a valid mTLS certificate
 func MTLSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		fmt.Printf("MTLSMiddleware: Processing request to %s\n", c.Request.URL.Path)
+		slog.Debug("MTLSMiddleware: Processing request", "path", c.Request.URL.Path)
 
 		// Verify mTLS
 		if c.Request.TLS == nil || len(c.Request.TLS.PeerCertificates) == 0 || len(c.Request.TLS.VerifiedChains) == 0 {
-			fmt.Printf("Client certificate not present, valid, or verified\n")
+			slog.Warn("mTLS validation failed: Client certificate not present, valid, or verified", "ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}
@@ -36,8 +36,9 @@ func MTLSMiddleware() gin.HandlerFunc {
 		if isTestingMode {
 			// In testing mode, just compare the Common Name directly with the domain
 			domainValid = strings.EqualFold(clientCert.Subject.CommonName, serverDomain)
-			fmt.Printf("Testing mode: Certificate domain check: server=%s, CN=%s, valid=%v\n",
-				serverDomain, clientCert.Subject.CommonName, domainValid)
+			slog.Debug("mTLS testing mode validation",
+				"domain_match", domainValid,
+				"expected_domain", serverDomain)
 		} else {
 			// In production mode, do more thorough validation
 			// Check CN
@@ -57,13 +58,15 @@ func MTLSMiddleware() gin.HandlerFunc {
 				}
 			}
 
-			fmt.Printf("Production mode: Certificate domain check: server=%s, CN=%s, valid=%v\n",
-				serverDomain, clientCert.Subject.CommonName, domainValid)
+			slog.Debug("mTLS production mode validation",
+				"domain_match", domainValid,
+				"expected_domain", serverDomain)
 		}
 
 		if !domainValid {
-			fmt.Printf("Certificate domain mismatch: expected %s, got %s\n",
-				serverDomain, clientCert.Subject.CommonName)
+			slog.Warn("mTLS certificate domain mismatch",
+				"expected_domain", serverDomain,
+				"ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}

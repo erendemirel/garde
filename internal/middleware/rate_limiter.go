@@ -5,6 +5,7 @@ import (
 	"garde/internal/models"
 	"garde/internal/repository"
 	"garde/pkg/errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -40,6 +41,7 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 
 		err := rl.repo.IncrementRequestCount(c.Request.Context(), key, rateLimitWindow)
 		if err != nil {
+			slog.Error("Failed to increment rate limit count", "error", err, "ip", ip)
 			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
 			c.Abort()
 			return
@@ -47,6 +49,7 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 
 		count, err := rl.repo.GetRequestCount(c.Request.Context(), key, rateLimitWindow)
 		if err != nil {
+			slog.Error("Failed to get rate limit count", "error", err, "ip", ip)
 			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
 			c.Abort()
 			return
@@ -54,10 +57,16 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 
 		// Check if rate limit exceeded
 		if count > defaultRequestsPerMinute {
-			rl.repo.RecordSuspiciousActivity(c.Request.Context(), key, "rate_limit_exceeded", map[string]string{
+			slog.Warn("Rate limit exceeded", "ip", ip, "count", count, "limit", defaultRequestsPerMinute)
+
+			err := rl.repo.RecordSuspiciousActivity(c.Request.Context(), key, "rate_limit_exceeded", map[string]string{
 				"ip":    ip,
 				"count": fmt.Sprintf("%d", count),
 			}, time.Hour)
+
+			if err != nil {
+				slog.Error("Failed to record rate limit suspicious activity", "error", err, "ip", ip)
+			}
 
 			c.JSON(http.StatusTooManyRequests, models.NewErrorResponse(errors.ErrTooManyRequests))
 			c.Abort()

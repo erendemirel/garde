@@ -1,10 +1,11 @@
 package middleware
 
 import (
-	"log"
+	"log/slog"
+
+	"garde/internal/models"
 
 	"github.com/gin-gonic/gin"
-	"garde/internal/models"
 )
 
 // Hide implementation details from error responses during panic
@@ -13,11 +14,15 @@ func Recovery() gin.HandlerFunc {
 		defer func() {
 			if err := recover(); err != nil {
 				// Log the real error internally
-				log.Printf("Panic recovered: %v", err)
+				slog.Error("Panic recovered in middleware",
+					"error", err,
+					"path", c.Request.URL.Path,
+					"method", c.Request.Method,
+					"ip", c.ClientIP())
 				// Return generic error to client
 				c.AbortWithStatusJSON(500, models.NewErrorResponse("Internal server error"))
 			}
 		}()
 		c.Next()
 	}
-} 
+}

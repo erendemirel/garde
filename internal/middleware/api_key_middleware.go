@@ -3,7 +3,7 @@ package middleware
 import (
 	"garde/internal/models"
 	"garde/pkg/errors"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -17,7 +17,7 @@ func APIKeyMiddleware() gin.HandlerFunc {
 
 		apiKey := c.GetHeader(APIKeyHeader)
 		if apiKey != os.Getenv("API_KEY") {
-			fmt.Printf("Invalid API key\n")
+			slog.Info("Invalid API key attempt", "path", c.Request.URL.Path, "ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}

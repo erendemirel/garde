@@ -1,17 +1,18 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
 	"garde/internal/handlers"
 	"garde/internal/middleware"
 	"garde/internal/repository"
 	"garde/internal/service"
 	"garde/pkg/errors"
 	"garde/pkg/validation"
-	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/pem"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -41,36 +42,63 @@ import (
 // @BasePath /
 
 func main() {
-
+	// Load environment variables first
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		fmt.Println("Error loading .env file")
+		os.Exit(1)
 	}
+
+	// Initialize logger
+	logLevel := slog.LevelInfo // Default log level
+
+	// Set log level
+	envLogLevel := strings.ToUpper(os.Getenv("LOG_LEVEL"))
+	switch envLogLevel {
+	case "DEBUG":
+		logLevel = slog.LevelDebug
+	case "INFO":
+		logLevel = slog.LevelInfo
+	case "WARN":
+		logLevel = slog.LevelWarn
+	case "ERROR":
+		logLevel = slog.LevelError
+	}
+
+	logHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	})
+	logger := slog.New(logHandler)
+	slog.SetDefault(logger)
+
+	slog.Info("Logger initialized", "level", envLogLevel)
 
 	// Load permissions. See readme for more information
 	if err := models.LoadPermissions(); err != nil {
-		log.Printf("Warning: Failed to load permissions: %v", err)
-		log.Println("Running without permissions system")
+		slog.Warn("Failed to load permissions", "error", err)
+		slog.Info("Running without permissions system")
 	}
 
 	// Load groups. See readme for more information
 	if err := models.LoadGroups(); err != nil {
-		log.Printf("Warning: Failed to load groups: %v", err)
-		log.Println("Running without groups system")
+		slog.Warn("Failed to load groups", "error", err)
+		slog.Info("Running without groups system")
 	}
 
 	if err := validation.ValidateConfig(); err != nil {
-		log.Fatalf("Configuration validation failed: %v", err)
+		slog.Error("Configuration validation failed", "error", err)
+		os.Exit(1)
 	}
 
 	var repo *repository.RedisRepository
 	var err error
 
-	log.Println("Connecting to Redis...")
+	slog.Info("Connecting to Redis...")
 	repo, err = repository.NewRedisRepository()
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		slog.Error("Failed to connect to Redis", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Connected to Redis successfully")
+	slog.Info("Connected to Redis successfully")
 
 	authService := service.NewAuthService(repo)
 	securityAnalyzer := service.NewSecurityAnalyzer(repo)
@@ -79,7 +107,8 @@ func main() {
 	// Initialize superuser
 	err = authService.InitializeSuperUser(context.Background())
 	if err != nil {
-		log.Fatalf("Failed to initialize superuser: %v", err)
+		slog.Error("Failed to initialize superuser", "error", err)
+		os.Exit(1)
 	}
 
 	rateLimiter := middleware.NewRateLimiter(repo)
@@ -195,7 +224,8 @@ func main() {
 
 		cert, err := tls.LoadX509KeyPair(os.Getenv("TLS_CERT_PATH"), os.Getenv("TLS_KEY_PATH"))
 		if err != nil {
-			log.Fatalf("Failed to load server certificate: %v", err)
+			slog.Error("Failed to load server certificate", "error", err)
+			os.Exit(1)
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
 
@@ -203,30 +233,32 @@ func main() {
 			caCertPool := x509.NewCertPool()
 			caCert, err := os.ReadFile(caPath)
 			if err != nil {
-				log.Fatalf("Failed to read CA certificate: %v", err)
+				slog.Error("Failed to read CA certificate", "error", err)
+				os.Exit(1)
 			}
 			if !caCertPool.AppendCertsFromPEM(caCert) {
-				log.Fatal("Failed to append CA certificate")
+				slog.Error("Failed to append CA certificate")
+				os.Exit(1)
 			}
 
 			block, _ := pem.Decode(caCert)
 			if block != nil {
 				cert, err := x509.ParseCertificate(block.Bytes)
 				if err == nil {
-					log.Printf("Server loaded CA cert with Subject: %v, Issuer: %v", cert.Subject, cert.Issuer)
+					slog.Info("Server loaded CA cert", "subject", cert.Subject, "issuer", cert.Issuer)
 				}
 			}
 
 			tlsConfig.ClientCAs = caCertPool
-			log.Printf("Loaded CA certificates for client verification - mTLS is enabled")
+			slog.Info("Loaded CA certificates for client verification - mTLS is enabled")
 		} else {
-			log.Printf("Warning: No CA certificates provided for client verification")
+			slog.Warn("No CA certificates provided for client verification")
 		}
 
 		if len(cert.Certificate) > 0 {
 			x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
 			if err == nil {
-				log.Printf("Server using certificate - Subject: %v, Issuer: %v", x509Cert.Subject, x509Cert.Issuer)
+				slog.Info("Server using certificate", "subject", x509Cert.Subject, "issuer", x509Cert.Issuer)
 			}
 		}
 
@@ -236,9 +268,10 @@ func main() {
 			TLSConfig: tlsConfig,
 		}
 
-		log.Printf("Starting server on port %s with TLS", port)
+		slog.Info("Starting server with TLS", "port", port)
 		if err := srv.ListenAndServeTLS("", ""); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
+			slog.Error("Failed to start server", "error", err)
+			os.Exit(1)
 		}
 	} else {
 		srv = &http.Server{
@@ -246,9 +279,10 @@ func main() {
 			Handler: router,
 		}
 
-		log.Printf("Warning: Starting server on port %s without TLS", port)
+		slog.Warn("Starting server without TLS", "port", port)
 		if err := srv.ListenAndServe(); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
+			slog.Error("Failed to start server", "error", err)
+			os.Exit(1)
 		}
 	}
 }
