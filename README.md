@@ -14,6 +14,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
   - [Conditional or Optional Steps](#conditional-or-optional-steps)
 - [Verifying Installation](#verifying-installation)
 - [Example Configuration Files](#example-configuration-files)
+- [Integration Guide](#integration-guide)
 - [Security Mandates](#security-mandates)
 - [Contributing](#contributing)
 
@@ -315,6 +316,9 @@ curl -X POST https://your-domain/login -H "Content-Type: application/json" -d "{
 - Permissions List (optional): [permissions.json](https://github.com/erendemirel/garde/blob/master/configs/permissions.json)
 - Groups List (optional): [groups.json](https://github.com/erendemirel/garde/blob/master/configs/groups.json)
 
+## Integration Guide
+
+For more information on how garde works and how to integrate, see [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)
 
 ## Security Mandates
 
