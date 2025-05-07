@@ -152,7 +152,7 @@ Error Response:
 ```
 
 Important Notes:
-- User status starts as "pending_approval" until approved by admin
+- __User status starts as "pending_approval" until approved by admin__
 - If email matches ADMIN_USERS list in .env, user gets admin privileges automatically
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
 
