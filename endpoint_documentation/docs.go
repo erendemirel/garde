@@ -15,6 +15,49 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/groups": {
+            "get": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns all available groups defined in the system",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Protected Routes"
+                ],
+                "summary": "List available groups",
+                "responses": {
+                    "200": {
+                        "description": "List of groups",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/models.GroupResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/login": {
             "post": {
                 "description": "Authenticates a user and returns a session token. No mTLS required for this endpoint.",
@@ -123,6 +166,49 @@ const docTemplate = `{
                         "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/permissions": {
+            "get": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns all available permissions defined in the system",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Protected Routes"
+                ],
+                "summary": "List available permissions",
+                "responses": {
+                    "200": {
+                        "description": "List of permissions",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/models.PermissionResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -442,7 +528,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Sets up Multi-Factor Authentication for a user. No mTLS required for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated and unauthenticated access.",
+                "description": "Sets up Multi-Factor Authentication for a user. No mTLS required for this endpoint. Requires authentication.",
                 "consumes": [
                     "application/json"
                 ],
@@ -450,7 +536,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Conditional Routes (Public or Protected)"
+                    "Protected Routes"
                 ],
                 "summary": "Setup MFA",
                 "responses": {
@@ -509,7 +595,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Verifies MFA code and enables MFA for the user. No mTLS required for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated and unauthenticated access.",
+                "description": "Verifies MFA code and enables MFA for the user. No mTLS required for this endpoint. Requires authentication.",
                 "consumes": [
                     "application/json"
                 ],
@@ -517,7 +603,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Conditional Routes (Public or Protected)"
+                    "Protected Routes"
                 ],
                 "summary": "Verify and enable MFA",
                 "parameters": [
@@ -777,7 +863,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Update request submitted successfully",
                         "schema": {
-                            "$ref": "#/definitions/models.UpdateRequestResponse"
+                            "$ref": "#/definitions/models.SuccessResponse"
                         }
                     },
                     "400": {
@@ -1123,6 +1209,20 @@ const docTemplate = `{
                 }
             }
         },
+        "models.GroupResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ListUsersResponse": {
             "type": "object",
             "properties": {
@@ -1210,6 +1310,20 @@ const docTemplate = `{
                 }
             }
         },
+        "models.PermissionResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.RequestOTPRequest": {
             "type": "object",
             "required": [
@@ -1275,14 +1389,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "data": {}
-            }
-        },
-        "models.UpdateRequestResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string"
-                }
             }
         },
         "models.UpdateUserRequest": {

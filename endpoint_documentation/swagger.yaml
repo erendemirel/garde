@@ -46,6 +46,15 @@ definitions:
       error:
         $ref: '#/definitions/models.ErrorDetails'
     type: object
+  models.GroupResponse:
+    properties:
+      description:
+        type: string
+      key:
+        type: string
+      name:
+        type: string
+    type: object
   models.ListUsersResponse:
     properties:
       users:
@@ -104,6 +113,15 @@ definitions:
     - new_password
     - otp
     type: object
+  models.PermissionResponse:
+    properties:
+      description:
+        type: string
+      key:
+        type: string
+      name:
+        type: string
+    type: object
   models.RequestOTPRequest:
     properties:
       email:
@@ -146,11 +164,6 @@ definitions:
   models.SuccessResponse:
     properties:
       data: {}
-    type: object
-  models.UpdateRequestResponse:
-    properties:
-      message:
-        type: string
     type: object
   models.UpdateUserRequest:
     properties:
@@ -238,6 +251,29 @@ info:
   title: garde
   version: "1.0"
 paths:
+  /groups:
+    get:
+      description: Returns all available groups defined in the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of groups
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/models.GroupResponse'
+                  type: array
+              type: object
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: List available groups
+      tags:
+      - Protected Routes
   /login:
     post:
       consumes:
@@ -307,6 +343,29 @@ paths:
       - SessionCookie: []
       - Bearer: []
       summary: Logout user
+      tags:
+      - Protected Routes
+  /permissions:
+    get:
+      description: Returns all available permissions defined in the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of permissions
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/models.PermissionResponse'
+                  type: array
+              type: object
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: List available permissions
       tags:
       - Protected Routes
   /sessions/revoke:
@@ -605,8 +664,7 @@ paths:
       consumes:
       - application/json
       description: Sets up Multi-Factor Authentication for a user. No mTLS required
-        for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated
-        and unauthenticated access.
+        for this endpoint. Requires authentication.
       produces:
       - application/json
       responses:
@@ -640,14 +698,13 @@ paths:
       - Bearer: []
       summary: Setup MFA
       tags:
-      - Conditional Routes (Public or Protected)
+      - Protected Routes
   /users/mfa/verify:
     post:
       consumes:
       - application/json
       description: Verifies MFA code and enables MFA for the user. No mTLS required
-        for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated
-        and unauthenticated access.
+        for this endpoint. Requires authentication.
       parameters:
       - description: MFA verification code
         in: body
@@ -683,7 +740,7 @@ paths:
       - Bearer: []
       summary: Verify and enable MFA
       tags:
-      - Conditional Routes (Public or Protected)
+      - Protected Routes
   /users/password/change:
     post:
       consumes:
@@ -820,7 +877,7 @@ paths:
         "200":
           description: Update request submitted successfully
           schema:
-            $ref: '#/definitions/models.UpdateRequestResponse'
+            $ref: '#/definitions/models.SuccessResponse'
         "400":
           description: Invalid request format or empty update request
           schema:
