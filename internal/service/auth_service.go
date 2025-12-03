@@ -517,6 +517,12 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 				// Add or update groups from pending updates
 				for group, enabled := range *targetUser.PendingUpdates.Fields.Groups {
+					// Don't allow __admin__ group through pending updates
+					// Only superuser can grant admin privileges directly via groups update
+					if group == models.InternalAdminGroup {
+						slog.Warn("Attempted to approve admin group via pending update", "user_id", targetUserID)
+						continue // Skip. Admin group can only be granted directly by superuser
+					}
 					// Validate group exists
 					if !models.IsValidUserGroup(group) {
 						slog.Warn("Invalid group in pending update", "group", group, "user_id", targetUserID)
@@ -585,8 +591,11 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	// Add support for direct groups updates
 	if req.Groups != nil {
+		// Check if request is trying to modify the internal admin group
+		adminGroupValue, modifyingAdminGroup := (*req.Groups)[models.InternalAdminGroup]
+
 		// Only superuser can modify the internal admin group
-		if _, modifyingAdminGroup := (*req.Groups)[models.InternalAdminGroup]; modifyingAdminGroup && !isSuperUser {
+		if modifyingAdminGroup && !isSuperUser {
 			slog.Info("Non-superuser attempted to modify admin group", "admin_id", adminID)
 			return fmt.Errorf(errors.ErrUnauthorized)
 		}
@@ -613,8 +622,20 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			userGroups[group] = enabled
 		}
 
+		// Preserve __admin__ group ONLY if:
+		// 1. Request is NOT explicitly modifying it, OR
+		// 2. Request is from non-superuser (they can't change it anyway)
 		if targetUser.Groups[models.InternalAdminGroup] {
-			userGroups[models.InternalAdminGroup] = true
+			if !modifyingAdminGroup {
+				// Request didn't mention __admin__, preserve existing state
+				userGroups[models.InternalAdminGroup] = true
+			} else if isSuperUser {
+				// Superuser explicitly set __admin__ - use their value
+				userGroups[models.InternalAdminGroup] = adminGroupValue
+			} else {
+				// Non-superuser tried to modify - preserve (they were already blocked above, but defense in depth)
+				userGroups[models.InternalAdminGroup] = true
+			}
 		}
 
 		// Update the groups
@@ -1272,6 +1293,11 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 		for group := range req.Updates.Groups {
+			// Users cannot request the internal admin group. Only superuser can grant it
+			if models.UserGroup(group) == models.InternalAdminGroup {
+				slog.Warn("User attempted to request admin group", "user_id", userID)
+				return fmt.Errorf(errors.ErrUnauthorized)
+			}
 			if !models.IsValidUserGroup(models.UserGroup(group)) {
 				slog.Warn("Invalid group requested", "group", group, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)
