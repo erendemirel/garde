@@ -26,13 +26,13 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
   <details>
     <summary>Click here to expand built-in security features</summary>
   
-      > Rate limiter
-      > Rapid request detection
+      > Rate limiter(IP based)
+      > Rapid request detection(User ID based)
       > Automated behaviour detection
       > Multiple IP session detection
       > Session blacklisting mechanism
       > Request body size limiting
-      > Request headers, query parameters, path parameters and body sanitization
+      > Sanitization of request headers, query parameters, path parameters and body
       > mTLS for internal service communication
       > MFA
       > Only superuser and admins can use administrative endpoints
@@ -68,6 +68,8 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 - Supports three types of authentication modes, browser-based authentication, API call-based authentication, API key-based authentication
 
 - mTLS
+
+- Easy permission management - users can request permissions and/or groups from admins, who only need to approve the request to add or remove permissions/groups, in addition to having the ability to manage them directly themselves.
 
 - Minimal dependencies with simple configuration
 
@@ -234,7 +236,7 @@ In addition to configurations stored in the `.env` file, there are also configur
 
 The permissions list defines all permissions that your authentication API instance will support, such as access to specific menus in your application dashboard or any other permission you'd like your users to have. If you want to use permissions, you must define them in this file.
 
-The groups list helps organize users and admins. Admins can only manage users who share at least one group with them. Note that admins can edit users even when they're not initially in the same group, but only when adding those users to their group for the first time, meaning if an admin wants to manage a user, they first need to add that user to the their own group.
+The groups list helps organize users and admins. Admins can only manage users who share at least one group with them.
 
 > [!NOTE]
 > Superuser is exempt from permissions-groups logic
@@ -270,8 +272,33 @@ Set in `/configs/groups.json`:
 #### 6. Other Configurations (Optional)
 See [example .env file](https://github.com/erendemirel/garde/blob/master/.env) for full list of optional parameters:
 ```ini
-GIN_MODE, CORS_ALLOW_ORIGINS, ENFORCE_MFA, ADMIN_USERS, RATE_LIMIT, DISABLE_RAPID_REQUEST_CHECK, DISABLE_USER_AGENT_CHECK, DISABLE_IP_BLACKLISTING, DISABLE_MULTIPLE_IP_CHECK
+GIN_MODE, CORS_ALLOW_ORIGINS, ENFORCE_MFA, SEED_ADMIN_EMAILS, RATE_LIMIT, RAPID_REQUEST_CONFIG, DISABLE_USER_AGENT_CHECK, DISABLE_IP_BLACKLISTING, DISABLE_MULTIPLE_IP_CHECK
 ```
+
+##### Admin Management
+There are two types of administrative users - superuser, and admins.
+Superuser is only one, and they can perform any operation. Admins are less privileged, but can be many.
+```ini
+SEED_ADMIN_EMAILS=admin1@example.com,admin2@example.com  # Initial admins (seeded on registration)
+```
+- Users registering with emails in `SEED_ADMIN_EMAILS` are automatically added to the `__admin__` group
+- Superuser can dynamically add/remove admins via `PUT /users/:id` with `groups: {"__admin__": true/false}`
+- Only superuser can modify the `__admin__` group membership
+- Only superuser can assign initial groups to users with no groups
+
+##### Group-Based Access Control
+Admins can only manage users who **already share at least one group** with them:
+
+| Admin Groups | Target User Groups | Can Admin Manage? | Can Admin Modify Groups? |
+|--------------|-------------------|-------------------|--------------------------|
+| `[__admin__, A]` | `[A]` | ✅ Yes | ✅ Only to groups admin is in (X) |
+| `[__admin__, A, B]` | `[A]` | ✅ Yes | ✅ Can add to X or Y |
+| `[__admin__, A]` | `[B]` | ❌ No | ❌ No shared groups |
+| `[__admin__, A]` | `[]` (none) | ❌ No | ❌ No shared groups |
+| `[__admin__]` | `[__admin__]` | ✅ Yes | ❌ Only superuser can modify `__admin__` |
+
+
+- **When groups.json is disabled:** Admins can only manage other admins (they share the `__admin__` group). Regular users can only be managed by superuser
 
 #### 7. Network Configuration (When required)
 ##### Required Ports
@@ -334,8 +361,8 @@ For more information on how garde works and how to integrate, see [integration g
 - Enable HSTS with preload directive in production
 - Configure TLS on the firewall if not using the in-built one
 - Place a proxy server in front of your Redis (if you are using the in-built one, place in front of "redis_network" Docker network)
-- Set `RATE_LIMIT` to at least `60` in `.env` in production
-- Do not set `DISABLE_RAPID_REQUEST_CHECK` to `true` in `.env` in production
+- Do not set `RATE_LIMIT` to `0,0` in `.env` in production (this disables IP based rate limiter)
+- Do not set `RAPID_REQUEST_CONFIG` to `0,0` in `.env` in production (this disables user ID based rate limiter)
 - Do not set `DISABLE_USER_AGENT_CHECK` to `true` in `.env` in production
 - Do not set `DISABLE_IP_BLACKLISTING` to `true` in `.env` in production
 - Do not set `DISABLE_MULTIPLE_IP_CHECK` to `true` in `.env` in production

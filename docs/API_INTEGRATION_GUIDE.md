@@ -153,7 +153,8 @@ Error Response:
 
 Important Notes:
 - User status starts as "pending_approval" until approved by admin
-- If email matches ADMIN_USERS list in .env, user gets admin privileges automatically
+- If email matches `SEED_ADMIN_EMAILS` in .env, user is automatically added to the internal admin group with active status
+- Admin status can be dynamically managed by superuser via `PUT /users/:id` with `groups: {"__admin__": true/false}`
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
 
 #### View Current User Info
@@ -205,14 +206,16 @@ POST /login
 ```
 
 Important Notes:
-- If MFA is enforced but not set up:
-  1. Initial login will succeed
+- MFA code is required at login only if `mfa_enabled=true` (user has MFA set up)
+- If MFA is enforced (`mfa_enforced=true`) but not set up (`mfa_enabled=false`):
+  1. Login succeeds without MFA code
   2. User must complete MFA setup before accessing other endpoints
-  3. All endpoints except MFA setup will return 401
+  3. All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, `/logout` return 403
 - Session tokens are delivered two ways:
   - As HTTP-only cookie for browser-based apps
   - In response body for API clients
 - Rate limited to 5 attempts per minute
+- Users with `locked_by_admin` or `locked_by_security` status cannot log in
 
 #### Logout
 ```http
@@ -293,51 +296,64 @@ Important Notes:
 
 ### 4. MFA Management
 
+#### Understanding MFA States
+
+| Field | Meaning |
+|-------|---------|
+| `mfa_enforced` | User MUST have MFA - cannot disable it |
+| `mfa_enabled` | User HAS MFA set up and active |
+
+**Important:** These are independent states:
+- `mfa_enforced=true, mfa_enabled=false` → User must set up MFA before accessing endpoints
+- `mfa_enforced=true, mfa_enabled=true` → MFA active and cannot be disabled
+- `mfa_enforced=false, mfa_enabled=true` → MFA active but user can disable it
+- `mfa_enforced=false, mfa_enabled=false` → No MFA
+
+**Note:** Removing MFA enforcement does NOT disable MFA. It only allows the user to disable it themselves.
+
 #### A. Setting Up MFA
 Required when:
 - User chooses to enable MFA
 - Admin enforces MFA for user
-- Global MFA enforcement is enabled
+- Global MFA enforcement is enabled (`ENFORCE_MFA=true`)
 
 1. Initialize setup:
 ```http
 POST /users/mfa/setup
 Authorization: Bearer 54492786-1c...
+Content-Type: application/json
+
+{}
 ```
 
 Success Response:
 ```json
 {
     "data": {
-        "qr_code_url": "otpauth://..."  // Scan with authenticator app
+        "secret": "JBSWY3DPEHPK3PXP",
+        "qr_code_url": "data:image/png;base64,..."
     }
 }
 ```
 
-Error Response:
-```json
-{
-    "error": {
-        "message": "MFA setup failed"
-    }
-}
-```
+The `qr_code_url` is a base64-encoded PNG image that can be displayed directly in an `<img>` tag.
 
 2. Verify and enable:
 ```http
 POST /users/mfa/verify
 Authorization: Bearer bccf1b28-fd...
 {
-    "code": "123456"  // Code from authenticator app
+    "code": "123456"
 }
 ```
 
 Important Notes:
-- Setup must be completed within 10 minutes
-- If MFA is enforced (either globally or by admin):
-  - User cannot access other endpoints until MFA setup is complete
-  - MFA cannot be disabled later
-- Store backup codes securely (if implementing backup code system)
+- Setup must be completed within 5 minutes (temp secret TTL)
+- If MFA is enforced but not set up:
+  - Login succeeds without MFA code
+  - All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, and `/logout` return 403
+  - User must complete MFA setup to access other endpoints
+- QR code is generated server-side using the TOTP library (no external services)
 
 #### B. Disabling MFA
 ```http
@@ -349,9 +365,9 @@ Authorization: Bearer bccf1b28-fd...
 ```
 
 Notes:
-- Cannot disable if MFA is enforced
+- Cannot disable if MFA is enforced (`mfa_enforced=true`)
 - Requires valid MFA code verification
-- Consider warning users about security implications
+- MFA secret is cleared from the user record
 
 ### 5. Permission and Group Management
 
@@ -360,7 +376,8 @@ The API uses a permission and group structure:
 - The permissions and groups systems are optional and can be disabled
 - Permissions are individual access rights
 - Groups are for easier organization of admins - the users they are responsible of
-- Admins can only manage users within their groups, except for when adding those users to their group for the first time, in this case groups doesn't matter, meaning if an admin wants to manage a user, they first need to add the user to their own group
+- Admins can ONLY manage users who share at least one group with them (no exceptions)
+- Only superusers can assign initial groups to users who have no groups yet
 - Superusers have access to all groups and permissions
 
 #### B. Permissions
@@ -394,7 +411,7 @@ Permissions are defined in `configs/permissions.json`:
 Each permission:
 - Has a unique identifier (e.g., "a_permission")
 - Contains a human-readable name and description
-- Can be associated with specific groups (optional)
+- The "groups" field is for documentation/organization only - it does NOT automatically grant permissions when a user joins a group
 - Is stored as a boolean (enabled/disabled) for each user
 - If permissions.json is missing or empty, the permissions system will be disabled
 - When disabled, only permission-related operations (currently: updating the permissions of a user with an admin user) will return "permissions system not loaded"
@@ -411,7 +428,7 @@ When writing permissions.json:
 2. Required fields:
    - "name": Human-readable display name
    - "description": Clear explanation of the permission
-   - "groups": Optional array of group IDs (can be empty [] or omitted)
+   - "groups": Optional array of group IDs for documentation purposes only (can be empty [] or omitted). Note: This field is NOT used by the backend - permissions and groups are managed separately.
 
 
 #### C. Groups
@@ -453,8 +470,7 @@ When writing groups.json:
    - "description": Clear explanation of the group's purpose
 
 3. Important considerations:
-   - Groups referenced in permissions.json must exist in groups.json
-   - Changes to group IDs might require updates to permissions.json, if you included any group names in the permissions file
+   - The "groups" field in permissions.json is for documentation only and not validated against groups.json
    - Consider future scalability when designing group structure
 
 #### D. Permission Management
@@ -504,8 +520,7 @@ Authorization: Bearer 572a399c-6c...
 PUT /users/{user_id}
 Authorization: Bearer 572a399c-6c...
 {
-    "approve_update": true,
-    "security_code": "admin_security_code"
+    "approve_update": true
 }
 ```
 
@@ -529,13 +544,37 @@ Error responses when permissions system is disabled:
 
 #### E. Admin Group Management
 
-Important rules for admins:
-1. Admins can only view and manage users in their groups (except the first time they try to add a user to their own group)
-2. Admins cannot modify users with no shared groups (except the first time they try to add a user to their own group)
-3. Group membership is just for organization. (But on your frontend, you can make use of it to form roles, permission inheritance etc.)
-4. Superusers can manage all groups and permissions
-5. Admin operations are blocked when groups system is disabled
-6. Permission operations are blocked when permissions system is disabled
+Admins are managed via an internal `__admin__` group that works independently of groups.json:
+- Users registering with emails in `SEED_ADMIN_EMAILS` are automatically added to the `__admin__` group
+- Superuser can dynamically add/remove admins via `PUT /users/:id` with `groups: {"__admin__": true/false}`
+- Only superuser can modify `__admin__` group membership
+
+**Group-Based Access Control:**
+
+Admins can only manage users who **already share at least one group** with them:
+
+| Admin Groups | Target User Groups | Can Admin Manage? | Can Admin Modify Groups? |
+|--------------|-------------------|-------------------|--------------------------|
+| `[__admin__, X]` | `[X]` | ✅ Yes | ✅ Only to groups admin is in (X) |
+| `[__admin__, X, Y]` | `[X]` | ✅ Yes | ✅ Can add to X or Y |
+| `[__admin__, X]` | `[Y]` | ❌ No | ❌ No shared groups |
+| `[__admin__, X]` | `[]` (none) | ❌ No | ❌ No shared groups |
+| `[__admin__]` | `[__admin__]` | ✅ Yes | ❌ Only superuser can modify `__admin__` |
+
+**Key rules:**
+1. Admins can ONLY view and manage users who already share at least one group with them
+2. Admins can add users to additional groups, but only groups the admin is already in
+3. Admins cannot "claim" users by adding them to their groups if they don't already share a group beforehand
+4. Only superusers can assign initial groups to users with no groups
+5. Only superuser can modify the `__admin__` group membership
+6. Group membership is for organization (you can use it to form roles, permission inheritance etc. on your frontend)
+7. Permission operations are blocked when permissions system is disabled
+
+**When groups.json is disabled:**
+- The internal `__admin__` group still works
+- Admins can only manage other admins (they share the `__admin__` group)
+- Regular users (who have no groups) can only be managed by superuser
+- This is by design, disabling groups means opting out of delegated admin management
 
 Example admin listing users in their groups:
 ```http
@@ -593,16 +632,18 @@ Notes:
 PUT /users/{user_id}
 Authorization: Bearer 572a399c-6c...
 {
-    "email": "new@example.com",
     "status": "ok",
     "mfa_enforced": true,
+    "permissions": {"a_permission": true},
+    "groups": {"x": true},
     "approve_update": true  // For pending updates
 }
 ```
 
 Important Notes:
 - Cannot modify superuser account
-- Admin can only modify users in their groups (except for the time they add a user to their group)
+- Admin can ONLY modify users who share at least one group with them
+- Only superusers can assign initial groups to users with no groups
 - When enforcing MFA:
   - User must set up MFA before next login
   - User cannot disable MFA afterwards
@@ -671,6 +712,8 @@ POST   /logout               # Logout current session
 POST   /users/mfa/disable    # Disable MFA
 POST   /users/password/change # Change password
 POST   /users/request-update-from-admin # Request permission/group update
+GET    /permissions          # List available permissions
+GET    /groups               # List available groups
 ```
 
 #### Endpoints Not Requiring Authentication
@@ -749,16 +792,17 @@ When rate limit is exceeded:
 ### 10. Account States and Transitions
 
 Users can be in following states:
-- pending_approval: After registration or password reset
+- pending_approval: After registration (for non-admin users) or password reset
 - ok: Normal active state
 - locked_by_admin: Manually locked by admin
 - locked_by_security: Automatically locked due to suspicious activity
 
 Important Notes:
-- Only admins can change user states
-- Locked states prevent all access except password reset
+- Only admins/superusers can change user states
+- Locked states prevent login (but password reset via OTP is still possible)
 - State changes to "locked" automatically revoke all sessions
 - Password reset always sets state to "pending_approval"
+- Requesting permission/group updates does NOT change user status (the request is tracked separately in pending_updates field)
 
 ### 11. Security Event Responses
 
@@ -800,8 +844,8 @@ User accounts are automatically locked (status changes to "locked_by_security") 
 
 When an account is locked:
 - All active sessions are terminated
-- User must contact administrator for unlock
-- Password reset flow is disabled
+- Login is blocked until admin unlocks the account
+- Password reset flow via OTP still works (but sets status to "pending_approval" after reset)
 - Account status changes to "locked_by_security"
 
 #### C. IP Blocking

@@ -48,20 +48,49 @@ type UserResponse struct {
 	PendingUpdates *UserUpdateRequest `json:"pending_updates,omitempty"`
 }
 
-func (u *UserResponse) MarshalJSON() ([]byte, error) {  // Implements custom JSON marshaling for UserResponse
+// Checks if user belongs to the internal admin group
+func (u *UserResponse) IsUserAdmin() bool {
+	if u.Groups == nil {
+		return false
+	}
+	return u.Groups[InternalAdminGroup]
+}
+
+func (u *UserResponse) MarshalJSON() ([]byte, error) {
+	// Filter out internal __admin__ group from response
+	filteredGroups := make(UserGroups)
+	for group, enabled := range u.Groups {
+		if group != InternalAdminGroup {
+			filteredGroups[group] = enabled
+		}
+	}
+
 	type Alias UserResponse // Create alias to avoid recursion
 	return json.Marshal(&struct {
 		*Alias
-		// Always include pending_updates field in JSON output, even if it's null
+		Groups         UserGroups         `json:"groups"`
 		PendingUpdates *UserUpdateRequest `json:"pending_updates"`
 	}{
 		Alias:          (*Alias)(u),
+		Groups:         filteredGroups,
 		PendingUpdates: u.PendingUpdates,
 	})
 }
 
 type ListUsersResponse struct {
 	Users []UserResponse `json:"users"`
+}
+
+type PermissionResponse struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type GroupResponse struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 func NewSuccessResponse(data interface{}) *SuccessResponse {

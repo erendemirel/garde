@@ -22,6 +22,7 @@ const (
 	ErrInvalidMFACode        = "invalid MFA code"
 	ErrMFARequired           = "MFA code required"
 	ErrMFAAlreadyEnabled     = "MFA already enabled"
+	ErrMFASetupRequired      = "MFA setup required"
 )
 
 // Request errors

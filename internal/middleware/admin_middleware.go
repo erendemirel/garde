@@ -53,18 +53,8 @@ func AdminMiddleware(authService *service.AuthService) gin.HandlerFunc {
 		superUserEmail := os.Getenv("SUPERUSER_EMAIL")
 		isSuperUser := user.Email == superUserEmail
 
-		// Check if user is in ADMIN_USERS list
-		adminUsersEnv := os.Getenv("ADMIN_USERS")
-		adminUsers := strings.Split(adminUsersEnv, ",")
-
-		isAdmin := false
-		for _, adminEmail := range adminUsers {
-			adminEmail = strings.TrimSpace(adminEmail)
-			if adminEmail == user.Email {
-				isAdmin = true
-				break
-			}
-		}
+		// Check if user is in internal admin group
+		isAdmin := user.IsUserAdmin()
 
 		// If not superuser or admin, deny access
 		if !isSuperUser && !isAdmin {
