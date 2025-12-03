@@ -87,7 +87,6 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 > For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)<br>
 > For detailed installation guide, see [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)<br>
 > For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)<br>
-> For troubleshooting, refer to [troubleshooting guide](https://github.com/erendemirel/garde/blob/master/docs/TROUBLESHOOTING.md)
 
 --- 
 
