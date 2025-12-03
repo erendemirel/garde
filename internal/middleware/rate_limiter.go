@@ -8,30 +8,55 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	defaultRequestsPerMinute = 60
-	rateLimitWindow          = time.Minute
+	defaultRequestsPerWindow = 60
+	defaultWindowSeconds     = 60
 	rateLimitPrefix          = "rate_limit:"
 )
 
 type RateLimiter struct {
-	repo *repository.RedisRepository
+	repo       *repository.RedisRepository
+	maxReqs    int
+	windowSize time.Duration
 }
 
+// Format: "limit" or "limit,window_seconds" e.g. "100,60" means 100 requests per 60 seconds
+// Use "0" or "0,0" to disable rate limiting
 func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
+	maxReqs := defaultRequestsPerWindow
+	windowSecs := defaultWindowSeconds
+
+	if envLimit := os.Getenv("RATE_LIMIT"); envLimit != "" {
+		parts := strings.Split(envLimit, ",")
+		if len(parts) >= 1 {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[0])); err == nil && parsed >= 0 {
+				maxReqs = parsed
+			}
+		}
+		if len(parts) >= 2 {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil && parsed > 0 {
+				windowSecs = parsed
+			}
+		}
+	}
+
 	return &RateLimiter{
-		repo: repo,
+		repo:       repo,
+		maxReqs:    maxReqs,
+		windowSize: time.Duration(windowSecs) * time.Second,
 	}
 }
 
 func (rl *RateLimiter) Limit() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if os.Getenv("RATE_LIMIT") == "0" {
+		if rl.maxReqs == 0 {
 			c.Next()
 			return
 		}
@@ -39,7 +64,7 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 		ip := c.ClientIP()
 		key := fmt.Sprintf("%s%s", rateLimitPrefix, ip)
 
-		err := rl.repo.IncrementRequestCount(c.Request.Context(), key, rateLimitWindow)
+		err := rl.repo.IncrementRequestCount(c.Request.Context(), key, rl.windowSize)
 		if err != nil {
 			slog.Error("Failed to increment rate limit count", "error", err, "ip", ip)
 			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
@@ -47,7 +72,7 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 			return
 		}
 
-		count, err := rl.repo.GetRequestCount(c.Request.Context(), key, rateLimitWindow)
+		count, err := rl.repo.GetRequestCount(c.Request.Context(), key, rl.windowSize)
 		if err != nil {
 			slog.Error("Failed to get rate limit count", "error", err, "ip", ip)
 			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
@@ -56,8 +81,8 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 		}
 
 		// Check if rate limit exceeded
-		if count > defaultRequestsPerMinute {
-			slog.Warn("Rate limit exceeded", "ip", ip, "count", count, "limit", defaultRequestsPerMinute)
+		if count > int64(rl.maxReqs) {
+			slog.Warn("Rate limit exceeded", "ip", ip, "count", count, "limit", rl.maxReqs)
 
 			err := rl.repo.RecordSuspiciousActivity(c.Request.Context(), key, "rate_limit_exceeded", map[string]string{
 				"ip":    ip,
@@ -74,9 +99,9 @@ func (rl *RateLimiter) Limit() gin.HandlerFunc {
 		}
 
 		// Add rate limit headers
-		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", defaultRequestsPerMinute))
-		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", defaultRequestsPerMinute-count))
-		c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", time.Now().Add(rateLimitWindow).Unix()))
+		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", rl.maxReqs))
+		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", int64(rl.maxReqs)-count))
+		c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", time.Now().Add(rl.windowSize).Unix()))
 
 		c.Next()
 	}

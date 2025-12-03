@@ -35,7 +35,7 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID,
 	var patterns []string
 
 	// 1. Check for rapid requests (potential automated attack)
-	if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") != "true" {
+	if !session.IsRapidRequestCheckDisabled() {
 		requestCount, err := d.repo.GetRequestCount(ctx, userID, time.Minute)
 		if err != nil {
 			slog.Debug("Failed to get request count", "error", err, "user_id", userID)
@@ -47,7 +47,7 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID,
 	}
 
 	// 2. Check for automated behavior (requests too fast for human)
-	if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") != "true" {
+	if !session.IsRapidRequestCheckDisabled() {
 		lastRequestTime, err := d.repo.GetLastRequestTime(ctx, userID)
 		if err != nil {
 			slog.Debug("Failed to get last request time", "error", err, "user_id", userID)
@@ -120,7 +120,7 @@ func (d *SecurityAnalyzer) isUnusualUserAgent(userAgent string) bool {
 }
 
 func (d *SecurityAnalyzer) TrackRequest(ctx context.Context, userID string) error {
-	if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") == "true" {
+	if session.IsRapidRequestCheckDisabled() {
 		return nil
 	}
 

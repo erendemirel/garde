@@ -68,7 +68,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 		}
 
 		// Check for suspicious patterns
-		if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") != "true" && securityAnalyzer != nil {
+		if !session.IsRapidRequestCheckDisabled() && securityAnalyzer != nil {
 			patterns := securityAnalyzer.DetectSuspiciousPatterns(c.Request.Context(), validationResult.UserID, ip, userAgent)
 			if len(patterns) > 0 {
 				// Record all detected patterns
@@ -82,6 +82,19 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			// Track legitimate request
 			if err := securityAnalyzer.TrackRequest(c.Request.Context(), validationResult.UserID); err != nil {
 				slog.Warn("Failed to track request", "error", err, "user_id", validationResult.UserID)
+			}
+		}
+
+		// Check if user needs MFA setup (MFA enforced but not enabled)
+		// Allow only MFA setup endpoints, user info (for frontend redirect), and logout
+		path := c.Request.URL.Path
+		allowedPaths := path == "/users/mfa/setup" || path == "/users/mfa/verify" || path == "/logout" || path == "/users/me"
+		if !allowedPaths {
+			needsMFA, err := authService.NeedsMFASetup(c.Request.Context(), validationResult.UserID)
+			if err == nil && needsMFA {
+				slog.Debug("Auth middleware: MFA setup required", "user_id", validationResult.UserID, "path", path)
+				c.AbortWithStatusJSON(http.StatusForbidden, models.NewErrorResponse(errors.ErrMFASetupRequired))
+				return
 			}
 		}
 
@@ -126,35 +139,11 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
-func ConditionalAuthMiddleware(authService *service.AuthService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Get email from request body
-		var body struct {
-			Email string `json:"email"`
-		}
-		if err := c.ShouldBindJSON(&body); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
-			return
-		}
-
-		// Check if user needs MFA setup
-		needsMFASetup, err := authService.NeedsMFASetup(c.Request.Context(), body.Email)
-		if err != nil || !needsMFASetup {
-			// If error or doesn't need setup, require normal authentication
-			AuthMiddleware(authService, nil)(c)
-			return
-		}
-
-		// Allow request to proceed without authentication
-		c.Next()
-	}
-}
-
 // Applies security checks for public endpoints
 func SecurityMiddleware(securityAnalyzer *service.SecurityAnalyzer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if rapid request check or rate limiting is disabled
-		if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") == "true" || os.Getenv("RATE_LIMIT") == "0" {
+		if session.IsRapidRequestCheckDisabled() || os.Getenv("RATE_LIMIT") == "0" {
 			c.Next()
 			return
 		}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"garde/internal/middleware"
 	"garde/internal/models"
 	"garde/internal/service"
@@ -186,8 +187,8 @@ func (h *AuthHandler) ValidateSession(c *gin.Context) {
 }
 
 // @Summary Setup MFA
-// @Description Sets up Multi-Factor Authentication for a user. No mTLS required for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated and unauthenticated access.
-// @Tags Conditional Routes (Public or Protected)
+// @Description Sets up Multi-Factor Authentication for a user. No mTLS required for this endpoint. Requires authentication.
+// @Tags Protected Routes
 // @Accept json
 // @Produce json
 // @Security SessionCookie
@@ -215,8 +216,8 @@ func (h *AuthHandler) SetupMFA(c *gin.Context) {
 }
 
 // @Summary Verify and enable MFA
-// @Description Verifies MFA code and enables MFA for the user. No mTLS required for this endpoint. Uses ConditionalAuthMiddleware to allow both authenticated and unauthenticated access.
-// @Tags Conditional Routes (Public or Protected)
+// @Description Verifies MFA code and enables MFA for the user. No mTLS required for this endpoint. Requires authentication.
+// @Tags Protected Routes
 // @Accept json
 // @Produce json
 // @Security SessionCookie
@@ -564,7 +565,15 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	users, err := h.authService.ListUsers(c.Request.Context(), adminID.(string))
+	ctx := c.Request.Context()
+	if isAdmin, exists := c.Get("is_admin"); exists {
+		ctx = context.WithValue(ctx, "is_admin", isAdmin)
+	}
+	if isSuperuser, exists := c.Get("is_superuser"); exists {
+		ctx = context.WithValue(ctx, "is_superuser", isSuperuser)
+	}
+
+	users, err := h.authService.ListUsers(ctx, adminID.(string))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err.Error()))
 		return
@@ -669,4 +678,52 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 
 	// Return success response
 	c.JSON(http.StatusOK, models.NewSuccessResponse("Update request submitted successfully"))
+}
+
+// @Summary List available permissions
+// @Description Returns all available permissions defined in the system
+// @Tags Protected Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=[]models.PermissionResponse} "List of permissions"
+// @Router /permissions [get]
+func (h *AuthHandler) ListPermissions(c *gin.Context) {
+	allPerms := models.GetAllPermissions()
+
+	var response []models.PermissionResponse
+	for _, perm := range allPerms {
+		info := models.GetPermissionInfo(perm)
+		response = append(response, models.PermissionResponse{
+			Key:         string(perm),
+			Name:        info.Name,
+			Description: info.Description,
+		})
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(response))
+}
+
+// @Summary List available groups
+// @Description Returns all available groups defined in the system
+// @Tags Protected Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=[]models.GroupResponse} "List of groups"
+// @Router /groups [get]
+func (h *AuthHandler) ListGroups(c *gin.Context) {
+	allGroups := models.GetAllUserGroups()
+
+	var response []models.GroupResponse
+	for _, group := range allGroups {
+		info := models.GetGroupInfo(group)
+		response = append(response, models.GroupResponse{
+			Key:         string(group),
+			Name:        info.Name,
+			Description: info.Description,
+		})
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(response))
 }

@@ -11,6 +11,7 @@ import (
 	"garde/internal/repository"
 	"garde/internal/service"
 	"garde/pkg/errors"
+	"garde/pkg/session"
 	"garde/pkg/validation"
 	"log/slog"
 	"net/http"
@@ -47,6 +48,8 @@ func main() {
 		fmt.Println("Error loading .env file")
 		os.Exit(1)
 	}
+
+	session.InitRapidRequestConfig()
 
 	// Initialize logger
 	logLevel := slog.LevelInfo // Default log level
@@ -111,6 +114,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := authService.SyncSeedAdmins(context.Background()); err != nil {
+		slog.Warn("Failed to sync seed admins", "error", err)
+	}
+
 	rateLimiter := middleware.NewRateLimiter(repo)
 
 	router := gin.New()
@@ -157,10 +164,12 @@ func main() {
 		protected.GET("/users/me", authHandler.GetCurrentUser)
 		protected.POST("/logout", authHandler.Logout)
 		protected.POST("/users/password/change", authHandler.ChangePassword)
-		protected.POST("/users/mfa/setup", middleware.ConditionalAuthMiddleware(authService), authHandler.SetupMFA)
-		protected.POST("/users/mfa/verify", middleware.ConditionalAuthMiddleware(authService), authHandler.VerifyAndEnableMFA)
+		protected.POST("/users/mfa/setup", authHandler.SetupMFA)
+		protected.POST("/users/mfa/verify", authHandler.VerifyAndEnableMFA)
 		protected.POST("/users/mfa/disable", authHandler.DisableMFA)
 		protected.POST("/users/request-update-from-admin", authHandler.RequestUpdate)
+		protected.GET("/permissions", authHandler.ListPermissions)
+		protected.GET("/groups", authHandler.ListGroups)
 	}
 
 	// Admin-only endpoints (require admin login, but no mTLS)

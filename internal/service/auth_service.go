@@ -64,8 +64,14 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
+	// Check if user is locked
+	if user.Status == models.UserStatusLockedByAdmin || user.Status == models.UserStatusLockedBySecurity {
+		slog.Info("Login attempt by locked user", "email", req.Email, "status", user.Status)
+		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+	}
+
 	// Check for suspicious patterns including multiple IP sessions
-	if os.Getenv("DISABLE_RAPID_REQUEST_CHECK") != "true" {
+	if !session.IsRapidRequestCheckDisabled() {
 		patterns := s.securityAnalyzer.DetectSuspiciousPatterns(ctx, user.ID, ip, userAgent)
 		if len(patterns) > 0 {
 			// Record all detected patterns
@@ -94,8 +100,9 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
-	// Check MFA requirement
-	if user.MFAEnabled || user.MFAEnforced {
+	// Check MFA requirement - only require code if MFA is actually set up
+	// If MFA is enforced but not yet enabled, allow login and force setup later
+	if user.MFAEnabled {
 		if req.MFACode == "" {
 			return nil, fmt.Errorf(errors.ErrMFARequired)
 		}
@@ -250,10 +257,17 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	}, nil
 }
 
-func (s *AuthService) NeedsMFASetup(ctx context.Context, email string) (bool, error) {
-	user, err := s.repo.GetUserByEmail(ctx, email)
+func (s *AuthService) NeedsMFASetup(ctx context.Context, userIDOrEmail string) (bool, error) {
+	var user *models.User
+	var err error
+
+	// Try to get user by ID first, then by email
+	user, err = s.repo.GetUserByID(ctx, userIDOrEmail)
 	if err != nil {
-		return false, err
+		user, err = s.repo.GetUserByEmail(ctx, userIDOrEmail)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	return user.Status == models.UserStatusOk &&
@@ -302,7 +316,8 @@ func (s *AuthService) SetupMFA(ctx context.Context, userIDOrEmail string) (*mode
 	}
 
 	return &models.MFAResponse{
-		QRCodeURL: key.URL, // Only return QR code, not raw secret
+		Secret:    key.Secret,
+		QRCodeURL: key.QRCodeData,
 	}, nil
 }
 
@@ -361,12 +376,12 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	// Check if MFA is enforced globally
 	mfaEnforced := os.Getenv("ENFORCE_MFA") == "true"
 
-	// Check if this email is in ADMIN_USERS
-	adminUsers := strings.Split(os.Getenv("ADMIN_USERS"), ",")
-	isAdmin := false
-	for _, adminEmail := range adminUsers {
+	// Check if this email is in SEED_ADMIN_EMAILS (for initial admin seeding)
+	seedAdminEmails := strings.Split(os.Getenv("SEED_ADMIN_EMAILS"), ",")
+	isSeedAdmin := false
+	for _, adminEmail := range seedAdminEmails {
 		if strings.TrimSpace(adminEmail) == req.Email {
-			isAdmin = true
+			isSeedAdmin = true
 			break
 		}
 	}
@@ -379,12 +394,14 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		MFAEnforced:  mfaEnforced,
+		Groups:       models.UserGroups{},
 	}
 
-	// If user is admin, set status to active and grant all permissions
-	if isAdmin {
+	// If user is a seed admin, add to internal admin group and activate
+	if isSeedAdmin {
 		user.Status = models.UserStatusOk
 		user.Permissions = models.AdminPermissions()
+		user.Groups[models.InternalAdminGroup] = true
 	} else {
 		user.Permissions = models.DefaultPermissions()
 	}
@@ -432,17 +449,23 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 
-		// If updating groups, check if admin is in the groups they're trying to add
+		// Admin must share at least one group with target user (no "claiming" allowed)
+		if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
+			slog.Info("Unauthorized update attempt", "reason", "admin doesn't share groups with target user", "admin_id", adminID, "target_user_id", targetUserID)
+			return fmt.Errorf(errors.ErrUnauthorized)
+		}
+
+		// If updating groups, check if admin is in the groups they're trying to ADD (not already present)
 		if req.Groups != nil {
 			for group, enabled := range *req.Groups {
-				if enabled && !admin.Groups[group] {
-					slog.Info("Unauthorized update attempt", "reason", "admin not in group", "group", group, "admin_id", adminID)
+				// Only check if admin is trying to ADD user to a new group
+				// If user is already in the group, admin can keep them there
+				isNewGroup := enabled && !targetUser.Groups[group]
+				if isNewGroup && !admin.Groups[group] {
+					slog.Info("Unauthorized update attempt", "reason", "admin not in group they're trying to add user to", "group", group, "admin_id", adminID)
 					return fmt.Errorf(errors.ErrUnauthorized)
 				}
 			}
-		} else if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
-			slog.Info("Unauthorized update attempt", "reason", "admin doesn't share groups with target user", "admin_id", adminID, "target_user_id", targetUserID)
-			return fmt.Errorf(errors.ErrUnauthorized)
 		}
 	}
 
@@ -470,8 +493,13 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 				if !models.IsPermissionsLoaded() {
 					return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 				}
-				// Update permissions with the pending updates
+				// Validate and update permissions with the pending updates
 				for perm, enabled := range *targetUser.PendingUpdates.Fields.Permissions {
+					// Validate permission exists
+					if !models.IsValidPermission(perm) {
+						slog.Warn("Invalid permission in pending update", "permission", perm, "user_id", targetUserID)
+						continue // Skip invalid permissions
+					}
 					targetUser.Permissions[perm] = enabled
 				}
 			}
@@ -489,6 +517,11 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 				// Add or update groups from pending updates
 				for group, enabled := range *targetUser.PendingUpdates.Fields.Groups {
+					// Validate group exists
+					if !models.IsValidUserGroup(group) {
+						slog.Warn("Invalid group in pending update", "group", group, "user_id", targetUserID)
+						continue // Skip invalid groups
+					}
 					mergedGroups[group] = enabled
 				}
 
@@ -538,10 +571,13 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		if !models.IsPermissionsLoaded() {
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
-		// Validate permissions exist
-		for perm := range *req.Permissions {
-			if info := models.GetPermissionInfo(perm); info.Name != string(perm) {
-				return fmt.Errorf(errors.ErrUnauthorized)
+		// Validate permissions exist (superuser exempt)
+		if !isSuperUser {
+			for perm := range *req.Permissions {
+				if !models.IsValidPermission(perm) {
+					slog.Info("Invalid permission in update request", "permission", perm)
+					return fmt.Errorf(errors.ErrUnauthorized)
+				}
 			}
 		}
 		targetUser.Permissions = *req.Permissions
@@ -549,13 +585,22 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	// Add support for direct groups updates
 	if req.Groups != nil {
-		// Superusers are exempt from group validation
+		// Only superuser can modify the internal admin group
+		if _, modifyingAdminGroup := (*req.Groups)[models.InternalAdminGroup]; modifyingAdminGroup && !isSuperUser {
+			slog.Info("Non-superuser attempted to modify admin group", "admin_id", adminID)
+			return fmt.Errorf(errors.ErrUnauthorized)
+		}
+
+		// Superusers are exempt from group validation (except internal admin group which is always valid)
 		if !isSuperUser {
-			if !models.IsGroupsLoaded() {
-				return fmt.Errorf(errors.ErrGroupsNotLoaded)
-			}
-			// Validate groups exist
+			// Check if groups system is loaded (skip for internal admin group)
 			for group := range *req.Groups {
+				if group == models.InternalAdminGroup {
+					continue // Already handled above
+				}
+				if !models.IsGroupsLoaded() {
+					return fmt.Errorf(errors.ErrGroupsNotLoaded)
+				}
 				if !models.IsValidUserGroup(group) {
 					return fmt.Errorf(errors.ErrUnauthorized)
 				}
@@ -566,6 +611,10 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		userGroups := models.UserGroups{}
 		for group, enabled := range *req.Groups {
 			userGroups[group] = enabled
+		}
+
+		if targetUser.Groups[models.InternalAdminGroup] {
+			userGroups[models.InternalAdminGroup] = true
 		}
 
 		// Update the groups
@@ -639,6 +688,47 @@ func (s *AuthService) InitializeSuperUser(ctx context.Context) error {
 
 	if err := s.repo.StoreUser(ctx, newUser); err != nil {
 		return fmt.Errorf(errors.ErrSuperUserInitFailed)
+	}
+
+	return nil
+}
+
+func (s *AuthService) SyncSeedAdmins(ctx context.Context) error {
+	seedAdminEmails := os.Getenv("SEED_ADMIN_EMAILS")
+	if seedAdminEmails == "" {
+		return nil
+	}
+
+	emails := strings.Split(seedAdminEmails, ",")
+	for _, email := range emails {
+		email = strings.TrimSpace(email)
+		if email == "" {
+			continue
+		}
+
+		user, err := s.repo.GetUserByEmail(ctx, email)
+		if err != nil {
+			// User doesn't exist yet, will be handled at registration
+			continue
+		}
+
+		// Check if user already has __admin__ group
+		if user.Groups != nil && user.Groups[models.InternalAdminGroup] {
+			continue
+		}
+
+		// Add __admin__ group
+		if user.Groups == nil {
+			user.Groups = models.UserGroups{}
+		}
+		user.Groups[models.InternalAdminGroup] = true
+		user.UpdatedAt = time.Now()
+
+		if err := s.repo.StoreUser(ctx, user); err != nil {
+			slog.Warn("Failed to sync seed admin", "email", email, "error", err)
+			continue
+		}
+		slog.Info("Added __admin__ group to seed admin", "email", email)
 	}
 
 	return nil
@@ -1028,6 +1118,9 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.U
 
 		// Admins can only see users who share their groups
 		if isAdmin && models.SharesAnyUserGroup(admin.Groups, user.Groups) {
+			// Filter pending updates to only show groups admin can approve
+			filteredPendingUpdates := filterPendingUpdatesForAdmin(user.PendingUpdates, admin.Groups)
+
 			response = append(response, models.UserResponse{
 				ID:             user.ID,
 				Email:          user.Email,
@@ -1039,7 +1132,7 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.U
 				Status:         user.Status,
 				Permissions:    user.Permissions,
 				Groups:         user.Groups,
-				PendingUpdates: user.PendingUpdates,
+				PendingUpdates: filteredPendingUpdates,
 			})
 		}
 	}
@@ -1106,6 +1199,12 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		}
 	}
 
+	// Filter pending updates for admin (superuser sees all)
+	pendingUpdates := targetUser.PendingUpdates
+	if isAdmin && !isSuperUser {
+		pendingUpdates = filterPendingUpdatesForAdmin(targetUser.PendingUpdates, admin.Groups)
+	}
+
 	response := &models.UserResponse{
 		ID:             targetUser.ID,
 		Email:          targetUser.Email,
@@ -1117,7 +1216,7 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		Status:         targetUser.Status,
 		Permissions:    targetUser.Permissions,
 		Groups:         targetUser.Groups,
-		PendingUpdates: targetUser.PendingUpdates,
+		PendingUpdates: pendingUpdates,
 	}
 
 	return response, nil
@@ -1154,15 +1253,41 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		return fmt.Errorf(errors.ErrInvalidRequest)
 	}
 
+	// Validate requested permissions exist in config
+	if len(req.Updates.Permissions) > 0 {
+		if !models.IsPermissionsLoaded() {
+			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+		}
+		for perm := range req.Updates.Permissions {
+			if !models.IsValidPermission(models.Permission(perm)) {
+				slog.Warn("Invalid permission requested", "permission", perm, "user_id", userID)
+				return fmt.Errorf(errors.ErrInvalidRequest)
+			}
+		}
+	}
+
+	// Validate requested groups exist in config
+	if len(req.Updates.Groups) > 0 {
+		if !models.IsGroupsLoaded() {
+			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+		}
+		for group := range req.Updates.Groups {
+			if !models.IsValidUserGroup(models.UserGroup(group)) {
+				slog.Warn("Invalid group requested", "group", group, "user_id", userID)
+				return fmt.Errorf(errors.ErrInvalidRequest)
+			}
+		}
+	}
+
 	// Convert from RequestUpdateFields to UserUpdateFields
 	permissions := models.UserPermissions{}
 	for perm, enabled := range req.Updates.Permissions {
-		permissions[perm] = enabled
+		permissions[models.Permission(perm)] = enabled
 	}
 
 	groups := models.UserGroups{}
 	for group, enabled := range req.Updates.Groups {
-		groups[group] = enabled
+		groups[models.UserGroup(group)] = enabled
 	}
 
 	var userUpdateFields models.UserUpdateFields
@@ -1184,12 +1309,6 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 	// Store update request
 	user.PendingUpdates = updateReq
 	slog.Debug("Added pending updates to user")
-
-	// Update the user's status to pending approval if not already
-	if user.Status != models.UserStatusPendingApproval {
-		user.Status = models.UserStatusPendingApproval
-		slog.Debug("Setting user status to pending approval")
-	}
 
 	// Always update timestamp to force Redis to save the change
 	user.UpdatedAt = time.Now()
@@ -1229,4 +1348,42 @@ func (s *AuthService) AcquireUserLock(ctx context.Context, userID string, ttl ti
 
 func (s *AuthService) ReleaseUserLock(ctx context.Context, userID string) error {
 	return s.repo.ReleaseUserLock(ctx, userID)
+}
+
+func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups models.UserGroups) *models.UserUpdateRequest {
+	if pending == nil {
+		return nil
+	}
+
+	// Create filtered copy
+	filtered := &models.UserUpdateRequest{
+		RequestedAt: pending.RequestedAt,
+		Fields:      models.UserUpdateFields{},
+	}
+
+	// Keep all permission requests (admins can approve any permission changes)
+	if pending.Fields.Permissions != nil {
+		filtered.Fields.Permissions = pending.Fields.Permissions
+	}
+
+	// Filter group requests to only include groups the admin is in
+	if pending.Fields.Groups != nil {
+		filteredGroups := models.UserGroups{}
+		hasAny := false
+		for group, enabled := range *pending.Fields.Groups {
+			if adminGroups[group] {
+				filteredGroups[group] = enabled
+				hasAny = true
+			}
+		}
+		if hasAny {
+			filtered.Fields.Groups = &filteredGroups
+		}
+	}
+
+	if filtered.Fields.Permissions == nil && filtered.Fields.Groups == nil {
+		return nil
+	}
+
+	return filtered
 }

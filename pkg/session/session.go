@@ -5,6 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,11 +28,56 @@ const (
 	ActivityAutomatedBehavior = "automated_behavior"
 )
 
-// Thresholds
+// Default thresholds
 const (
-	RapidRequestThreshold   = 10                     // requests per minute
-	AutomatedRequestTimeout = 100 * time.Millisecond // too fast for human
+	DefaultRapidRequestThreshold   = 120                   // requests per minute
+	DefaultAutomatedRequestTimeout = 10 * time.Millisecond // too fast for human
 )
+
+var (
+	RapidRequestThreshold     int64         = DefaultRapidRequestThreshold
+	AutomatedRequestTimeout   time.Duration = DefaultAutomatedRequestTimeout
+	rapidRequestCheckDisabled bool          = false
+)
+
+// IsRapidRequestCheckDisabled returns true if rapid request checking is disabled
+// This happens when RAPID_REQUEST_CONFIG is set to "0,0"
+func IsRapidRequestCheckDisabled() bool {
+	return rapidRequestCheckDisabled
+}
+
+// InitRapidRequestConfig initializes from RAPID_REQUEST_CONFIG env var
+// Format: "threshold,timeout_ms" e.g. "50,100" means 50 req/min and 100ms timeout
+// Use "0,0" to disable rapid request checking entirely
+func InitRapidRequestConfig() {
+	config := os.Getenv("RAPID_REQUEST_CONFIG")
+	if config == "" {
+		return
+	}
+
+	parts := strings.Split(config, ",")
+	if len(parts) >= 2 {
+		threshold, err1 := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+		timeoutMs, err2 := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+
+		// If both are 0, disable rapid request checking
+		if err1 == nil && err2 == nil && threshold == 0 && timeoutMs == 0 {
+			rapidRequestCheckDisabled = true
+			return
+		}
+
+		if err1 == nil && threshold > 0 {
+			RapidRequestThreshold = threshold
+		}
+		if err2 == nil && timeoutMs > 0 {
+			AutomatedRequestTimeout = time.Duration(timeoutMs) * time.Millisecond
+		}
+	} else if len(parts) == 1 {
+		if threshold, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64); err == nil && threshold > 0 {
+			RapidRequestThreshold = threshold
+		}
+	}
+}
 
 type SessionData struct {
 	UserID    string    `json:"user_id"`

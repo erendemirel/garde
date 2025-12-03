@@ -112,6 +112,14 @@ func GetAllPermissions() []Permission {
 	return perms
 }
 
+func IsValidPermission(p Permission) bool {
+	permissionsMutex.RLock()
+	defer permissionsMutex.RUnlock()
+
+	_, exists := permissionDescriptions[p]
+	return exists
+}
+
 type UserPermissions map[Permission]bool
 
 func (u *User) HasPermission(permission Permission) bool {
@@ -147,6 +155,10 @@ func AdminPermissions() UserPermissions {
 }
 
 type UserGroup string
+
+// InternalAdminGroup is a special group for admin users
+// This group is managed internally and NOT defined in groups.json
+const InternalAdminGroup UserGroup = "__admin__"
 
 type UserGroupInfo struct {
 	Name        string `json:"name"`
@@ -230,6 +242,11 @@ func SharesAnyUserGroup(groups1, groups2 UserGroups) bool {
 }
 
 func IsValidUserGroup(group UserGroup) bool {
+	// Internal admin group is always valid
+	if group == InternalAdminGroup {
+		return true
+	}
+
 	groupsMutex.RLock()
 	defer groupsMutex.RUnlock()
 
@@ -266,7 +283,7 @@ func (u *User) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (u *User) UnmarshalJSON(data []byte) error {  // Implements custom JSON unmarshaling
+func (u *User) UnmarshalJSON(data []byte) error { // Implements custom JSON unmarshaling
 	type Alias User // Create alias to avoid recursion
 	aux := &struct {
 		*Alias

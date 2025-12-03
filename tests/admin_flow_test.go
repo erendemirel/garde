@@ -1,11 +1,11 @@
 package integration
 
 import (
-	"garde/internal/models"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"garde/internal/models"
 	"net/http"
 	"os"
 	"strings"
@@ -76,17 +76,17 @@ func TestAdminApprovalFlow(t *testing.T) {
 	}
 
 	// Get admin email from env
-	adminUsersEnv := os.Getenv("ADMIN_USERS")
+	adminUsersEnv := os.Getenv("SEED_ADMIN_EMAILS")
 	if adminUsersEnv == "" {
-		t.Fatal("ADMIN_USERS environment variable not set")
+		t.Fatal("SEED_ADMIN_EMAILS environment variable not set")
 	}
 	adminUsers := strings.Split(adminUsersEnv, ",")
 	if len(adminUsers) == 0 {
-		t.Fatal("No admin users configured in ADMIN_USERS environment variable")
+		t.Fatal("No admin users configured in SEED_ADMIN_EMAILS environment variable")
 	}
 	adminEmail := strings.TrimSpace(adminUsers[0])
 	if adminEmail == "" {
-		t.Fatal("First admin email in ADMIN_USERS is empty")
+		t.Fatal("First admin email in SEED_ADMIN_EMAILS is empty")
 	}
 	t.Logf("Using admin email: %s", adminEmail)
 	adminPassword := "Admin@123" // Set a secure password for the admin
@@ -359,7 +359,7 @@ func TestAdminApprovalFlow(t *testing.T) {
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	_ = logRequestAndResponse(t, req, resp, permUpdateBody)
-	t.Logf("✓ Admin correctly cannot update user permissions")
+	t.Logf(" Admin correctly cannot update user permissions")
 	resp.Body.Close()
 
 	// TEST CASE 2: Admin tries to add user to a valid group they don't belong to - should fail with 401
@@ -380,7 +380,7 @@ func TestAdminApprovalFlow(t *testing.T) {
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	_ = logRequestAndResponse(t, req, resp, validGroupUpdateBody)
-	t.Logf("✓ Admin correctly cannot add user to groups admin doesn't belong to")
+	t.Logf(" Admin correctly cannot add user to groups admin doesn't belong to")
 	resp.Body.Close()
 
 	// TEST CASE 3: Admin tries to add user to admin's own group - should succeed
@@ -436,7 +436,7 @@ func TestAdminApprovalFlow(t *testing.T) {
 			t.Fatalf("Failed to send request: %v", err)
 		}
 		_ = logRequestAndResponse(t, req, resp, ownGroupUpdateBody)
-		t.Logf("✓ Admin correctly can add user to admin's own group")
+		t.Logf(" Admin correctly can add user to admin's own group")
 		resp.Body.Close()
 	} else {
 		t.Logf("Admin does not belong to any groups yet - skipping test case 3")
@@ -734,17 +734,17 @@ func TestUserAccess(t *testing.T) {
 	}
 
 	// Get admin email from env
-	adminUsersEnv := os.Getenv("ADMIN_USERS")
+	adminUsersEnv := os.Getenv("SEED_ADMIN_EMAILS")
 	if adminUsersEnv == "" {
-		t.Fatal("ADMIN_USERS environment variable not set")
+		t.Fatal("SEED_ADMIN_EMAILS environment variable not set")
 	}
 	adminUsers := strings.Split(adminUsersEnv, ",")
 	if len(adminUsers) == 0 {
-		t.Fatal("No admin users configured in ADMIN_USERS environment variable")
+		t.Fatal("No admin users configured in SEED_ADMIN_EMAILS environment variable")
 	}
 	adminEmail := strings.TrimSpace(adminUsers[0])
 	if adminEmail == "" {
-		t.Fatal("First admin email in ADMIN_USERS is empty")
+		t.Fatal("First admin email in SEED_ADMIN_EMAILS is empty")
 	}
 	t.Logf("Using admin email: %s", adminEmail)
 	adminPassword := "Admin@123" // Set a secure password for the admin
@@ -951,7 +951,7 @@ func TestUserAccess(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Expected admin to access user in same group, got: %v", resp.StatusCode)
 	}
-	t.Logf("✓ Admin can access user in same group")
+	t.Logf(" Admin can access user in same group")
 	resp.Body.Close()
 
 	// TEST CASE 2: Admin should not be able to get user from different group
@@ -970,7 +970,7 @@ func TestUserAccess(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("Expected 401 for admin accessing user in different group, got: %v", resp.StatusCode)
 	}
-	t.Logf("✓ Admin correctly denied access to user in different group")
+	t.Logf(" Admin correctly denied access to user in different group")
 	resp.Body.Close()
 
 	// TEST CASE 3: Admin should only see users from shared groups in list
@@ -1012,7 +1012,7 @@ func TestUserAccess(t *testing.T) {
 	if foundUser2 {
 		t.Fatalf("Admin should not see user2 (different group) in user list")
 	}
-	t.Logf("✓ Admin correctly sees only users from shared groups")
+	t.Logf(" Admin correctly sees only users from shared groups")
 
 	// TEST CASE 4: Superuser should see all users
 	t.Logf("TEST CASE 4: Superuser should see all users")
@@ -1050,7 +1050,7 @@ func TestUserAccess(t *testing.T) {
 	if !foundUser1 || !foundUser2 {
 		t.Fatalf("Superuser should see all users in user list")
 	}
-	t.Logf("✓ Superuser correctly sees all users")
+	t.Logf(" Superuser correctly sees all users")
 
 	t.Log("User access test completed successfully!")
 }
