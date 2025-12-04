@@ -23,9 +23,13 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 ## Features
 
 **Security**: Rate limiting(IP based and user based), behavior detection, session security, input sanitization, request size limiting, key rotation, mTLS, MFA
+
 **Authentication**: Three modes (browser, API, API key) with server side session management
+
 **Permissions**: Easy permission system avoiding traditional role/scope paradoxes and request/approval system
+
 **Implementation**: Vault secrets, data encryption, secure error handling, privacy protection
+
 **Hot Reload**: All secrets and config changes without restart
 
 > [!TIP]
