@@ -79,9 +79,12 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 1. Download the source code
 
-2. Set mandatory parameters in [`.env`](https://github.com/erendemirel/garde/blob/master/.env)
+2. Set up Vault and configure secrets (see [Secrets Configuration](#2-configure-secrets))
 
-3. Run `docker compose --profile auth-service-with-redis up`
+3. Run `docker compose --profile dev up`
+
+> [!NOTE]
+> Secrets are stored in **tmpfs**. Vault Agent automatically rotates credentials.
 
 > [!NOTE]
 > For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)<br>
@@ -95,7 +98,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 See [endpoints](https://garde-api-docs.netlify.app)
 
 > [!TIP]
-> This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain in your `.env` file, use those instead of localhost and 8443).
+> This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443).
 
 ---
 
@@ -107,40 +110,61 @@ See [endpoints](https://garde-api-docs.netlify.app)
 
 #### 1. Download the source code
 
-#### 2. Configure and start Redis
-##### a. Using an external Redis instance (if you have your own Redis instance):
+#### 2. Configure Secrets
 
-- Set in `.env`:
-```ini
-REDIS_HOST=your_redis_server_host
-REDIS_PORT=your_redis_server_port
-REDIS_PASSWORD=your_redis_server_password
-REDIS_DB=redis_database_to_use  # Optional
+garde uses **HashiCorp Vault** for secrets management.
+
+> [!NOTE]
+> Secrets are written to `/run/secrets` (tmpfs) by Vault Agent. The app watches for changes and automatically reloads (without restart).
+
+**Required secrets in Vault:**
+| Secret Path | Description |
+|-------------|-------------|
+| `secret/garde/redis_host` | Redis server hostname |
+| `secret/garde/redis_port` | Redis server port |
+| `secret/garde/redis_password` | Redis authentication password |
+| `secret/garde/domain_name` | Your domain (for cookies and TLS) |
+| `secret/garde/superuser_email` | Superuser account email (registers manually) |
+| `secret/garde/api_key` | API key (20+ chars, upper/lower/number/special) |
+
+**Optional secrets:**
+| Secret Path | Description | Default |
+|-------------|-------------|---------|
+| `secret/garde/redis_db` | Redis database number | `0` |
+| `secret/garde/port` | Server port | `8443` |
+| `secret/garde/use_tls` | Enable TLS | `false` |
+| `secret/garde/gin_mode` | Gin framework mode | `debug` |
+| `secret/garde/log_level` | Log level (DEBUG/INFO/WARN/ERROR) | `INFO` |
+
+##### Architecture
+
+```
+┌─────────────┐    writes to     ┌─────────────┐    watches    ┌─────────────┐
+│    Vault    │ ───────────────→ │   tmpfs     │ ←─────────────│    garde    │
+│   Server    │   Vault Agent    │ /run/secrets│   file watcher│    app      │
+└─────────────┘                  └─────────────┘               └─────────────┘
+                                       
+                                  
 ```
 
-##### b. Using the bundled Redis container (included in the project's docker-compose):
+##### Development Setup
 
-- Set in `.env`:
-```ini
-REDIS_PASSWORD=your_redis_server_password
-REDIS_DB=redis_database_to_use  # Optional
+For development, secrets are loaded from `dev.secrets` file via Vault:
+
+```bash
+# Start the full stack (Vault + Redis + App)
+docker compose --profile dev up --build
 ```
 
-#### 3. Configure domain name
+This automatically:
+1. Starts Vault in dev mode
+2. Seeds secrets from `dev.secrets` into Vault
+3. Vault Agent writes secrets to tmpfs (`/run/secrets`)
+4. App reads secrets and connects to Redis
 
-- Set in `.env`:
-```ini
-DOMAIN_NAME=your_domain  # Can be any value if you are not going to use built-in TLS (See "Configure built-in TLS" section below for detailed information)
-```
+See `vault/` directory for Vault Agent configuration examples.
 
-#### 4. Set superuser credentials
-Set in `.env`:
-```ini
-SUPERUSER_EMAIL=email_of_superuser_account
-SUPERUSER_PASSWORD=password_of_superuser_account   # Must meet password complexity and length(8-64) requirements
-```
-
-#### 5. Run the application
+#### 3. Run the application
 
 ##### a. Without the project's docker-compose:
 
@@ -153,14 +177,12 @@ go build -o garde ./cmd
 ```
 ##### b. With the project's docker-compose:
 
-- If you are going to use your own Redis instance (external Redis):
 ```bash
-docker compose --profile auth-service-without-redis up
+# Development (includes Vault, Redis, and App)
+docker compose --profile dev up --build
 ```
-- If you are going to use the Redis container included in project's docker-compose (bundled Redis container):
-```bash
-docker compose --profile auth-service-with-redis up
-```
+
+For production, you would configure a proper Vault cluster and use AppRole authentication instead of the dev token.
 
 
 ### Conditional or Optional Steps
@@ -179,35 +201,37 @@ Configure the application to use built-in TLS.
   - Certificate chain must include intermediate certificates
   - SAN must include all domain variants (e.g., example.com, *.example.com)
 
-- Set in `.env`:
-```ini
-USE_TLS=false  # Enable-disable built-in TLS-mTLS
-TLS_CERT_PATH=path_to_your_server_cert
-TLS_KEY_PATH=path_to_your_server_private_key
-PORT=your_https_port  # Optional. The port the application will listen on. Default is 8443
-```
+- Add to secrets directory:
+
+| Secret File | Description |
+|------------|-------------|
+| `use_tls` | Set to `true` to enable TLS |
+| `tls_cert_path` | Path to your server certificate |
+| `tls_key_path` | Path to your server private key |
+| `port` | HTTPS port (optional, default: 8443) |
+
 #### 2. Configure mTLS and set API key (Conditional)
 Required only if auth service will communicate with internal services.
 
 > [!IMPORTANT]  
 > Built-in TLS must be enabled for mTLS and API-key authentication to work
 
-Set in `.env`:
-```ini
-TLS_CA_PATH=path_to_your_client_ca_cert  # Comma-separated paths for multiple CAs. You might have multiple client CA certificates for different services
-API_KEY=your_api_key  # Must be at least 20 characters long and contain at least one uppercase letter, one lowercase letter, one number and one special character
-```
+Add to secrets directory:
+
+| Secret File | Description |
+|------------|-------------|
+| `tls_ca_path` | Path to client CA cert (comma-separated for multiple) |
+| `api_key` | API key (20+ chars, complexity required) |
 
 #### 3. Configure Log Level (Optional)
 Control the verbosity of application logs for troubleshooting and monitoring.
 
-Set in `.env`:
-```ini
-LOG_LEVEL=INFO  # Values: DEBUG, INFO, WARN, ERROR (default is INFO)
-```
+Add to secrets directory:
 
-> [!TIP]
-> Available log levels are: DEBUG, INFO, WARN, ERROR
+| Secret File | Description |
+|------------|-------------|
+| `log_level` | DEBUG, INFO, WARN, or ERROR |
+| `gin_mode` | debug or release |
 
 #### 4. Mail Server Configuration (Conditional)
 Set configurations to be able to send mails. Resetting password functionality requires sending a mail.
@@ -220,18 +244,19 @@ Set configurations to be able to send mails. Resetting password functionality re
 - SPF record: `v=spf1 mx -all`
 - PTR (reverse DNS) record for your IP
 
-Set in `.env`:
-```ini
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-specific-password
-SMTP_FROM=your-email@gmail.com
-```
+Add to secrets directory:
+
+| Secret File | Description |
+|------------|-------------|
+| `smtp_host` | SMTP server hostname |
+| `smtp_port` | SMTP server port (default: 587) |
+| `smtp_user` | SMTP authentication username |
+| `smtp_password` | SMTP authentication password |
+| `smtp_from` | Sender email address |
 
 #### 5. Permissions and Groups System (Conditional)
 
-In addition to configurations stored in the `.env` file, there are also configurations for application and business logic. These include permissions and groups, defined in JSON files under the `/configs` directory: `permissions.json` and `groups.json`.
+In addition to secrets, there are also configurations for application and business logic. These include permissions and groups, defined in JSON files under the `/configs` directory: `permissions.json` and `groups.json`.
 
 The permissions list defines all permissions that your authentication API instance will support, such as access to specific menus in your application dashboard or any other permission you'd like your users to have. If you want to use permissions, you must define them in this file.
 
@@ -269,20 +294,30 @@ Set in `/configs/groups.json`:
 ```
 
 #### 6. Other Configurations (Optional)
-See [example .env file](https://github.com/erendemirel/garde/blob/master/.env) for full list of optional parameters:
-```ini
-GIN_MODE, CORS_ALLOW_ORIGINS, ENFORCE_MFA, SEED_ADMIN_EMAILS, RATE_LIMIT, RAPID_REQUEST_CONFIG, DISABLE_USER_AGENT_CHECK, DISABLE_IP_BLACKLISTING, DISABLE_MULTIPLE_IP_CHECK
-```
+
+These optional settings are also stored in Vault and written to `/run/secrets` by Vault Agent:
+
+| Vault Secret Path | Description |
+|-------------------|-------------|
+| `secret/garde/cors_allow_origins` | Allowed CORS origins (comma-separated) |
+| `secret/garde/enforce_mfa` | Set to `true` to enforce MFA for all users |
+| `secret/garde/admin_users` | Comma-separated admin user emails |
+| `secret/garde/rate_limit` | IP-based rate limiting. Format: `limit,interval_seconds` (e.g., `100,60` = max 100 requests per 60 seconds per IP). Set to `0,0` to disable (not recommended for production) |
+| `secret/garde/rapid_request_config` | User-based rapid request detection. Format: `max_per_min,min_interval_ms` (e.g., `120,10` = max 120 req/min, block if requests are <10ms apart). Detects automated/bot behavior. Set to `0,0` to disable |
+| `secret/garde/disable_user_agent_check` | Set to `true` to disable User-Agent header validation. When enabled, requests with suspicious User-Agent patterns (bot/crawler identifiers) are flagged |
+| `secret/garde/disable_ip_blacklisting` | Set to `true` to disable automatic IP blocking. When enabled, IPs are blocked after repeated failed logins or rate limit violations |
+| `secret/garde/disable_multiple_ip_check` | Set to `true` to disable concurrent session IP detection. When enabled, sessions from multiple IPs simultaneously are flagged as suspicious |
+
+> [!NOTE]
+> ALL configuration goes through Vault. The app reads from `/run/secrets` (tmpfs), which is populated by Vault Agent.
 
 ##### Admin Management
 There are two types of administrative users - superuser, and admins.
 Superuser is only one, and they can perform any operation. Admins are less privileged, but can be many.
-```ini
-SEED_ADMIN_EMAILS=admin1@example.com,admin2@example.com  # Initial admins (seeded on registration)
-```
-- Users registering with emails in `SEED_ADMIN_EMAILS` are automatically added to the `__admin__` group
-- Superuser can dynamically add/remove admins via `PUT /users/:id` with `groups: {"__admin__": true/false}`
-- Only superuser can modify the `__admin__` group membership
+
+Add `admin_users` secret with comma-separated admin emails. Users whose emails are listed here have admin privileges.
+- Admin status is determined by checking if user's email is in `ADMIN_USERS`
+- To add/remove admins, update the `ADMIN_USERS` secret (hot reload supported)
 - Only superuser can assign initial groups to users with no groups
 
 ##### Group-Based Access Control
@@ -290,14 +325,12 @@ Admins can only manage users who **already share at least one group** with them:
 
 | Admin Groups | Target User Groups | Can Admin Manage? | Can Admin Modify Groups? |
 |--------------|-------------------|-------------------|--------------------------|
-| `[__admin__, A]` | `[A]` | ✅ Yes | ✅ Only to groups admin is in (X) |
-| `[__admin__, A, B]` | `[A]` | ✅ Yes | ✅ Can add to X or Y |
-| `[__admin__, A]` | `[B]` | ❌ No | ❌ No shared groups |
-| `[__admin__, A]` | `[]` (none) | ❌ No | ❌ No shared groups |
-| `[__admin__]` | `[__admin__]` | ✅ Yes | ❌ Only superuser can modify `__admin__` |
+| `[A]` | `[A]` | ✅ Yes | ✅ Only to groups admin is in |
+| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add to A or B |
+| `[A]` | `[B]` | ❌ No | ❌ No shared groups |
+| `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
 
-
-- **When groups.json is disabled:** Admins can only manage other admins (they share the `__admin__` group). Regular users can only be managed by superuser
+- **When groups.json is disabled:** Admins can manage all users (no group restrictions)
 
 #### 7. Network Configuration (When required)
 ##### Required Ports
@@ -324,21 +357,21 @@ location / {
 - Allow inbound: Your auth API instance port
 - Allow outbound: Redis (if using your own), mail server (if enabled)
 
-> [!IMPORTANT]  
-> A restart is needed for any changes to take effect
+> [!NOTE]  
+> All configuration changes are automatically detected via file watcher - no restart needed. This includes secrets in `/run/secrets` and config files (`permissions.json`, `groups.json`).
 
 ## Verifying Installation
 
 Try a login:
 
 ```bash
-curl -X POST https://your-domain/login -H "Content-Type: application/json" -d "{\"email\":\"your_superuser_email\",\"password\":\"your_superuser_password\"}"
+curl -X POST https://your-domain/login -H "Content-Type: application/json" -d "{\"email\":\"your_email\",\"password\":\"your_password\"}"
 ```
 
 
 ## Example Configuration Files
 
-- Secrets (required): [.env](https://github.com/erendemirel/garde/blob/master/.env)
+- Secrets structure: [secrets/.gitkeep](https://github.com/erendemirel/garde/blob/master/secrets/.gitkeep)
 - Permissions List (optional): [permissions.json](https://github.com/erendemirel/garde/blob/master/configs/permissions.json)
 - Groups List (optional): [groups.json](https://github.com/erendemirel/garde/blob/master/configs/groups.json)
 
@@ -349,25 +382,21 @@ For more information on how garde works and how to integrate, see [integration g
 ## Security Mandates
 
 - Rotate these frequently:
-  ```ini
-  API_KEY
-  ```
+  - `api_key`
 - Rotate these often:
-  ```ini
-  REDIS_PASSWORD
-  SUPERUSER_PASSWORD
-  ```
+  - `redis_password`
 - Enable HSTS with preload directive in production
 - Configure TLS on the firewall if not using the in-built one
 - Place a proxy server in front of your Redis (if you are using the in-built one, place in front of "redis_network" Docker network)
-- Do not set `RATE_LIMIT` to `0,0` in `.env` in production (this disables IP based rate limiter)
-- Do not set `RAPID_REQUEST_CONFIG` to `0,0` in `.env` in production (this disables user ID based rate limiter)
-- Do not set `DISABLE_USER_AGENT_CHECK` to `true` in `.env` in production
-- Do not set `DISABLE_IP_BLACKLISTING` to `true` in `.env` in production
-- Do not set `DISABLE_MULTIPLE_IP_CHECK` to `true` in `.env` in production
-- Set `ENFORCE_MFA=true` in `.env` in production
+- Do not set `rate_limit` to `0,0` in production (this disables IP based rate limiter)
+- Do not set `rapid_request_config` to `0,0` in production (this disables user ID based rate limiter)
+- Do not set `disable_user_agent_check` to `true` in production
+- Do not set `disable_ip_blacklisting` to `true` in production
+- Do not set `disable_multiple_ip_check` to `true` in production
+- Set `enforce_mfa` to `true` in production
 - Use separate CA certificates for different client groups
 - Rotate certificates at least once a year
+- Use HashiCorp Vault or similar for secrets management
 
 
 ## Contributing

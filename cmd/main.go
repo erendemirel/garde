@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -10,6 +9,7 @@ import (
 	"garde/internal/middleware"
 	"garde/internal/repository"
 	"garde/internal/service"
+	"garde/pkg/config"
 	"garde/pkg/errors"
 	"garde/pkg/session"
 	"garde/pkg/validation"
@@ -23,7 +23,6 @@ import (
 	"garde/internal/models"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -43,10 +42,16 @@ import (
 // @BasePath /
 
 func main() {
-	// Load environment variables first
-	if err := godotenv.Load(); err != nil {
-		fmt.Println("Error loading .env file")
+	// Initialize config loader (reads from /run/secrets - should be tmpfs)
+	if err := config.Init(""); err != nil {
+		fmt.Printf("Failed to initialize config: %v\n", err)
+		fmt.Println("Ensure secrets directory exists at /run/secrets with required secret files")
 		os.Exit(1)
+	}
+
+	// Start watching for secret changes (hot-reload)
+	if err := config.StartWatcher(); err != nil {
+		slog.Warn("Failed to start config watcher, hot-reload disabled", "error", err)
 	}
 
 	session.InitRapidRequestConfig()
@@ -55,7 +60,7 @@ func main() {
 	logLevel := slog.LevelInfo // Default log level
 
 	// Set log level
-	envLogLevel := strings.ToUpper(os.Getenv("LOG_LEVEL"))
+	envLogLevel := strings.ToUpper(config.Get("LOG_LEVEL"))
 	switch envLogLevel {
 	case "DEBUG":
 		logLevel = slog.LevelDebug
@@ -87,6 +92,26 @@ func main() {
 		slog.Info("Running without groups system")
 	}
 
+	// For hot-reload
+	if err := config.StartConfigWatcher("configs", func(fileName string) {
+		switch fileName {
+		case "permissions.json":
+			if err := models.LoadPermissions(); err != nil {
+				slog.Error("Failed to reload permissions", "error", err)
+			} else {
+				slog.Info("Permissions reloaded successfully")
+			}
+		case "groups.json":
+			if err := models.LoadGroups(); err != nil {
+				slog.Error("Failed to reload groups", "error", err)
+			} else {
+				slog.Info("Groups reloaded successfully")
+			}
+		}
+	}); err != nil {
+		slog.Warn("Failed to start config file watcher", "error", err)
+	}
+
 	if err := validation.ValidateConfig(); err != nil {
 		slog.Error("Configuration validation failed", "error", err)
 		os.Exit(1)
@@ -103,20 +128,17 @@ func main() {
 	}
 	slog.Info("Connected to Redis successfully")
 
+	// Set up hot-reload: reconnect Redis when secrets change
+	config.SetReloadHook(func() {
+		slog.Info("Secrets changed, reconnecting to Redis...")
+		if err := repo.Reconnect(); err != nil {
+			slog.Error("Failed to reconnect to Redis after secret change", "error", err)
+		}
+	})
+
 	authService := service.NewAuthService(repo)
 	securityAnalyzer := service.NewSecurityAnalyzer(repo)
 	authHandler := handlers.NewAuthHandler(authService)
-
-	// Initialize superuser
-	err = authService.InitializeSuperUser(context.Background())
-	if err != nil {
-		slog.Error("Failed to initialize superuser", "error", err)
-		os.Exit(1)
-	}
-
-	if err := authService.SyncSeedAdmins(context.Background()); err != nil {
-		slog.Warn("Failed to sync seed admins", "error", err)
-	}
 
 	rateLimiter := middleware.NewRateLimiter(repo)
 
@@ -187,7 +209,7 @@ func main() {
 	validateEndpoint := router.Group("/validate")
 	validateEndpoint.Use(func(c *gin.Context) {
 		// First check for mTLS - this must happen before anything else
-		if strings.ToLower(os.Getenv("USE_TLS")) == "true" {
+		if config.GetBool("USE_TLS") {
 			// Apply mTLS middleware first
 			middleware.MTLSMiddleware()(c)
 			if c.IsAborted() {
@@ -217,11 +239,8 @@ func main() {
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	var srv *http.Server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8443"
-	}
-	useTLS := strings.ToLower(os.Getenv("USE_TLS")) == "true"
+	port := config.GetWithDefault("PORT", "8443")
+	useTLS := config.GetBool("USE_TLS")
 
 	// TLS - mTLS
 	if useTLS {
@@ -231,14 +250,14 @@ func main() {
 			ClientAuth: tls.RequireAndVerifyClientCert, // Require client certificates
 		}
 
-		cert, err := tls.LoadX509KeyPair(os.Getenv("TLS_CERT_PATH"), os.Getenv("TLS_KEY_PATH"))
+		cert, err := tls.LoadX509KeyPair(config.Get("TLS_CERT_PATH"), config.Get("TLS_KEY_PATH"))
 		if err != nil {
 			slog.Error("Failed to load server certificate", "error", err)
 			os.Exit(1)
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
 
-		if caPath := os.Getenv("TLS_CA_PATH"); caPath != "" {
+		if caPath := config.Get("TLS_CA_PATH"); caPath != "" {
 			caCertPool := x509.NewCertPool()
 			caCert, err := os.ReadFile(caPath)
 			if err != nil {

@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"garde/internal/models"
+	"garde/pkg/config"
 	"garde/pkg/session"
 	"log/slog"
-	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -18,35 +19,72 @@ import (
 
 type RedisRepository struct {
 	client *redis.Client
+	host   string
+	port   string
+	dbNum  int
+	mu     sync.RWMutex
 }
 
 func NewRedisRepository() (*RedisRepository, error) {
-	dbNum, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
+	dbNum, _ := strconv.Atoi(config.Get("REDIS_DB"))
 
 	var host, port string
-	if os.Getenv("DOCKER_PROFILE") == "with-redis" {
-		host = "redis"
+	if config.Get("DOCKER_PROFILE") == "with-redis" {
+		host = "dev-redis"
 		port = "6379"
 	} else {
-		host = os.Getenv("REDIS_HOST")
-		port = os.Getenv("REDIS_PORT")
+		host = config.Get("REDIS_HOST")
+		port = config.Get("REDIS_PORT")
 	}
 
-	client := redis.NewClient(&redis.Options{
-		Addr:     host + ":" + port,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       dbNum,
+	repo := &RedisRepository{
+		host:  host,
+		port:  port,
+		dbNum: dbNum,
+	}
+
+	if err := repo.connect(); err != nil {
+		return nil, err
+	}
+
+	return repo, nil
+}
+
+func (r *RedisRepository) connect() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.client != nil {
+		r.client.Close()
+	}
+
+	r.client = redis.NewClient(&redis.Options{
+		Addr:     r.host + ":" + r.port,
+		Password: config.Get("REDIS_PASSWORD"),
+		DB:       r.dbNum,
 	})
 
 	// Test connection
 	ctx := context.Background()
-	if err := client.Ping(ctx).Err(); err != nil {
+	if err := r.client.Ping(ctx).Err(); err != nil {
 		slog.Error("Redis connection error", "error", err)
-		return nil, err
+		return err
 	}
 
-	slog.Info("Successfully connected to Redis", "host", host, "port", port)
-	return &RedisRepository{client: client}, nil
+	slog.Info("Successfully connected to Redis", "host", r.host, "port", r.port)
+	return nil
+}
+
+// Use for when secrets are rotated
+func (r *RedisRepository) Reconnect() error {
+	slog.Info("Redis: Reconnecting with new credentials")
+	return r.connect()
+}
+
+func (r *RedisRepository) getClient() *redis.Client {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.client
 }
 
 func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) error {

@@ -1,7 +1,8 @@
 package models
 
 import (
-	"encoding/json"
+	"garde/pkg/config"
+	"strings"
 	"time"
 )
 
@@ -48,33 +49,17 @@ type UserResponse struct {
 	PendingUpdates *UserUpdateRequest `json:"pending_updates,omitempty"`
 }
 
-// Checks if user belongs to the internal admin group
 func (u *UserResponse) IsUserAdmin() bool {
-	if u.Groups == nil {
+	adminUsers := config.Get("ADMIN_USERS")
+	if adminUsers == "" {
 		return false
 	}
-	return u.Groups[InternalAdminGroup]
-}
-
-func (u *UserResponse) MarshalJSON() ([]byte, error) {
-	// Filter out internal __admin__ group from response
-	filteredGroups := make(UserGroups)
-	for group, enabled := range u.Groups {
-		if group != InternalAdminGroup {
-			filteredGroups[group] = enabled
+	for _, email := range strings.Split(adminUsers, ",") {
+		if strings.TrimSpace(email) == u.Email {
+			return true
 		}
 	}
-
-	type Alias UserResponse // Create alias to avoid recursion
-	return json.Marshal(&struct {
-		*Alias
-		Groups         UserGroups         `json:"groups"`
-		PendingUpdates *UserUpdateRequest `json:"pending_updates"`
-	}{
-		Alias:          (*Alias)(u),
-		Groups:         filteredGroups,
-		PendingUpdates: u.PendingUpdates,
-	})
+	return false
 }
 
 type ListUsersResponse struct {

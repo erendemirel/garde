@@ -3,11 +3,11 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 
 	"garde/internal/models"
 	"garde/internal/service"
+	"garde/pkg/config"
 	"garde/pkg/errors"
 
 	"github.com/gin-gonic/gin"
@@ -50,7 +50,7 @@ func AdminMiddleware(authService *service.AuthService) gin.HandlerFunc {
 		}
 
 		// Check if user is superuser
-		superUserEmail := os.Getenv("SUPERUSER_EMAIL")
+		superUserEmail := config.Get("SUPERUSER_EMAIL")
 		isSuperUser := user.Email == superUserEmail
 
 		// Check if user is in internal admin group

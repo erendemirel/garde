@@ -3,7 +3,7 @@ package mail
 import (
 	"crypto/tls"
 	"fmt"
-	"os"
+	"garde/pkg/config"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -18,23 +18,17 @@ func SendMail(to, subject, body string) error {
 	return SendMailFunc(to, subject, body)
 }
 
-// Rename the original function to defaultSendMail
 func defaultSendMail(to, subject, body string) error {
-	// Get SMTP configuration from environment variables
-	smtpHost := os.Getenv("SMTP_HOST")
+	smtpHost := config.Get("SMTP_HOST")
 	if smtpHost == "" {
-		return fmt.Errorf("SMTP_HOST environment variable is not set")
+		return fmt.Errorf("SMTP_HOST is not set")
 	}
 
-	smtpPortStr := os.Getenv("SMTP_PORT")
-	if smtpPortStr == "" {
-		smtpPortStr = "587" // Default to TLS port
-	}
-	smtpPort := smtpPortStr
+	smtpPort := config.GetWithDefault("SMTP_PORT", "587")
 
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPassword := os.Getenv("SMTP_PASSWORD")
-	from := os.Getenv("SMTP_FROM")
+	smtpUser := config.Get("SMTP_USER")
+	smtpPassword := config.Get("SMTP_PASSWORD")
+	from := config.Get("SMTP_FROM")
 	if from == "" {
 		return fmt.Errorf("SMTP_FROM environment variable is not set")
 	}

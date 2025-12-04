@@ -3,11 +3,11 @@ package middleware
 import (
 	"garde/internal/models"
 	"garde/internal/service"
+	"garde/pkg/config"
 	"garde/pkg/errors"
 	"garde/pkg/session"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -106,7 +106,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 }
 
 func CORSMiddleware() gin.HandlerFunc {
-	allowedOrigins := strings.Split(os.Getenv("CORS_ALLOW_ORIGINS"), ",")
+	allowedOrigins := strings.Split(config.Get("CORS_ALLOW_ORIGINS"), ",")
 
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
@@ -143,7 +143,7 @@ func CORSMiddleware() gin.HandlerFunc {
 func SecurityMiddleware(securityAnalyzer *service.SecurityAnalyzer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if rapid request check or rate limiting is disabled
-		if session.IsRapidRequestCheckDisabled() || os.Getenv("RATE_LIMIT") == "0" {
+		if session.IsRapidRequestCheckDisabled() || config.Get("RATE_LIMIT") == "0" {
 			c.Next()
 			return
 		}

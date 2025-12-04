@@ -3,10 +3,10 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 
 	"garde/internal/models"
+	"garde/pkg/config"
 	"garde/pkg/errors"
 
 	"github.com/gin-gonic/gin"
@@ -26,10 +26,10 @@ func MTLSMiddleware() gin.HandlerFunc {
 
 		// Verify certificate domain
 		clientCert := c.Request.TLS.PeerCertificates[0]
-		serverDomain := os.Getenv("DOMAIN_NAME")
+		serverDomain := config.Get("DOMAIN_NAME")
 
 		// Check if we're in testing mode
-		isTestingMode := strings.ToLower(os.Getenv("TESTING_MODE")) == "true"
+		isTestingMode := config.GetBool("TESTING_MODE")
 
 		var domainValid bool
 

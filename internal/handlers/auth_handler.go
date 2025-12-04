@@ -5,12 +5,12 @@ import (
 	"garde/internal/middleware"
 	"garde/internal/models"
 	"garde/internal/service"
+	"garde/pkg/config"
 	"garde/pkg/errors"
 	"garde/pkg/session"
 	"garde/pkg/validation"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -49,7 +49,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	cookieDomain := os.Getenv("DOMAIN_NAME")
+	cookieDomain := config.Get("DOMAIN_NAME")
 
 	// Set secure cookie with session ID
 	c.SetCookie(
@@ -90,7 +90,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	cookieDomain := os.Getenv("DOMAIN_NAME")
+	cookieDomain := config.Get("DOMAIN_NAME")
 
 	// Set cookie with Max-Age=0 (immediate expiration) and expired Expires date as fallback
 	c.SetCookie(

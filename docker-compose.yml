@@ -1,64 +1,114 @@
 services:
 
-  auth-service-only:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: service
-    ports:
-      - "${PORT:-8443}:8443"
-    volumes:
-      - ./certs:/app/certs:ro
-      - ./configs:/app/configs:ro 
-      - ./.env:/app/.env:ro
+  # DEV: Vault Server (dev mode)
+  dev-vault:
+    image: hashicorp/vault:1.15
+    cap_add:
+      - IPC_LOCK
     environment:
-      DOCKER_PROFILE: default
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    restart: unless-stopped
+      VAULT_DEV_ROOT_TOKEN_ID: devtoken
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
     networks:
-      - auth_network
+      - vault_network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "VAULT_ADDR=http://127.0.0.1:8200 vault status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     profiles:
-      - auth-service-without-redis  
+      - dev
 
-  auth-service-with-redis:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: service
-    ports:
-      - "${PORT:-8443}:8443"
-    volumes:
-      - ./certs:/app/certs:ro
-      - ./configs:/app/configs:ro 
-      - ./.env:/app/.env:ro
+  # DEV: Vault Init (seeds secrets from dev.secrets)
+  dev-vault-init:
+    image: hashicorp/vault:1.15
+    entrypoint: /bin/sh
+    command: /vault/init-vault.sh
     environment:
-      DOCKER_PROFILE: with-redis
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      VAULT_ADDR: http://dev-vault:8200
+      VAULT_TOKEN: devtoken
+    volumes:
+      - ./vault/init-vault.sh:/vault/init-vault.sh:ro
+      - ./dev.secrets:/dev.secrets:ro
     depends_on:
-      redis:
-        condition: service_started
-        required: false
-    restart: unless-stopped
+      dev-vault:
+        condition: service_healthy
     networks:
-      - auth_network
-      - redis_network
+      - vault_network
     profiles:
-      - auth-service-with-redis
+      - dev
 
-  redis:
+  # DEV: Vault Agent (writes secrets to tmpfs)
+  dev-vault-agent:
+    image: hashicorp/vault:1.15
+    command: vault agent -config=/vault/config/agent.hcl
+    environment:
+      VAULT_ADDR: http://dev-vault:8200
+    volumes:
+      - ./vault/agent-config-dev.hcl:/vault/config/agent.hcl:ro
+      - ./vault/dev-token:/vault/config/dev-token:ro
+      - vault-secrets:/run/secrets
+    depends_on:
+      dev-vault-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -s /run/secrets/redis_host"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - vault_network
+    profiles:
+      - dev
+
+  # DEV: Redis
+  dev-redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    command: redis-server --appendonly yes --requirepass "redis"
     volumes:
       - redis_data:/data
     restart: unless-stopped
     networks:
       - redis_network
     profiles:
-      - auth-service-with-redis
+      - dev
+
+  # DEV: Auth Service (with bundled Vault + Redis)
+  dev-garde:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: service
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./configs:/app/configs:ro
+      - vault-secrets:/run/secrets:ro
+    environment:
+      DOCKER_PROFILE: with-redis
+    depends_on:
+      dev-vault-agent:
+        condition: service_healthy
+      dev-redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - auth_network
+      - redis_network
+      - vault_network
+    profiles:
+      - dev
 
 volumes:
   redis_data:
     driver: local
+  vault-secrets:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1m,mode=0777
 
 networks:
   auth_network:
@@ -66,4 +116,7 @@ networks:
     driver: bridge
   redis_network:
     name: redis_service_network
-    driver: bridge 
+    driver: bridge
+  vault_network:
+    name: vault_network
+    driver: bridge
