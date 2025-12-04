@@ -5,10 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"garde/pkg/config"
 )
 
 const (
@@ -40,22 +41,20 @@ var (
 	rapidRequestCheckDisabled bool          = false
 )
 
-// IsRapidRequestCheckDisabled returns true if rapid request checking is disabled
 // This happens when RAPID_REQUEST_CONFIG is set to "0,0"
 func IsRapidRequestCheckDisabled() bool {
 	return rapidRequestCheckDisabled
 }
 
-// InitRapidRequestConfig initializes from RAPID_REQUEST_CONFIG env var
 // Format: "threshold,timeout_ms" e.g. "50,100" means 50 req/min and 100ms timeout
 // Use "0,0" to disable rapid request checking entirely
 func InitRapidRequestConfig() {
-	config := os.Getenv("RAPID_REQUEST_CONFIG")
-	if config == "" {
+	configValue := config.Get("RAPID_REQUEST_CONFIG")
+	if configValue == "" {
 		return
 	}
 
-	parts := strings.Split(config, ",")
+	parts := strings.Split(configValue, ",")
 	if len(parts) >= 2 {
 		threshold, err1 := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
 		timeoutMs, err2 := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
@@ -91,7 +90,6 @@ func HashString(s string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// GenerateSessionID creates a cryptographically secure random session ID
 func GenerateSessionID() (string, error) {
 	bytes := make([]byte, SessionIDLength)
 	if _, err := rand.Read(bytes); err != nil {

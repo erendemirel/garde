@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"garde/internal/models"
 	"garde/internal/repository"
+	"garde/pkg/config"
 	"garde/pkg/errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +33,7 @@ func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
 	maxReqs := defaultRequestsPerWindow
 	windowSecs := defaultWindowSeconds
 
-	if envLimit := os.Getenv("RATE_LIMIT"); envLimit != "" {
+	if envLimit := config.Get("RATE_LIMIT"); envLimit != "" {
 		parts := strings.Split(envLimit, ",")
 		if len(parts) >= 1 {
 			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[0])); err == nil && parsed >= 0 {

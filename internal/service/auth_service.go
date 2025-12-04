@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"garde/internal/models"
 	"garde/internal/repository"
+	"garde/pkg/config"
 	"garde/pkg/crypto"
 	"garde/pkg/mfa"
 	"garde/pkg/session"
 	"log/slog"
 	"math/rand"
-	"os"
 	"strings"
 	"time"
 
@@ -47,7 +47,7 @@ func NewAuthService(repo *repository.RedisRepository) *AuthService {
 // Service returns regular errors
 func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, userAgent string) (*models.LoginResponse, error) {
 
-	if os.Getenv("DISABLE_IP_BLACKLISTING") != "true" {
+	if !config.GetBool("DISABLE_IP_BLACKLISTING") {
 		// Check if IP is blocked
 		isBlocked, err := s.repo.IsIPBlocked(ctx, ip)
 		if err != nil {
@@ -71,7 +71,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	}
 
 	// Global MFA enforcement by config
-	if os.Getenv("ENFORCE_MFA") == "true" && !user.MFAEnforced {
+	if config.GetBool("ENFORCE_MFA") && !user.MFAEnforced {
 		user.MFAEnforced = true
 		if err := s.repo.StoreUser(ctx, user); err != nil {
 			slog.Warn("Failed to enforce MFA for user", "email", req.Email, "error", err)
@@ -99,7 +99,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		}
 
 		// Block if threshold exceeded
-		if os.Getenv("DISABLE_IP_BLACKLISTING") != "true" && failedAttempts >= session.FailedLoginThreshold {
+		if !config.GetBool("DISABLE_IP_BLACKLISTING") && failedAttempts >= session.FailedLoginThreshold {
 			s.repo.BlockIP(ctx, ip, session.FailedLoginBlockDuration)
 			user.Status = models.UserStatusLockedBySecurity
 			s.repo.StoreUser(ctx, user)
@@ -382,17 +382,10 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	}
 
 	// Check if MFA is enforced globally
-	mfaEnforced := os.Getenv("ENFORCE_MFA") == "true"
+	mfaEnforced := config.GetBool("ENFORCE_MFA")
 
-	// Check if this email is in SEED_ADMIN_EMAILS (for initial admin seeding)
-	seedAdminEmails := strings.Split(os.Getenv("SEED_ADMIN_EMAILS"), ",")
-	isSeedAdmin := false
-	for _, adminEmail := range seedAdminEmails {
-		if strings.TrimSpace(adminEmail) == req.Email {
-			isSeedAdmin = true
-			break
-		}
-	}
+	isSuperUser := req.Email == config.Get("SUPERUSER_EMAIL")
+	isAdminUser := isEmailInAdminUsers(req.Email)
 
 	user := &models.User{
 		ID:           uuid.New().String(),
@@ -405,11 +398,10 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		Groups:       models.UserGroups{},
 	}
 
-	// If user is a seed admin, add to internal admin group and activate
-	if isSeedAdmin {
+	// If user is superuser or admin, activate them with admin permissions
+	if isSuperUser || isAdminUser {
 		user.Status = models.UserStatusOk
 		user.Permissions = models.AdminPermissions()
-		user.Groups[models.InternalAdminGroup] = true
 	} else {
 		user.Permissions = models.DefaultPermissions()
 	}
@@ -440,7 +432,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Only superuser can modify superuser
-	if targetUser.Email == os.Getenv("SUPERUSER_EMAIL") && !isSuperUser {
+	if targetUser.Email == config.Get("SUPERUSER_EMAIL") && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -525,12 +517,6 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 				// Add or update groups from pending updates
 				for group, enabled := range *targetUser.PendingUpdates.Fields.Groups {
-					// Don't allow __admin__ group through pending updates
-					// Only superuser can grant admin privileges directly via groups update
-					if group == models.InternalAdminGroup {
-						slog.Warn("Attempted to approve admin group via pending update", "user_id", targetUserID)
-						continue // Skip. Admin group can only be granted directly by superuser
-					}
 					// Validate group exists
 					if !models.IsValidUserGroup(group) {
 						slog.Warn("Invalid group in pending update", "group", group, "user_id", targetUserID)
@@ -599,22 +585,9 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	// Add support for direct groups updates
 	if req.Groups != nil {
-		// Check if request is trying to modify the internal admin group
-		adminGroupValue, modifyingAdminGroup := (*req.Groups)[models.InternalAdminGroup]
-
-		// Only superuser can modify the internal admin group
-		if modifyingAdminGroup && !isSuperUser {
-			slog.Info("Non-superuser attempted to modify admin group", "admin_id", adminID)
-			return fmt.Errorf(errors.ErrUnauthorized)
-		}
-
-		// Superusers are exempt from group validation (except internal admin group which is always valid)
+		// Validate groups (superusers exempt)
 		if !isSuperUser {
-			// Check if groups system is loaded (skip for internal admin group)
 			for group := range *req.Groups {
-				if group == models.InternalAdminGroup {
-					continue // Already handled above
-				}
 				if !models.IsGroupsLoaded() {
 					return fmt.Errorf(errors.ErrGroupsNotLoaded)
 				}
@@ -628,22 +601,6 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		userGroups := models.UserGroups{}
 		for group, enabled := range *req.Groups {
 			userGroups[group] = enabled
-		}
-
-		// Preserve __admin__ group ONLY if:
-		// 1. Request is NOT explicitly modifying it, OR
-		// 2. Request is from non-superuser (they can't change it anyway)
-		if targetUser.Groups[models.InternalAdminGroup] {
-			if !modifyingAdminGroup {
-				// Request didn't mention __admin__, preserve existing state
-				userGroups[models.InternalAdminGroup] = true
-			} else if isSuperUser {
-				// Superuser explicitly set __admin__ - use their value
-				userGroups[models.InternalAdminGroup] = adminGroupValue
-			} else {
-				// Non-superuser tried to modify - preserve (they were already blocked above, but defense in depth)
-				userGroups[models.InternalAdminGroup] = true
-			}
 		}
 
 		// Update the groups
@@ -676,91 +633,17 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	return nil
 }
 
-// Initialize superuser during startup
-func (s *AuthService) InitializeSuperUser(ctx context.Context) error {
-	superuserEmail := os.Getenv("SUPERUSER_EMAIL")
-	superuserPassword := os.Getenv("SUPERUSER_PASSWORD")
-
-	// Hash the password once since we'll need it in multiple places
-	hashedPassword, err := crypto.HashPassword(superuserPassword)
-	if err != nil {
-		return fmt.Errorf(errors.ErrSuperUserInitFailed)
+func isEmailInAdminUsers(email string) bool {
+	adminUsers := config.Get("ADMIN_USERS")
+	if adminUsers == "" {
+		return false
 	}
-
-	// Check if MFA is enforced globally
-	mfaEnforced := os.Getenv("ENFORCE_MFA") == "true"
-
-	// Try to get user by the configured superuser email
-	user, err := s.repo.GetUserByEmail(ctx, superuserEmail)
-	if err == nil {
-		// User exists with this email, update their password
-		user.PasswordHash = hashedPassword
-		user.MFAEnforced = mfaEnforced
-		user.Status = models.UserStatusOk // Ensure superuser is active
-		user.UpdatedAt = time.Now()
-		if err := s.repo.StoreUser(ctx, user); err != nil {
-			return fmt.Errorf(errors.ErrSuperUserInitFailed)
+	for _, adminEmail := range strings.Split(adminUsers, ",") {
+		if strings.TrimSpace(adminEmail) == email {
+			return true
 		}
-		return nil
 	}
-
-	// If user doesn't exist, create new superuser
-	newUser := &models.User{
-		ID:           models.SuperUserID,
-		Email:        superuserEmail,
-		PasswordHash: hashedPassword,
-		Status:       models.UserStatusOk, // Superuser starts active
-		MFAEnforced:  mfaEnforced,         // Set based on environment variable
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-
-	if err := s.repo.StoreUser(ctx, newUser); err != nil {
-		return fmt.Errorf(errors.ErrSuperUserInitFailed)
-	}
-
-	return nil
-}
-
-func (s *AuthService) SyncSeedAdmins(ctx context.Context) error {
-	seedAdminEmails := os.Getenv("SEED_ADMIN_EMAILS")
-	if seedAdminEmails == "" {
-		return nil
-	}
-
-	emails := strings.Split(seedAdminEmails, ",")
-	for _, email := range emails {
-		email = strings.TrimSpace(email)
-		if email == "" {
-			continue
-		}
-
-		user, err := s.repo.GetUserByEmail(ctx, email)
-		if err != nil {
-			// User doesn't exist yet, will be handled at registration
-			continue
-		}
-
-		// Check if user already has __admin__ group
-		if user.Groups != nil && user.Groups[models.InternalAdminGroup] {
-			continue
-		}
-
-		// Add __admin__ group
-		if user.Groups == nil {
-			user.Groups = models.UserGroups{}
-		}
-		user.Groups[models.InternalAdminGroup] = true
-		user.UpdatedAt = time.Now()
-
-		if err := s.repo.StoreUser(ctx, user); err != nil {
-			slog.Warn("Failed to sync seed admin", "email", email, "error", err)
-			continue
-		}
-		slog.Info("Added __admin__ group to seed admin", "email", email)
-	}
-
-	return nil
+	return false
 }
 
 func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, targetUserID string, isSuperUser bool, isAdmin bool) error {
@@ -778,7 +661,7 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 	}
 
 	// Only superuser can revoke superuser's sessions
-	if targetUser.Email == os.Getenv("SUPERUSER_EMAIL") && !isSuperUser {
+	if targetUser.Email == config.Get("SUPERUSER_EMAIL") && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -831,7 +714,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	}
 
 	// Don't allow reset for superuser
-	if user.Email == os.Getenv("SUPERUSER_EMAIL") {
+	if user.Email == config.Get("SUPERUSER_EMAIL") {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -944,7 +827,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	}
 
 	// Don't allow superuser password change through this endpoint
-	if user.Email == os.Getenv("SUPERUSER_EMAIL") {
+	if user.Email == config.Get("SUPERUSER_EMAIL") {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1034,7 +917,7 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 	}
 
 	// Don't allow OTP for superuser
-	if user.Email == os.Getenv("SUPERUSER_EMAIL") {
+	if user.Email == config.Get("SUPERUSER_EMAIL") {
 		return nil
 	}
 
@@ -1271,7 +1154,7 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		"has_pending_updates", user.PendingUpdates != nil)
 
 	// Don't allow superuser to request updates
-	if user.Email == os.Getenv("SUPERUSER_EMAIL") {
+	if user.Email == config.Get("SUPERUSER_EMAIL") {
 		slog.Info("Superuser attempted to request updates", "user_id", userID)
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
@@ -1301,11 +1184,6 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 		for group := range req.Updates.Groups {
-			// Users cannot request the internal admin group. Only superuser can grant it
-			if models.UserGroup(group) == models.InternalAdminGroup {
-				slog.Warn("User attempted to request admin group", "user_id", userID)
-				return fmt.Errorf(errors.ErrUnauthorized)
-			}
 			if !models.IsValidUserGroup(models.UserGroup(group)) {
 				slog.Warn("Invalid group requested", "group", group, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)

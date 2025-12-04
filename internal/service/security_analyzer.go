@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"garde/internal/repository"
+	"garde/pkg/config"
 	"garde/pkg/session"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 )
@@ -65,7 +65,7 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID,
 	}
 
 	// 4. Check for multiple IP sessions
-	if os.Getenv("DISABLE_MULTIPLE_IP_CHECK") != "true" {
+	if !config.GetBool("DISABLE_MULTIPLE_IP_CHECK") {
 		hasActiveSession, activeIP, err := d.repo.GetActiveSessionInfo(ctx, userID)
 		if err != nil {
 			slog.Debug("Failed to get active session info", "error", err, "user_id", userID)
@@ -84,7 +84,7 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID,
 }
 
 func (d *SecurityAnalyzer) isUnusualUserAgent(userAgent string) bool {
-	if os.Getenv("DISABLE_USER_AGENT_CHECK") == "true" {
+	if config.GetBool("DISABLE_USER_AGENT_CHECK") {
 		return false
 	}
 
@@ -138,7 +138,7 @@ func (d *SecurityAnalyzer) TrackRequest(ctx context.Context, userID string) erro
 func (d *SecurityAnalyzer) RecordPattern(ctx context.Context, userID, pattern, ip, userAgent string) error {
 	slog.Info("Recording security pattern", "user_id", userID, "pattern", pattern, "ip", ip)
 
-	// Record for active security measures (TTL-based)
+	// Record for active security measures(TTL based)
 	if err := d.repo.RecordSuspiciousActivity(ctx, userID, pattern, map[string]string{
 		"ip":         ip,
 		"user_agent": userAgent,
@@ -166,14 +166,14 @@ func (d *SecurityAnalyzer) RecordPattern(ctx context.Context, userID, pattern, i
 func (d *SecurityAnalyzer) CleanupSecurityRecords(ctx context.Context, userID, email, ip string) error {
 	slog.Debug("Cleaning up security records", "user_id", userID, "email", email, "ip", ip)
 
-	// Clean up analyzer-specific records
+	// Clean up analyzer specific records
 	analyzerKeys := []string{
 		fmt.Sprintf("request_count:%s", userID),
 		fmt.Sprintf("last_request:%s", userID),
 		fmt.Sprintf("suspicious_activity:%s", userID),
 	}
 
-	// Clean up other security-related records
+	// Clean up other security related records
 	securityKeys := []string{
 		fmt.Sprintf("failed_login:%s", email),
 		fmt.Sprintf("failed_login_ip:%s", ip),

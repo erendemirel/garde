@@ -21,4 +21,17 @@ dump.rdb
 *.key
 *.crt
 *.csr
+.env
 web
+
+# Secrets directory (except .gitkeep)
+secrets/*
+!secrets/.gitkeep
+# Secrets for dev
+dev.secrets
+
+# Vault secrets (role-id, secret-id, tokens)
+vault/role-id
+vault/secret-id
+vault/*.token
+vault/dev-token

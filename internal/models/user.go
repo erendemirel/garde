@@ -129,9 +129,6 @@ func (u *User) HasPermission(permission Permission) bool {
 	return false
 }
 
-// Fixed UUID for the superuser
-const SuperUserID = "67e55044-10b1-4922-b434-f39a270f6000"
-
 func IsValidUserStatus(status UserStatus) bool {
 	switch status {
 	case UserStatusOk, UserStatusLockedByAdmin, UserStatusLockedBySecurity,
@@ -155,10 +152,6 @@ func AdminPermissions() UserPermissions {
 }
 
 type UserGroup string
-
-// InternalAdminGroup is a special group for admin users
-// This group is managed internally and NOT defined in groups.json
-const InternalAdminGroup UserGroup = "__admin__"
 
 type UserGroupInfo struct {
 	Name        string `json:"name"`
@@ -242,11 +235,6 @@ func SharesAnyUserGroup(groups1, groups2 UserGroups) bool {
 }
 
 func IsValidUserGroup(group UserGroup) bool {
-	// Internal admin group is always valid
-	if group == InternalAdminGroup {
-		return true
-	}
-
 	groupsMutex.RLock()
 	defer groupsMutex.RUnlock()
 

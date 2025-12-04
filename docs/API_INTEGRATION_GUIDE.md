@@ -153,8 +153,8 @@ Error Response:
 
 Important Notes:
 - User status starts as "pending_approval" until approved by admin
-- If email matches `SEED_ADMIN_EMAILS` in .env, user is automatically added to the internal admin group with active status
-- Admin status can be dynamically managed by superuser via `PUT /users/:id` with `groups: {"__admin__": true/false}`
+- If email matches an entry in `ADMIN_USERS` secret, user is automatically activated with admin permissions
+- Admin status is determined by the `ADMIN_USERS` configuration (comma-separated emails)
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
 
 #### View Current User Info
@@ -542,12 +542,12 @@ Error responses when permissions system is disabled:
 }
 ```
 
-#### E. Admin Group Management
+#### E. Admin Management
 
-Admins are managed via an internal `__admin__` group that works independently of groups.json:
-- Users registering with emails in `SEED_ADMIN_EMAILS` are automatically added to the `__admin__` group
-- Superuser can dynamically add/remove admins via `PUT /users/:id` with `groups: {"__admin__": true/false}`
-- Only superuser can modify `__admin__` group membership
+Admins are determined by the `ADMIN_USERS` configuration:
+- Users whose emails are listed in `ADMIN_USERS` (comma separated) have admin privileges
+- Admin status is checked dynamically, update `ADMIN_USERS` to add/remove admins(hot reload supported)
+- Users registering with emails in `ADMIN_USERS` are automatically activated with admin permissions
 
 **Group-Based Access Control:**
 
@@ -555,26 +555,22 @@ Admins can only manage users who **already share at least one group** with them:
 
 | Admin Groups | Target User Groups | Can Admin Manage? | Can Admin Modify Groups? |
 |--------------|-------------------|-------------------|--------------------------|
-| `[__admin__, X]` | `[X]` | ✅ Yes | ✅ Only to groups admin is in (X) |
-| `[__admin__, X, Y]` | `[X]` | ✅ Yes | ✅ Can add to X or Y |
-| `[__admin__, X]` | `[Y]` | ❌ No | ❌ No shared groups |
-| `[__admin__, X]` | `[]` (none) | ❌ No | ❌ No shared groups |
-| `[__admin__]` | `[__admin__]` | ✅ Yes | ❌ Only superuser can modify `__admin__` |
+| `[X]` | `[X]` | ✅ Yes | ✅ Only to groups admin is in |
+| `[X, Y]` | `[X]` | ✅ Yes | ✅ Can add to X or Y |
+| `[X]` | `[Y]` | ❌ No | ❌ No shared groups |
+| `[X]` | `[]` (none) | ❌ No | ❌ No shared groups |
 
 **Key rules:**
 1. Admins can ONLY view and manage users who already share at least one group with them
 2. Admins can add users to additional groups, but only groups the admin is already in
 3. Admins cannot "claim" users by adding them to their groups if they don't already share a group beforehand
 4. Only superusers can assign initial groups to users with no groups
-5. Only superuser can modify the `__admin__` group membership
-6. Group membership is for organization (you can use it to form roles, permission inheritance etc. on your frontend)
-7. Permission operations are blocked when permissions system is disabled
+5. Group membership is for organization (you can use it to form roles, permission inheritance etc. on your frontend)
+6. Permission operations are blocked when permissions system is disabled
 
 **When groups.json is disabled:**
-- The internal `__admin__` group still works
-- Admins can only manage other admins (they share the `__admin__` group)
-- Regular users (who have no groups) can only be managed by superuser
-- This is by design, disabling groups means opting out of delegated admin management
+- Admins can manage all users (no group restrictions apply)
+- This simplifies admin management when group-based delegation is not needed
 
 Example admin listing users in their groups:
 ```http
@@ -609,6 +605,14 @@ Response shows only users in shared groups:
     }
 }
 ```
+
+#### F. Superuser Management
+
+Superuser is determined by the `SUPERUSER_EMAIL` configuration:
+- The user whose email is listed in `SUPERUSER_EMAIL` has superuser privileges
+- Superuser status is checked dynamically, update `SUPERUSER_EMAIL` to change the superuser(hot reload supported)
+- The user registering with email in `SUPERUSER_EMAIL` is automatically activated with superuser permissions
+
 
 ### 6. Admin Operations
 All admin operations require:
@@ -896,12 +900,14 @@ When a session is blacklisted:
 ## Email Management
 
 ### Email Configuration
-The service requires a valid SMTP server configuration for sending password reset emails(OTP). Configure the following environment variables:
+The service requires a valid SMTP server configuration for sending password reset emails (OTP). Configure the following secrets in Vault (or in `dev.secrets` for development):
 
-```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-specific-password
-SMTP_FROM=your-email@gmail.com
-```
+| Secret Path | Description |
+|-------------|-------------|
+| `secret/garde/smtp_host` | SMTP server hostname (e.g., `smtp.gmail.com`) |
+| `secret/garde/smtp_port` | SMTP server port (e.g., `587`) |
+| `secret/garde/smtp_user` | SMTP authentication username |
+| `secret/garde/smtp_password` | SMTP authentication password |
+| `secret/garde/smtp_from` | Sender email address |
+
+These are written to `/run/secrets/` by Vault Agent and read by the application.

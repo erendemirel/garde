@@ -2,10 +2,10 @@ package middleware
 
 import (
 	"garde/internal/models"
+	"garde/pkg/config"
 	"garde/pkg/errors"
 	"log/slog"
 	"net/http"
-	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,7 +16,7 @@ func APIKeyMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		apiKey := c.GetHeader(APIKeyHeader)
-		if apiKey != os.Getenv("API_KEY") {
+		if apiKey != config.Get("API_KEY") {
 			slog.Info("Invalid API key attempt", "path", c.Request.URL.Path, "ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return

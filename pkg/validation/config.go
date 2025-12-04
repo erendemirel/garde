@@ -2,8 +2,7 @@ package validation
 
 import (
 	"fmt"
-	"os"
-	"strings"
+	"garde/pkg/config"
 	"unicode"
 )
 
@@ -32,41 +31,36 @@ func DefaultConfig() *ValidatorConfig {
 
 func ValidateConfig() error {
 	// Redis configuration
-	if os.Getenv("REDIS_HOST") == "" {
+	if config.Get("REDIS_HOST") == "" {
 		return fmt.Errorf("REDIS_HOST is required")
 	}
-	if os.Getenv("REDIS_PORT") == "" {
+	if config.Get("REDIS_PORT") == "" {
 		return fmt.Errorf("REDIS_PORT is required")
 	}
-	if os.Getenv("REDIS_PASSWORD") == "" {
+	if config.Get("REDIS_PASSWORD") == "" {
 		return fmt.Errorf("REDIS_PASSWORD is required")
 	}
 
-	if strings.ToLower(os.Getenv("USE_TLS")) == "true" {
-		if os.Getenv("TLS_CERT_PATH") == "" {
+	if config.GetBool("USE_TLS") {
+		if config.Get("TLS_CERT_PATH") == "" {
 			return fmt.Errorf("TLS_CERT_PATH is required when USE_TLS is true")
 		}
-		if os.Getenv("TLS_KEY_PATH") == "" {
+		if config.Get("TLS_KEY_PATH") == "" {
 			return fmt.Errorf("TLS_KEY_PATH is required when USE_TLS is true")
 		}
 	}
 
-	if os.Getenv("DOMAIN_NAME") == "" {
+	if config.Get("DOMAIN_NAME") == "" {
 		return fmt.Errorf("DOMAIN_NAME is required")
 	}
 
 	// Superuser email
-	if err := ValidateEmail(os.Getenv("SUPERUSER_EMAIL")); err != nil {
+	if err := ValidateEmail(config.Get("SUPERUSER_EMAIL")); err != nil {
 		return fmt.Errorf("SUPERUSER_EMAIL validation failed")
 	}
 
-	// Superuser password
-	if err := ValidatePassword(os.Getenv("SUPERUSER_PASSWORD")); err != nil {
-		return fmt.Errorf("SUPERUSER_PASSWORD validation failed")
-	}
-
 	// Validate API key if present
-	if apiKey := os.Getenv("API_KEY"); apiKey != "" {
+	if apiKey := config.Get("API_KEY"); apiKey != "" {
 		if err := ValidateAPIKey(apiKey); err != nil {
 			return fmt.Errorf("API_KEY validation failed")
 		}
