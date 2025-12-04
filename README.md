@@ -7,6 +7,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 ## Table of Contents
 
 - [Features](#features)
+- [Requirements](#requirements)
 - [Quick Start](#quick-start)
 - [Endpoint Documentation](#endpoint-documentation)
 - [Installation](#installation)
@@ -22,18 +23,23 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ## Features
 
-**Security**: Rate limiting(IP based and user based), behavior detection, session security, input sanitization, request size limiting, key rotation, mTLS, MFA
-
-**Authentication**: Three modes (browser, API, API key) with server side session management
-
-**Permissions**: Easy permission system avoiding traditional role/scope paradoxes and request/approval system
-
-**Implementation**: Vault secrets, data encryption, secure error handling, privacy protection
-
-**Hot Reload**: All secrets and config changes without restart
+- **Security**: Rate limiting(IP based and user based), behavior detection, session security, input sanitization, request size limiting, key rotation, mTLS, MFA<br>
+- **Authentication**: Three modes (browser, API, API key) with server side session management<br>
+- **Permissions**: Easy permission system avoiding traditional role/scope paradoxes and request/approval system<br>
+- **Implementation**: Vault secrets, data encryption, secure error handling, privacy protection<br>
+- **Hot Reload**: All secrets and config changes without restart<br>
 
 > [!TIP]
 > garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes. Additionally, it enables users to request permissions from admins.
+
+---
+
+## Requirements
+
+- **Go**: 1.23.0 or later
+- **Redis**: 6.0 or later
+- **Docker and Docker Compose**: 17.06+ and v2.0+
+- **HashiCorp Vault**: 1.15 or later
 
 ---
 
