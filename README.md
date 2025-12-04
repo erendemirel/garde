@@ -22,56 +22,14 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ## Features
 
-- Built-in security features 
-  <details>
-    <summary>Click here to expand built-in security features</summary>
-  
-      > Rate limiter(IP based)
-      > Rapid request detection(User ID based)
-      > Automated behaviour detection
-      > Multiple IP session detection
-      > Session blacklisting mechanism
-      > Request body size limiting
-      > Sanitization of request headers, query parameters, path parameters and body
-      > mTLS for internal service communication
-      > MFA
-      > Only superuser and admins can use administrative endpoints
-      > Regular users cannot update themselves or any other user. They can only request an update from an admin
-      > HTTP security headers
-      > Locking on too many failed login attempts
+**Security**: Rate limiting(IP based and user based), behavior detection, session security, input sanitization, request size limiting, key rotation, mTLS, MFA
+**Authentication**: Three modes (browser, API, API key) with server side session management
+**Permissions**: Easy permission system avoiding traditional role/scope paradoxes and request/approval system
+**Implementation**: Vault secrets, data encryption, secure error handling, privacy protection
+**Hot Reload**: All secrets and config changes without restart
 
-  > garde doesn't use "role"s or "permission group"s or "scope"s as these concepts cause paradoxes that lead to insecure implementations
-
-   </details>
-
-- Secure implementation 
-  <details>
-    <summary>Click here to expand secure implementation details</summary>
-  
-      > Hashed IP addresses and user agents for storage
-      > Hiding implementation details from error responses during panic
-      > No persistence functions that passes user inputs to the database
-      > Validation checks for all user inputs
-      > No descriptive error messages in responses, only logging internally
-      > Session tokens never stored in plain text
-      > Separate blacklist mechanism for revoked sessions
-      > Automatic cleanup of expired security records
-      > Rate limit information in response headers
-      > Confusing responses to make it difficult for an attacker to guess whether a user exists when querying for a user by email
-
-  </details>
-
-- Session-based authentication with server side management using http-only cookies
-
-- MFA
-
-- Supports three types of authentication modes, browser-based authentication, API call-based authentication, API key-based authentication
-
-- mTLS
-
-- Easy permission management - users can request permissions and/or groups from admins, who only need to approve the request to add or remove permissions/groups, in addition to having the ability to manage them directly themselves.
-
-- Minimal dependencies with simple configuration
+> [!TIP]
+> garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes. Additionally, it enables users to request permissions from admins.
 
 ---
 
@@ -87,9 +45,9 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 > Secrets are stored in **tmpfs**. Vault Agent automatically rotates credentials.
 
 > [!NOTE]
-> For endpoint documentation, see [endpoints](https://github.com/erendemirel/garde?tab=readme-ov-file#endpoint-documentation)<br>
-> For detailed installation guide, see [installation](https://github.com/erendemirel/garde?tab=readme-ov-file#installation)<br>
-> For integration guide, refer to [integration guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md)<br>
+> For endpoint documentation, see [endpoints](#endpoint-documentation)<br>
+> For detailed installation guide, see [installation](#installation)<br>
+> For integration guide, refer to [integration guide](#integration-guide)<br>
 
 --- 
 
