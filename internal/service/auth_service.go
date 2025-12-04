@@ -70,6 +70,14 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAccessRestricted)
 	}
 
+	// Global MFA enforcement by config
+	if os.Getenv("ENFORCE_MFA") == "true" && !user.MFAEnforced {
+		user.MFAEnforced = true
+		if err := s.repo.StoreUser(ctx, user); err != nil {
+			slog.Warn("Failed to enforce MFA for user", "email", req.Email, "error", err)
+		}
+	}
+
 	// Check for suspicious patterns including multiple IP sessions
 	if !session.IsRapidRequestCheckDisabled() {
 		patterns := s.securityAnalyzer.DetectSuspiciousPatterns(ctx, user.ID, ip, userAgent)
