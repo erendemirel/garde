@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"garde/pkg/config"
+	"strings"
 	"unicode"
 )
 
@@ -74,9 +75,9 @@ func ValidateConfig() error {
 
 	// Validate admin users JSON if provided
 	if raw := config.Get("ADMIN_USERS_JSON"); raw != "" {
-		adminMap := map[string]string{}
-		if err := json.Unmarshal([]byte(raw), &adminMap); err != nil {
-			return fmt.Errorf("ADMIN_USERS_JSON is not valid JSON: %w", err)
+		adminMap, err := parseAdminUsers(raw)
+		if err != nil {
+			return err
 		}
 		for email, pwd := range adminMap {
 			if err := ValidateEmail(email); err != nil {
@@ -121,4 +122,48 @@ func ValidateAPIKey(key string) error {
 	}
 
 	return nil
+}
+
+func parseAdminUsers(raw string) (map[string]string, error) {
+	adminMap := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &adminMap); err != nil {
+		if fallback, ok := parseAdminUsersFallback(raw); ok {
+			return fallback, nil
+		}
+		return nil, fmt.Errorf("ADMIN_USERS_JSON is not valid JSON: %w", err)
+	}
+	return adminMap, nil
+}
+
+// parseAdminUsersFallback parses "email:pwd,email2:pwd2" or "email=pwd" style strings.
+func parseAdminUsersFallback(raw string) (map[string]string, bool) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.Trim(raw, "{}")
+	items := strings.Split(raw, ",")
+	result := make(map[string]string)
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		trimmed = strings.Trim(trimmed, "\"")
+		if trimmed == "" {
+			continue
+		}
+		sep := ":"
+		if strings.Contains(trimmed, "=") && !strings.Contains(trimmed, ":") {
+			sep = "="
+		}
+		parts := strings.SplitN(trimmed, sep, 2)
+		if len(parts) != 2 {
+			return nil, false
+		}
+		email := strings.TrimSpace(strings.Trim(parts[0], "\""))
+		pwd := strings.TrimSpace(strings.Trim(parts[1], "\""))
+		if email == "" || pwd == "" {
+			return nil, false
+		}
+		result[email] = pwd
+	}
+	if len(result) == 0 {
+		return nil, false
+	}
+	return result, true
 }
