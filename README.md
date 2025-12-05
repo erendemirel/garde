@@ -123,7 +123,7 @@ This automatically sets up:
 > [!TIP]
 > The development setup is fully self-contained and includes everything you need to get started immediately
 
-Access your application at `http://localhost:8443` once it starts up. You can login with `test.admin@test.com`(Superuser) or `test.admin@test.com`(Admin) after setting their passwords(Via create new user)
+Access your application at `http://localhost:8443` once it starts up. You can login with `test.admin@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password DevAdminTest123! for both.
 
 ---
 
@@ -188,7 +188,9 @@ See [endpoints](https://garde-api-docs.netlify.app)
 | `secret/garde/redis_port` | Redis server port |
 | `secret/garde/redis_password` | Redis authentication password |
 | `secret/garde/domain_name` | Your domain (for cookies and TLS) |
-| `secret/garde/superuser_email` | Superuser account email |
+| `secret/garde/superuser_email` | Superuser account email (auto-created) |
+| `secret/garde/superuser_password` | Superuser password (auto-created) |
+| `secret/garde/admin_users_json` | JSON object of admin email/password pairs e.g. `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}` |
 | `secret/garde/api_key` | API key (20+ chars, mixed case/symbols) |
 
 #### Production Configuration Steps
@@ -247,7 +249,7 @@ For production deployments, TLS is strongly recommended:
 **Admin Configuration**:
 | Secret Path | Description |
 |-------------|-------------|
-| `secret/garde/admin_users` | Comma-separated list of admin email addresses |
+| `secret/garde/admin_users_json` | JSON object: `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`. Admins are auto-created/updated at startup and on secret reload. Public/admin-created signup cannot create these accounts. |
 
 **Permissions & Groups**:
 - Configure `configs/permissions.json` and `configs/groups.json` in your deployment
@@ -279,8 +281,7 @@ After installation, you can:
 
 1. **Access the API** at `http://localhost:8443`
 2. **View API documentation** at `http://localhost:8443/swagger/index.html`
-3. **Register the superuser** using the email from `dev.secrets`
-4. **Configure additional features** (TLS, email, permissions) as needed
+3. **Configure additional features** (TLS, email, permissions) as needed
 
 For detailed configuration options, see the [Integration Guide](#integration-guide).
 
