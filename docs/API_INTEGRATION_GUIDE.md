@@ -153,8 +153,7 @@ Error Response:
 
 Important Notes:
 - User status starts as "pending_approval" until approved by admin
-- If email matches an entry in `ADMIN_USERS` secret, user is automatically activated with admin permissions
-- Admin status is determined by the `ADMIN_USERS` configuration (comma-separated emails)
+- Admin status is determined by the `ADMIN_USERS_JSON` configuration and admins are automatically craeted. You cannot create admins via API.
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
 
 #### View Current User Info

@@ -49,6 +49,11 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/superuser_password\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/superuser_password"
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/domain_name\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/domain_name"
 }
@@ -84,8 +89,8 @@ template {
 }
 
 template {
-  contents = "{{ with secret \"secret/data/garde/admin_users\" }}{{ .Data.data.value }}{{ end }}"
-  destination = "/run/secrets/admin_users"
+  contents = "{{ with secret \"secret/data/garde/admin_users_json\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/admin_users_json"
 }
 
 template {
