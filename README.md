@@ -50,13 +50,13 @@ garde avoids traditional "roles" and "scopes" that often create security paradox
 - **JSON Configuration**: Permissions defined in `permissions.json` with descriptions
 
 #### Group-Based Access Control:
-Admins can only manage users they share groups with:
+Admins can manage a user only if they share at least one group with that user. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met.
 
 | Admin Groups | Target User Groups | Can Admin Modify Permissions? | Can Admin Modify Groups? |
 |--------------|-------------------|-------------------------------|--------------------------|
 | `[]` | `[A]` | ❌ No | ❌ No shared groups |
-| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A |
-| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A and B |
+| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A, cannot add any |
+| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A and B, cannot add any |
 | `[A, B]` | `[A]` | ✅ Yes | ✅ Can add B, can remove A |
 | `[A]` | `[B]` | ❌ No | ❌ No shared groups |
 | `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
