@@ -31,7 +31,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 - **Hot Reload**: All secrets and config changes without restart<br>
 
 > [!TIP]
-> garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes. Additionally, it enables users to request permissions from admins.
+> garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes. Additionally, it enables users to request permissions from admins
 
 ### Key Concepts
 
@@ -48,7 +48,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 #### Security Without Role Paradoxes:
 garde avoids traditional "roles" and "scopes" that often create security paradoxes:
 - **Granular Permissions**: Individual permissions instead of role bundles
-- **Permission Requests**: Users request changes, admins approve or modify
+- **Permission Requests**: Users request changes, admins approve or modify. Users can display all permissions and groups
 - **No Over-Privileging**: Admins get exactly the access they need
 - **JSON Configuration**: Permissions defined in `permissions.json` with descriptions
 
@@ -121,7 +121,7 @@ This automatically sets up:
 - **garde** application
 
 > [!TIP]
-> The development setup is fully self-contained and includes everything you need to get started immediately.
+> The development setup is fully self-contained and includes everything you need to get started immediately
 
 Access your application at `http://localhost:8443` once it starts up. You can login with `test.admin@test.com`(Superuser) or `test.admin@test.com`(Admin) after setting their passwords(Via create new user)
 
@@ -132,7 +132,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 See [endpoints](https://garde-api-docs.netlify.app)
 
 > [!TIP]
-> This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443).
+> This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443)
 
 ---
 
@@ -217,7 +217,7 @@ For production deployments, TLS is strongly recommended:
 | `secret/garde/api_key` | API key for mTLS authentication |
 
 > [!IMPORTANT]
-> Built-in TLS must be enabled for mTLS and API-key authentication to work. Without TLS, only basic authentication is available.
+> Built-in TLS must be enabled for mTLS and API-key authentication to work. Without TLS, only basic authentication is available
 
 #### Additional Production Configuration
 
