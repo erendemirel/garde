@@ -17,6 +17,11 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+const (
+	maxSuspiciousRecords = 50
+	redisOpTimeout       = 3 * time.Second
+)
+
 type RedisRepository struct {
 	client *redis.Client
 	host   string
@@ -66,8 +71,9 @@ func (r *RedisRepository) connect() error {
 		DB:       r.dbNum,
 	})
 
-	// Test connection
-	ctx := context.Background()
+	// Test connection with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
+	defer cancel()
 	if err := r.client.Ping(ctx).Err(); err != nil {
 		slog.Error("Redis connection error", "error", err)
 		return err
@@ -392,11 +398,20 @@ func (r *RedisRepository) RecordSuspiciousActivity(ctx context.Context, userID, 
 		"timestamp": time.Now(),
 	}
 
+	encoded, err := json.Marshal(activity)
+	if err != nil {
+		return err
+	}
+
 	// Store activity with TTL
+	opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	defer cancel()
+
 	pipe := client.Pipeline()
-	pipe.LPush(ctx, key, activity)
-	pipe.Expire(ctx, key, ttl)
-	_, err := pipe.Exec(ctx)
+	pipe.LPush(opCtx, key, encoded)
+	pipe.LTrim(opCtx, key, 0, int64(maxSuspiciousRecords-1))
+	pipe.Expire(opCtx, key, ttl)
+	_, err = pipe.Exec(opCtx)
 	return err
 }
 
@@ -778,16 +793,24 @@ func (r *RedisRepository) RecordAuditLog(ctx context.Context, userID string, dat
 
 	key := fmt.Sprintf("audit_log:%s", userID)
 
+	opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	defer cancel()
+
 	pipe := client.Pipeline()
 
-	// Add new record
-	pipe.LPush(ctx, key, data)
-	// Trim to max records
-	pipe.LTrim(ctx, key, 0, int64(maxRecords-1))
-	// Reset TTL
-	pipe.Expire(ctx, key, ttl)
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
 
-	_, err := pipe.Exec(ctx)
+	// Add new record
+	pipe.LPush(opCtx, key, encoded)
+	// Trim to max records
+	pipe.LTrim(opCtx, key, 0, int64(maxRecords-1))
+	// Reset TTL
+	pipe.Expire(opCtx, key, ttl)
+
+	_, err = pipe.Exec(opCtx)
 	return err
 }
 
@@ -832,8 +855,11 @@ func (r *RedisRepository) GetAllUsers(ctx context.Context) ([]*models.User, erro
 	var cursor uint64
 
 	for {
+		opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+		defer cancel()
+
 		// Scan only user: keys
-		keys, nextCursor, err := client.Scan(ctx, cursor, "user:*", 10).Result()
+		keys, nextCursor, err := client.Scan(opCtx, cursor, "user:*", 100).Result()
 		if err != nil {
 			return nil, err
 		}
