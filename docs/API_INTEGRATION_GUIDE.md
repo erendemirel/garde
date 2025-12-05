@@ -553,14 +553,16 @@ Admins are provisioned from secrets (no public signup):
 
 **Group-Based Access Control:**
 
-Admins can only manage users who **already share at least one group** with them:
+Admins can only manage users who **already share at least one group** with them. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met:
 
-| Admin Groups | Target User Groups | Can Admin Manage? | Can Admin Modify Groups? |
-|--------------|-------------------|-------------------|--------------------------|
-| `[X]` | `[X]` | ✅ Yes | ✅ Only to groups admin is in |
-| `[X, Y]` | `[X]` | ✅ Yes | ✅ Can add to X or Y |
-| `[X]` | `[Y]` | ❌ No | ❌ No shared groups |
-| `[X]` | `[]` (none) | ❌ No | ❌ No shared groups |
+| Admin Groups | Target User Groups | Can Admin Modify Permissions? | Can Admin Modify Groups? |
+|--------------|-------------------|-------------------------------|--------------------------|
+| `[]` | `[A]` | ❌ No | ❌ No shared groups |
+| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A, cannot add any |
+| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A and B, cannot add any |
+| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add B, can remove A |
+| `[A]` | `[B]` | ❌ No | ❌ No shared groups |
+| `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
 
 **Key rules:**
 1. Admins can ONLY view and manage users who already share at least one group with them
