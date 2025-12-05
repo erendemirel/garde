@@ -12,12 +12,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 - [Quick Start](#quick-start)
 - [Endpoint Documentation](#endpoint-documentation)
 - [Installation](#installation)
-  - [Development Installation](#development-installation)
-  - [Production Installation](#production-installation)
-- [Verifying Installation](#verifying-installation)
-- [Example Configuration Files](#example-configuration-files)
 - [Integration Guide](#integration-guide)
-- [Security Mandates](#security-mandates)
 - [Contributing](#contributing)
 
 ---
@@ -69,7 +64,7 @@ Admins can only manage users they share groups with:
 #### Built-in TLS & mTLS Security:
 - **Built-in TLS**: garde includes native TLS support
 - **mTLS for Services**: Mutual TLS authentication enables secure service-to-service communication
-- **API Key + mTLS**: API keys combined can be combined with mTLS for even more secure communication between services
+- **API Key + mTLS**: API keys can be combined with mTLS for even more secure communication between services
 
 #### Secrets Architecture:
 garde uses HashiCorp Vault for secrets management:
@@ -104,7 +99,7 @@ Offers configurable rate limiter, switchable behavior detection and MFA.
 
 ## Quick Start
 
-**Get up and running in minutes with the complete development environment:**
+**Get up and running in seconds with the complete development environment:**
 
 ```bash
 # Clone the repository
@@ -138,167 +133,8 @@ See [endpoints](https://garde-api-docs.netlify.app)
 
 ## Installation
 
-### Development Installation
+See [Installation Guide](docs/INSTALLATION.md)
 
-#### Prerequisites
-- Docker & Docker Compose (17.06+ and v2.0+)
-
-#### Steps
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/erendemirel/garde.git
-   cd garde
-   ```
-
-2. **Review development configuration (Optional)**
-   - Check `dev.secrets` file for default secrets and, configure `configs/permissions.json` and `configs/groups.json` for permission and group systems
-   - Modify as needed for your environment. You can follow the comments inside `dev.secrets` file,  [Configuration Guide](#configuration-guide) and information in [Production Installation](#production-installation) section
-
-3. **Start the development stack**
-   ```bash
-   docker compose --profile dev up --build
-   ```
-
-4. **Access the application**
-   - API: `http://localhost:8443`
-   - Swagger docs: `http://localhost:8443/swagger/index.html`
-
-#### What happens automatically:
-- Vault starts in development mode
-- Secrets from `dev.secrets` are seeded into Vault
-- Vault Agent writes secrets to tmpfs (`/run/secrets`)
-- Application reads secrets and connects to Redis
-- Configuration hot-reload is automatically enabled
-
-> [!TIP]
-> Both permission and group systems are optional. Simply remove the respective JSON files from `/configs` to disable them. When disabled, only superuser maintains full access. See [Configuration Guide](#configuration-guide) for more info
-
-### Production Installation
-
-#### Prerequisites
-- HashiCorp Vault
-- Redis
-- Docker & Docker Compose
-- TLS certificates (for mTLS)
-
-#### Required Secrets in Vault
-| Secret Path | Description |
-|-------------|-------------|
-| `secret/garde/redis_host` | Redis server hostname |
-| `secret/garde/redis_port` | Redis server port |
-| `secret/garde/redis_password` | Redis authentication password |
-| `secret/garde/domain_name` | Your domain (for cookies and TLS) |
-| `secret/garde/superuser_email` | Superuser account email (auto-created) |
-| `secret/garde/superuser_password` | Superuser password (auto-created) |
-| `secret/garde/admin_users_json` | JSON object of admin email/password pairs e.g. `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}` |
-| `secret/garde/api_key` | API key (20+ chars, mixed case/symbols) |
-
-#### Production Configuration Steps
-
-1. **Setup Vault cluster** with AppRole authentication
-2. **Setup Redis**
-3. **Configure TLS and mTLS** (see below)
-4. **Deploy using docker-compose** or orchestration platform
-
-#### TLS and mTLS Configuration (Production)
-
-For production deployments, TLS is strongly recommended:
-
-**Server TLS (Required for mTLS):**
-- Valid TLS certificate from trusted CA
-- Certificate chain with intermediate certificates
-- SAN including all domain variants
-
-**Required Vault secrets:**
-| Secret Path | Description |
-|-------------|-------------|
-| `secret/garde/use_tls` | Set to `true` or `false` |
-| `secret/garde/tls_cert_path` | Path to server certificate |
-| `secret/garde/tls_key_path` | Path to server private key |
-| `secret/garde/tls_ca_path` | Path to client CA certificate |
-| `secret/garde/api_key` | API key for mTLS authentication |
-
-> [!IMPORTANT]
-> Built-in TLS must be enabled for mTLS and API-key authentication to work. Without TLS, only basic authentication is available
-
-#### Additional Production Configuration
-
-**Email/SMTP Configuration** (for password reset, MFA):
-| Secret Path | Description |
-|-------------|-------------|
-| `secret/garde/smtp_host` | SMTP server hostname |
-| `secret/garde/smtp_port` | SMTP server port |
-| `secret/garde/smtp_user` | SMTP authentication username |
-| `secret/garde/smtp_password` | SMTP authentication password |
-| `secret/garde/smtp_from` | Sender email address |
-
-> [!WARNING]
-> Without sending emails, garde cannot reset users' passwords
-
-**Security & Behavior Settings**:
-| Vault Secret Path | Description |
-|-------------------|-------------|
-| `secret/garde/cors_allow_origins` | Allowed CORS origins (comma-separated) |
-| `secret/garde/enforce_mfa` | Set to `true` to enforce MFA for all users |
-| `secret/garde/rate_limit` | IP-based rate limiting. Format: `limit,interval_seconds` (e.g., `100,60` = max 100 requests per 60 seconds per IP). Set to `0,0` to disable (not recommended for production) |
-| `secret/garde/rapid_request_config` | User-based rapid request detection. Format: `max_per_min,min_interval_ms` (e.g., `120,10` = max 120 req/min, block if requests are <10ms apart). Detects automated/bot behavior. Set to `0,0` to disable |
-| `secret/garde/disable_user_agent_check` | Set to `true` to disable User-Agent header validation. When enabled, requests with suspicious User-Agent patterns (bot/crawler identifiers) are flagged |
-| `secret/garde/disable_ip_blacklisting` | Set to `true` to disable automatic IP blocking. When enabled, IPs are blocked after repeated failed logins or rate limit violations |
-| `secret/garde/disable_multiple_ip_check` | Set to `true` to disable concurrent session IP detection. When enabled, sessions from multiple IPs simultaneously are flagged as suspicious |
-
-**Admin Configuration**:
-| Secret Path | Description |
-|-------------|-------------|
-| `secret/garde/admin_users_json` | JSON object: `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`. Admins are auto-created/updated at startup and on secret reload. Public/admin-created signup cannot create these accounts. |
-
-**Permissions & Groups**:
-- Configure `configs/permissions.json` and `configs/groups.json` in your deployment
-- Mount these files to `/app/configs/` in the container
-
-> [!TIP]
-> Both systems(permission, group) are optional for production. Omit the files from your deployment to disable them. Superuser access remains unaffected. See [Configuration Guide](#configuration-guide) for more info
-
-#### Other Production Configuration
-
-**Logging:**
-- `secret/garde/log_level`: DEBUG, INFO, WARN, or ERROR
-- `secret/garde/gin_mode`: debug or release
-
-### Configuration Guide
-
-#### Permissions and Groups (Optional)
-
-garde supports flexible permission and group management through JSON configuration files:
-
-- **Permissions** (`/configs/permissions.json`): Define granular permissions for your application
-- **Groups** (`/configs/groups.json`): Organize users and control admin access levels
-
-Both systems are optional, remove the files to disable them. See sample files in `/configs/` and the [Integration Guide](#integration-guide) for detailed configuration.
-
-### Next Steps
-
-After installation, you can:
-
-1. **Access the API** at `http://localhost:8443`
-2. **View API documentation** at `http://localhost:8443/swagger/index.html`
-3. **Configure additional features** (TLS, email, permissions) as needed
-
-For detailed configuration options, see the [Integration Guide](#integration-guide).
-
-## Verifying Installation
-
-Try a login:
-
-```bash
-curl -X POST https://your-domain/login -H "Content-Type: application/json" -d "{\"email\":\"your_email\",\"password\":\"your_password\"}"
-```
-
-
-## Example Configuration Files
-
-- Secrets structure: [secrets/.gitkeep](https://github.com/erendemirel/garde/blob/master/secrets/.gitkeep)
-- Permissions List (optional): [permissions.json](https://github.com/erendemirel/garde/blob/master/configs/permissions.json)
-- Groups List (optional): [groups.json](https://github.com/erendemirel/garde/blob/master/configs/groups.json)
 
 ## Integration Guide
 
