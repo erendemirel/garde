@@ -4,6 +4,7 @@
 - [Development Installation](#development-installation)
 - [Production Installation](#production-installation)
 - [Verifying Installation](#verifying-installation)
+- [Vault Guide](#vault-guide)
 - [Example Configuration Files](#example-configuration-files)
 - [Detailed Integration Guide For Service Integrations](#detailed-integration-guide-for-service-integrations)
 
@@ -55,7 +56,7 @@
 - TLS certificates (for mTLS)
 
 #### Production Configuration Steps
-1. **Setup Vault cluster** with AppRole authentication. See [Vault Guide]()
+1. **Setup Vault cluster** with AppRole authentication. See [Vault Guide](https://github.com/erendemirel/garde/blob/master/vault/README.md)
 2. **Setup Redis**
 3. **Configure TLS and mTLS** (see below)
 4. **Deploy using docker-compose** or your orchestrator
@@ -140,6 +141,12 @@ curl -X POST https://your-domain/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"your_superuser_email\",\"password\":\"your_superuser_password\"}"
 ```
+
+---
+
+## Vault Guide
+
+See [Vault Guide](https://github.com/erendemirel/garde/blob/master/vault/README.md)
 
 ---
 
