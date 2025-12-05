@@ -44,6 +44,115 @@ func NewAuthService(repo *repository.RedisRepository) *AuthService {
 	}
 }
 
+func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) error {
+	email := config.Get("SUPERUSER_EMAIL")
+	password := config.Get("SUPERUSER_PASSWORD")
+	mfaEnforced := config.GetBool("ENFORCE_MFA")
+
+	if email == "" || password == "" {
+		return fmt.Errorf("superuser bootstrap failed: SUPERUSER_EMAIL or SUPERUSER_PASSWORD missing")
+	}
+
+	hashedPassword, err := crypto.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("superuser init failed: %w", err)
+	}
+
+	// If superuser exists, refresh password/status/permissions
+	if user, err := repo.GetUserByEmail(ctx, email); err == nil && user != nil {
+		user.PasswordHash = hashedPassword
+		user.Status = models.UserStatusOk
+		user.MFAEnforced = mfaEnforced
+		user.Permissions = models.AdminPermissions()
+		user.UpdatedAt = time.Now()
+		if err := repo.StoreUser(ctx, user); err != nil {
+			return fmt.Errorf("superuser init failed: %w", err)
+		}
+		slog.Info("Superuser refreshed from secrets")
+		return nil
+	}
+
+	// Create new superuser
+	now := time.Now()
+	user := &models.User{
+		ID:           uuid.New().String(),
+		Email:        email,
+		PasswordHash: hashedPassword,
+		Status:       models.UserStatusOk,
+		MFAEnforced:  mfaEnforced,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Permissions:  models.AdminPermissions(),
+		Groups:       models.UserGroups{},
+	}
+
+	if err := repo.StoreUser(ctx, user); err != nil {
+		return fmt.Errorf("superuser init failed: %w", err)
+	}
+
+	slog.Info("Superuser initialized from secrets")
+	return nil
+}
+
+// ADMIN_USERS_JSON should be a JSON object: {"admin1@example.com":"Password1!","admin2@example.com":"Password2!"}
+func InitializeAdminUsers(ctx context.Context, repo *repository.RedisRepository) error {
+	adminMap := config.GetAdminUsersMap()
+	if len(adminMap) == 0 {
+		return nil
+	}
+
+	mfaEnforced := config.GetBool("ENFORCE_MFA")
+	superEmail := config.Get("SUPERUSER_EMAIL")
+
+	for email, password := range adminMap {
+		if email == "" || password == "" || email == superEmail {
+			// Skip invalid entries and the superuser (handled separately)
+			continue
+		}
+
+		hashedPassword, err := crypto.HashPassword(password)
+		if err != nil {
+			return fmt.Errorf("admin init failed: %w", err)
+		}
+
+		// If admin exists, refresh credentials/status
+		if user, err := repo.GetUserByEmail(ctx, email); err == nil && user != nil {
+			user.PasswordHash = hashedPassword
+			user.Status = models.UserStatusOk
+			user.MFAEnforced = mfaEnforced
+			if user.Groups == nil {
+				user.Groups = models.UserGroups{}
+			}
+			user.UpdatedAt = time.Now()
+			if err := repo.StoreUser(ctx, user); err != nil {
+				return fmt.Errorf("admin init failed: %w", err)
+			}
+			continue
+		}
+
+		// Create new admin
+		now := time.Now()
+		user := &models.User{
+			ID:           uuid.New().String(),
+			Email:        email,
+			PasswordHash: hashedPassword,
+			Status:       models.UserStatusOk,
+			MFAEnforced:  mfaEnforced,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			Permissions:  models.AdminPermissions(),
+			Groups:       models.UserGroups{},
+		}
+
+		if err := repo.StoreUser(ctx, user); err != nil {
+			return fmt.Errorf("admin init failed: %w", err)
+		}
+	}
+
+	slog.Info("Admin users initialized from secrets", "count", len(adminMap))
+	return nil
+}
+
 // Service returns regular errors
 func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, userAgent string) (*models.LoginResponse, error) {
 
@@ -365,6 +474,16 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 }
 
 func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.CreateUserResponse, error) {
+	// Block public creation of the configured superuser; it is bootstrapped at startup
+	if req.Email == config.Get("SUPERUSER_EMAIL") {
+		return nil, fmt.Errorf(errors.ErrUnauthorized)
+	}
+
+	// Block public creation of configured admin users; they are initialized from secrets
+	if isAdminEmail(req.Email) {
+		return nil, fmt.Errorf(errors.ErrUnauthorized)
+	}
+
 	// Check if email already exists
 	existingUser, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err == nil && existingUser != nil {
@@ -384,9 +503,6 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	// Check if MFA is enforced globally
 	mfaEnforced := config.GetBool("ENFORCE_MFA")
 
-	isSuperUser := req.Email == config.Get("SUPERUSER_EMAIL")
-	isAdminUser := isEmailInAdminUsers(req.Email)
-
 	user := &models.User{
 		ID:           uuid.New().String(),
 		Email:        req.Email,
@@ -398,13 +514,7 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		Groups:       models.UserGroups{},
 	}
 
-	// If user is superuser or admin, activate them with admin permissions
-	if isSuperUser || isAdminUser {
-		user.Status = models.UserStatusOk
-		user.Permissions = models.AdminPermissions()
-	} else {
-		user.Permissions = models.DefaultPermissions()
-	}
+	user.Permissions = models.DefaultPermissions()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
 		return nil, fmt.Errorf(errors.ErrUserCreationFailed)
@@ -633,13 +743,9 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	return nil
 }
 
-func isEmailInAdminUsers(email string) bool {
-	adminUsers := config.Get("ADMIN_USERS")
-	if adminUsers == "" {
-		return false
-	}
-	for _, adminEmail := range strings.Split(adminUsers, ",") {
-		if strings.TrimSpace(adminEmail) == email {
+func isAdminEmail(email string) bool {
+	if adminMap := config.GetAdminUsersMap(); len(adminMap) > 0 {
+		if _, ok := adminMap[email]; ok {
 			return true
 		}
 	}

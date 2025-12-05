@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -250,4 +251,18 @@ func MustGet(key string) string {
 
 func GetSecretsDir() string {
 	return secretsDir
+}
+
+func GetAdminUsersMap() map[string]string {
+	raw := Get("ADMIN_USERS_JSON")
+	if raw == "" {
+		return nil
+	}
+
+	var m map[string]string
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		slog.Warn("Config: Failed to parse ADMIN_USERS_JSON", "error", err)
+		return nil
+	}
+	return m
 }

@@ -3,10 +3,12 @@
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────┐
-│   Vault     │ ──→ │ Vault Agent │ ──→ │   tmpfs     │ ──→ │  garde  │
-│   Server    │     │  (sidecar)  │     │ /run/secrets│     │   app   │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────┘
+┌─────────────┐    injects       ┌─────────────┐    writes to     ┌─────────────┐    watches    ┌─────────────┐
+│     CI      │ ───────────────→ │    Vault    │ ───────────────→ │   tmpfs     │ ←─────────────│    garde    │
+│    /CD      │   AppRole +      │   Server    │   Vault Agent    │ /run/secrets│   file watcher│    app      │
+│  Pipeline   │   Secrets        │   (dynamic   │   (auto-updates │             │   (hot reload)│   (handles  │
+│             │                  │   secrets)   │   on rotation)  │             │               │   rotation) │
+└─────────────┘                  └─────────────┘                  └─────────────┘               └─────────────┘
 ```
 
 ## Setup
@@ -17,18 +19,17 @@
 # Enable KV secrets engine
 vault secrets enable -path=secret kv-v2
 
-# Store the secrets
-vault kv put secret/garde/config \
-  redis_host=redis \
-  redis_port=6379 \
-  domain_name=localhost \
-  superuser_email=admin@example.com \
-  api_key=YourapiKey123!
-
-vault kv put secret/garde/redis \
-  password=your-redis-password
-
-# And others..
+# Store the application secrets (static config), e.g.:
+vault kv put secret/garde/tls \
+  use_tls=true \
+  tls_cert_path=/vault/certs/server-cert.pem \
+  tls_key_path=/vault/certs/server-key.pem \
+  tls_ca_path=/vault/certs/ca-cert.pem
+# There are four logical secret paths:
+# 1. secret/garde/config - Main app config (redis host/port, domain, superuser email/password, admin_users_json, api_key, etc.)
+# 2. secret/garde/tls - TLS/mTLS settings (use_tls, cert/key/CA entries if stored here)
+# 3. secret/garde/redis – optional static Redis password (only if not using dynamic creds)
+# 4. database/creds/garde-redis – dynamic Redis credentials from the DB secrets engine (used by redis_password.tpl)
 ```
 
 ### 2. Configure AppRole Authentication
@@ -101,6 +102,8 @@ vault write database/roles/garde-redis \
 | `templates/*.tpl` | Templates for secret files |
 | `role-id` | AppRole role ID (DO NOT COMMIT) |
 | `secret-id` | AppRole secret ID (DO NOT COMMIT) |
+| `templates/redis_password.tpl` | Renders dynamic Redis password from `database/creds/garde-redis` to `/run/secrets/redis_password` |
+| `templates/secrets.tpl` | Renders static app config from `secret/garde/config` to `/run/secrets/static` |
 
 ## Security Notes
 
@@ -108,4 +111,10 @@ vault write database/roles/garde-redis \
 - Secrets are written to tmpfs
 - Vault Agent auto-renews tokens
 - Templates rerender when secrets rotate
+- The app hot-reloads secrets (superuser/admin credentials, Redis creds) when files under `/run/secrets` change
+
+## Development Profile Notes
+
+- The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `vault/agent-config-dev.hcl`.
+- The agent writes to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials automatically.
 

@@ -32,7 +32,7 @@ func AdminMiddleware(authService *service.AuthService) gin.HandlerFunc {
 		}
 
 		// Validate session and get userID
-		validationResult, err := authService.ValidateSession(c, sessionID, c.ClientIP(), c.Request.UserAgent())
+		validationResult, err := authService.ValidateSession(c.Request.Context(), sessionID, c.ClientIP(), c.Request.UserAgent())
 		if err != nil || validationResult == nil || !validationResult.Response.Valid {
 			slog.Debug("Session validation failed", "error", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))

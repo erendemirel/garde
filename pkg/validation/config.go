@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"encoding/json"
 	"fmt"
 	"garde/pkg/config"
 	"unicode"
@@ -59,10 +60,31 @@ func ValidateConfig() error {
 		return fmt.Errorf("SUPERUSER_EMAIL validation failed")
 	}
 
+	// Superuser password
+	if err := ValidatePassword(config.Get("SUPERUSER_PASSWORD")); err != nil {
+		return fmt.Errorf("SUPERUSER_PASSWORD validation failed")
+	}
+
 	// Validate API key if present
 	if apiKey := config.Get("API_KEY"); apiKey != "" {
 		if err := ValidateAPIKey(apiKey); err != nil {
 			return fmt.Errorf("API_KEY validation failed")
+		}
+	}
+
+	// Validate admin users JSON if provided
+	if raw := config.Get("ADMIN_USERS_JSON"); raw != "" {
+		adminMap := map[string]string{}
+		if err := json.Unmarshal([]byte(raw), &adminMap); err != nil {
+			return fmt.Errorf("ADMIN_USERS_JSON is not valid JSON: %w", err)
+		}
+		for email, pwd := range adminMap {
+			if err := ValidateEmail(email); err != nil {
+				return fmt.Errorf("ADMIN_USERS_JSON email validation failed")
+			}
+			if err := ValidatePassword(pwd); err != nil {
+				return fmt.Errorf("ADMIN_USERS_JSON password validation failed")
+			}
 		}
 	}
 

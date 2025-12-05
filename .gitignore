@@ -27,8 +27,6 @@ web
 # Secrets directory (except .gitkeep)
 secrets/*
 !secrets/.gitkeep
-# Secrets for dev
-dev.secrets
 
 # Vault secrets (role-id, secret-id, tokens)
 vault/role-id

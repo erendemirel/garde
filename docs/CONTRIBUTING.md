@@ -22,52 +22,9 @@ There are two main ways to contribute to this project:
 
 ## Testing
 
-The authentication service includes E2E integration tests to ensure functionality and security. The tests run on real environment, uses real API, database and certificates.
-
-Tests are organized under `tests` directory.
-
-#### Running The Tests
-
-1. Start the application and Redis:
-
-You can use the built-in docker file:
-```bash
-docker-compose --profile auth-service-with-redis build
-./generate-certificates.sh
-docker-compose --profile auth-service-with-redis up
-```
-
-Or you can start your own application or Redis instance. In this case, make sure to update your .env with your test environment configurations
-
-2. Run the test:
-```bash
-go test -v ./tests  # Or via your IDE
-```
-
 #### Tests That Require mTLS (API-key auth flow)
 
-For tests that require mTLS (like the `/validate` endpoint test), you need to use TLS - mTLS and generate the necessary certificates. For this, refer to the "Certificate Generation" section below
-
-#### Manual Testing
-
-For manual testing or debugging:
-
-1. Generate certificates refering to the "Generate Certificates" section below
-
-2. Start Redis and the auth service(after setting up `.env`):
-```bash
-docker-compose --profile auth-service-with-redis build
-./generate-certificates.sh
-docker-compose --profile auth-service-with-redis up
-```
-
-#### Test Environment Variables
-
-All configuration for unit tests is managed through the `.env` file. Some configurations are being overwritten inside TestMain in tests
-
-## Certificate Generation
-
-The project includes a standalone script for generating TLS certificates for both automated and manual testing:
+For tests that require mTLS, you need to use TLS - mTLS and generate the necessary certificates. The project includes a standalone script for generating TLS certificates for testing purposes:
 
 ```bash
 # Run from the root of the project
@@ -82,9 +39,7 @@ This script will create the following certificates in the `certs` directory:
 - `client-cert.pem`: Client certificate for mTLS
 - `client-key.pem`: Client private key for mTLS
 
-### Environment Configuration
-
-Make sure your `.env` file at the project root has the following configurations:
+Make sure your `dev.secrets` file has the following configurations:
 
 ```
 # TLS Configuration

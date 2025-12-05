@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -128,11 +129,34 @@ func main() {
 	}
 	slog.Info("Connected to Redis successfully")
 
+	// Initialize superuser
+	if err := service.InitializeSuperUser(context.Background(), repo); err != nil {
+		slog.Error("Failed to initialize superuser", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize admins
+	if err := service.InitializeAdminUsers(context.Background(), repo); err != nil {
+		slog.Error("Failed to initialize admin users", "error", err)
+		os.Exit(1)
+	}
+
 	// Set up hot-reload: reconnect Redis when secrets change
 	config.SetReloadHook(func() {
 		slog.Info("Secrets changed, reconnecting to Redis...")
 		if err := repo.Reconnect(); err != nil {
 			slog.Error("Failed to reconnect to Redis after secret change", "error", err)
+			return
+		}
+
+		// Refresh superuser credentials after secrets change
+		if err := service.InitializeSuperUser(context.Background(), repo); err != nil {
+			slog.Error("Failed to refresh superuser after secret change", "error", err)
+		}
+
+		// Refresh admin users after secrets change
+		if err := service.InitializeAdminUsers(context.Background(), repo); err != nil {
+			slog.Error("Failed to refresh admin users after secret change", "error", err)
 		}
 	})
 

@@ -2,7 +2,6 @@ package models
 
 import (
 	"garde/pkg/config"
-	"strings"
 	"time"
 )
 
@@ -50,12 +49,8 @@ type UserResponse struct {
 }
 
 func (u *UserResponse) IsUserAdmin() bool {
-	adminUsers := config.Get("ADMIN_USERS")
-	if adminUsers == "" {
-		return false
-	}
-	for _, email := range strings.Split(adminUsers, ",") {
-		if strings.TrimSpace(email) == u.Email {
+	if adminMap := config.GetAdminUsersMap(); len(adminMap) > 0 {
+		if _, ok := adminMap[u.Email]; ok {
 			return true
 		}
 	}

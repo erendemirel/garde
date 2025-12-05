@@ -544,10 +544,11 @@ Error responses when permissions system is disabled:
 
 #### E. Admin Management
 
-Admins are determined by the `ADMIN_USERS` configuration:
-- Users whose emails are listed in `ADMIN_USERS` (comma separated) have admin privileges
-- Admin status is checked dynamically, update `ADMIN_USERS` to add/remove admins(hot reload supported)
-- Users registering with emails in `ADMIN_USERS` are automatically activated with admin permissions
+Admins are provisioned from secrets (no public signup):
+- `ADMIN_USERS_JSON` is a JSON object of email→password (e.g., `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`).
+- Admin accounts are auto-created/updated at startup and on secret hot-reload (password rotations apply immediately).
+- Public `/users` creation for admin emails is blocked.
+- Existing admin permissions/groups are preserved on refresh; only credentials/status/MFA flags are updated.
 
 **Group-Based Access Control:**
 
@@ -608,10 +609,11 @@ Response shows only users in shared groups:
 
 #### F. Superuser Management
 
-Superuser is determined by the `SUPERUSER_EMAIL` configuration:
-- The user whose email is listed in `SUPERUSER_EMAIL` has superuser privileges
-- Superuser status is checked dynamically, update `SUPERUSER_EMAIL` to change the superuser(hot reload supported)
-- The user registering with email in `SUPERUSER_EMAIL` is automatically activated with superuser permissions
+Superuser is provisioned from secrets only (no public signup):
+- `SUPERUSER_EMAIL` and `SUPERUSER_PASSWORD` come from secrets.
+- The superuser is auto-created/updated at startup and on secret hot reload (password rotations apply immediately).
+- Public `/users` creation for the superuser email is blocked.
+- To rotate the superuser, update secrets; the app refreshes without restart.
 
 
 ### 6. Admin Operations
