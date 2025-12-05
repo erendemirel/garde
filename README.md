@@ -53,11 +53,11 @@ garde avoids traditional "roles" and "scopes" that often create security paradox
 Admins can only manage users they share groups with:
 
 | Admin Groups | Target User Groups | Can Admin Modify Permissions? | Can Admin Modify Groups? |
-|--------------|-------------------|-------------------|--------------------------|
+|--------------|-------------------|-------------------------------|--------------------------|
 | `[]` | `[A]` | ❌ No | ❌ No shared groups |
-| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A from the user |
-| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A from the user but cannot add B to the user |
-| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add to B |
+| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A |
+| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A and B |
+| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add B, can remove A |
 | `[A]` | `[B]` | ❌ No | ❌ No shared groups |
 | `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
 
