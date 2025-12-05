@@ -549,6 +549,7 @@ Admins are provisioned from secrets (no public signup):
 - Admin accounts are auto-created/updated at startup and on secret hot-reload (password rotations apply immediately).
 - Public `/users` creation for admin emails is blocked.
 - Existing admin permissions/groups are preserved on refresh; only credentials/status/MFA flags are updated.
+- New admins start with **no groups**. Initial group assignments can only be done by Superuser.
 
 **Group-Based Access Control:**
 

@@ -52,12 +52,16 @@ garde avoids traditional "roles" and "scopes" that often create security paradox
 #### Group-Based Access Control:
 Admins can only manage users they share groups with:
 
-| Admin Groups | Target User Groups | Can Admin Manage? | Can Admin Modify Groups? |
+| Admin Groups | Target User Groups | Can Admin Modify Permissions? | Can Admin Modify Groups? |
 |--------------|-------------------|-------------------|--------------------------|
-| `[A]` | `[A]` | ✅ Yes | ✅ Only to groups admin is in |
-| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add to A or B |
+| `[]` | `[A]` | ❌ No | ❌ No shared groups |
+| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A from the user |
+| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A from the user but cannot add B to the user |
+| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add to B |
 | `[A]` | `[B]` | ❌ No | ❌ No shared groups |
 | `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
+
+Initial group assignments can only be done by Superuser.
 
 > [!NOTE]
 > Superuser is exempt from all permissions and groups logic, maintaining full access regardless of configuration
