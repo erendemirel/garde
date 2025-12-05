@@ -28,6 +28,8 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 > [!TIP]
 > garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes. Additionally, it enables users to request permissions from admins
 
+---
+
 ### Key Concepts
 
 #### Three Authentication Modes:
