@@ -35,24 +35,24 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ### Key Concepts
 
-#### Three Authentication Modes
+#### Three Authentication Modes:
 - **Browser Authentication**: Traditional web login with secure HTTP-only cookies
 - **API Authentication**: Direct API calls using session tokens
 - **API Key Authentication**: Service-to-service communication with API keys and mTLS
 
-#### Hierarchical Admin System
+#### Hierarchical Admin System:
 - **Superuser**: Single privileged user with unlimited access (defined by email)
 - **Admins**: Multiple users with administrative privileges (defined by email list)
 - **Users**: Regular users who can request permission changes from admins
 
-#### Security Without Role Paradoxes
+#### Security Without Role Paradoxes:
 garde avoids traditional "roles" and "scopes" that often create security paradoxes:
 - **Granular Permissions**: Individual permissions instead of role bundles
 - **Permission Requests**: Users request changes, admins approve or modify
 - **No Over-Privileging**: Admins get exactly the access they need
 - **JSON Configuration**: Permissions defined in `permissions.json` with descriptions
 
-#### Group-Based Access Control
+#### Group-Based Access Control:
 Admins can only manage users they share groups with:
 
 | Admin Groups | Target User Groups | Can Admin Manage? | Can Admin Modify Groups? |
@@ -63,15 +63,15 @@ Admins can only manage users they share groups with:
 | `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
 
 > [!NOTE]
-> Superuser is exempt from all permissions and groups logic, maintaining full access regardless of configuration.
+> Superuser is exempt from all permissions and groups logic, maintaining full access regardless of configuration
 
 
-#### Built-in TLS & mTLS Security
+#### Built-in TLS & mTLS Security:
 - **Built-in TLS**: garde includes native TLS support
 - **mTLS for Services**: Mutual TLS authentication enables secure service-to-service communication
 - **API Key + mTLS**: API keys combined can be combined with mTLS for even more secure communication between services
 
-#### Secrets Architecture
+#### Secrets Architecture:
 garde uses HashiCorp Vault for secrets management:
 
 ```
@@ -88,7 +88,7 @@ garde uses HashiCorp Vault for secrets management:
 - **Hot Reload**: All configuration changes applied without application restart
 - **File Watching**: Monitors `/run/secrets` directory for changes
 
-#### Configurable Security Features
+#### Configurable Security Features:
 Offers configurable rate limiter, switchable behavior detection and MFA.
 
 ---
