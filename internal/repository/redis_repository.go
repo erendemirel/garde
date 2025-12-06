@@ -30,7 +30,10 @@ type RedisRepository struct {
 	mu     sync.RWMutex
 }
 
-var errRedisClientUnavailable = errors.New("redis client not initialized")
+var (
+	errRedisClientUnavailable = errors.New("redis client not initialized")
+	ErrConcurrentUpdate       = errors.New("concurrent update detected")
+)
 
 func NewRedisRepository() (*RedisRepository, error) {
 	dbNum, _ := strconv.Atoi(config.Get("REDIS_DB"))
@@ -97,12 +100,16 @@ func (r *RedisRepository) getClient() *redis.Client {
 
 func (r *RedisRepository) getSessionDataWithClient(ctx context.Context, client *redis.Client, sessionID string) (*session.SessionData, error) {
 	key := "session:" + sessionID
-	slog.Debug("Retrieving session data", "session_key", key[:15]+"...")
+	keyPrefix := key
+	if len(key) > 15 {
+		keyPrefix = key[:15] + "..."
+	}
+	slog.Debug("Retrieving session data", "session_key", keyPrefix)
 
 	jsonData, err := client.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			slog.Debug("Session not found in Redis", "session_key", key[:15]+"...")
+			slog.Debug("Session not found in Redis", "session_key", keyPrefix)
 			return nil, errors.New("session not found")
 		}
 		slog.Error("Redis error retrieving session", "error", err)
@@ -170,7 +177,7 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 
 			// Check if data was modified since we started
 			if currentUser.UpdatedAt.After(user.UpdatedAt) {
-				return fmt.Errorf("concurrent update detected")
+				return ErrConcurrentUpdate
 			}
 		}
 
@@ -198,7 +205,7 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 		if err == nil {
 			return nil
 		}
-		if err.Error() == "concurrent update detected" {
+		if errors.Is(err, ErrConcurrentUpdate) {
 			return err
 		}
 		time.Sleep(time.Millisecond * 100 * time.Duration(i+1))
@@ -357,9 +364,22 @@ func (r *RedisRepository) RecordFailedLogin(ctx context.Context, email, ip strin
 		return 0, err
 	}
 
+	if len(results) < 4 {
+		return 0, fmt.Errorf("unexpected pipeline result count: %d", len(results))
+	}
+
 	// Return the higher count between email and IP attempts
-	emailCount := results[0].(*redis.IntCmd).Val()
-	ipCount := results[2].(*redis.IntCmd).Val()
+	emailCmd, ok := results[0].(*redis.IntCmd)
+	if !ok {
+		return 0, fmt.Errorf("unexpected result type for email count")
+	}
+	ipCmd, ok := results[2].(*redis.IntCmd)
+	if !ok {
+		return 0, fmt.Errorf("unexpected result type for IP count")
+	}
+
+	emailCount := emailCmd.Val()
+	ipCount := ipCmd.Val()
 	if ipCount > emailCount {
 		return ipCount, nil
 	}
@@ -562,11 +582,11 @@ func (r *RedisRepository) ClearUserSecurityData(ctx context.Context, userID, ema
 		fmt.Sprintf("email_to_id:%s", email),
 	}
 
-	// Filter out empty keys
+	// Filter out empty keys - only include keys that have non-empty userID or email
 	var validKeys []string
 	for _, key := range keysToDelete {
-		if !strings.Contains(key, ":") ||
-			(userID != "" && strings.Contains(key, userID)) ||
+		// Include key if it contains userID (when userID is not empty) or email (when email is not empty)
+		if (userID != "" && strings.Contains(key, userID)) ||
 			(email != "" && strings.Contains(key, email)) {
 			validKeys = append(validKeys, key)
 		}
@@ -627,27 +647,39 @@ func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, e
 	}
 	defer r.mu.RUnlock()
 
-	// Get all user keys
-	keys, err := client.Keys(ctx, "user:*").Result()
-	if err != nil {
-		return nil, err
-	}
-
 	var users []*models.User
-	for _, key := range keys {
-		userData, err := client.Get(ctx, key).Result()
+	var cursor uint64
+
+	for {
+		opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+
+		// Scan user keys instead of using KEYS
+		keys, nextCursor, err := client.Scan(opCtx, cursor, "user:*", 100).Result()
+		cancel() // Cancel immediately after scan completes
 		if err != nil {
-			continue // Skip failed reads
+			return nil, err
 		}
 
-		var user models.User
-		if err := json.Unmarshal([]byte(userData), &user); err != nil {
-			continue // Skip invalid data
+		for _, key := range keys {
+			userData, err := client.Get(ctx, key).Bytes()
+			if err != nil {
+				continue // Skip failed reads
+			}
+
+			var user models.User
+			if err := json.Unmarshal(userData, &user); err != nil {
+				continue // Skip invalid data
+			}
+
+			// Only include locked users
+			if user.Status != models.UserStatusOk {
+				users = append(users, &user)
+			}
 		}
 
-		// Only include locked users
-		if user.Status != models.UserStatusOk {
-			users = append(users, &user)
+		cursor = nextCursor
+		if cursor == 0 {
+			break
 		}
 	}
 
@@ -856,10 +888,10 @@ func (r *RedisRepository) GetAllUsers(ctx context.Context) ([]*models.User, erro
 
 	for {
 		opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
-		defer cancel()
 
 		// Scan only user: keys
 		keys, nextCursor, err := client.Scan(opCtx, cursor, "user:*", 100).Result()
+		cancel() // Cancel immediately after scan completes
 		if err != nil {
 			return nil, err
 		}

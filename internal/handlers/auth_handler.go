@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"garde/internal/middleware"
 	"garde/internal/models"
+	"garde/internal/repository"
 	"garde/internal/service"
 	"garde/pkg/config"
-	"garde/pkg/errors"
+	pkgerrors "garde/pkg/errors"
 	"garde/pkg/session"
 	"garde/pkg/validation"
 	"log/slog"
@@ -39,7 +41,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	req, exists := middleware.GetValidatedRequest[models.LoginRequest](c)
 	if !exists {
 		// If validation failed or middleware didn't run, return an error
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -80,7 +82,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	sessionID, err := c.Cookie("session")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrNoActiveSession))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrNoActiveSession))
 		return
 	}
 
@@ -135,12 +137,12 @@ func (h *AuthHandler) ValidateSession(c *gin.Context) {
 		sessionID := c.Query("session_id")
 		sessionID, err := validation.Sanitize(sessionID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 			return
 		}
 
 		if err := validation.ValidateSessionID(sessionID); err != nil {
-			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 			return
 		}
 
@@ -151,7 +153,7 @@ func (h *AuthHandler) ValidateSession(c *gin.Context) {
 			c.Request.UserAgent(),
 		)
 		if err != nil || resp == nil || !resp.Response.Valid {
-			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionInvalid))
 			return
 		}
 
@@ -162,13 +164,13 @@ func (h *AuthHandler) ValidateSession(c *gin.Context) {
 	// Regular validation flow(for admin, without API key)
 	sessionID, exists := c.Get("session_id")
 	if !exists || sessionID == nil {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionInvalid))
 		return
 	}
 
 	sessionIDStr, ok := sessionID.(string)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
 		return
 	}
 
@@ -179,7 +181,7 @@ func (h *AuthHandler) ValidateSession(c *gin.Context) {
 		c.Request.UserAgent(),
 	)
 	if err != nil || resp == nil || !resp.Response.Valid {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionInvalid))
 		return
 	}
 
@@ -202,7 +204,7 @@ func (h *AuthHandler) ValidateSession(c *gin.Context) {
 func (h *AuthHandler) SetupMFA(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
@@ -232,14 +234,14 @@ func (h *AuthHandler) SetupMFA(c *gin.Context) {
 func (h *AuthHandler) VerifyAndEnableMFA(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
 	// Get the validated request from the middleware context
 	req, exists := middleware.GetValidatedRequest[models.MFAVerifyRequest](c)
 	if !exists {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -266,7 +268,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 	// Get the validated request from the middleware context
 	req, exists := middleware.GetValidatedRequest[models.CreateUserRequest](c)
 	if !exists {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -299,7 +301,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	adminID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
@@ -319,7 +321,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 
 	var req models.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -332,7 +334,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 		c.GetBool("is_superuser"),
 		c.GetBool("is_admin"),
 	); err != nil {
-		if err.Error() == "concurrent update detected" {
+		if errors.Is(err, repository.ErrConcurrentUpdate) {
 			c.JSON(http.StatusConflict, models.NewErrorResponse("User was modified by another request"))
 			return
 		}
@@ -376,14 +378,14 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
 	// Get the validated request from the middleware context
 	req, exists := middleware.GetValidatedRequest[models.ChangePasswordRequest](c)
 	if !exists {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -412,7 +414,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	// Get the validated request from the middleware context
 	req, exists := middleware.GetValidatedRequest[models.PasswordResetRequest](c)
 	if !exists {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -441,14 +443,14 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 	adminID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
 	// Get the validated request from the middleware context
 	req, exists := middleware.GetValidatedRequest[models.RevokeSessionRequest](c)
 	if !exists {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -484,21 +486,21 @@ func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 func (h *AuthHandler) DisableMFA(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
 	// Get the validated request from the middleware context
 	req, exists := middleware.GetValidatedRequest[models.DisableMFARequest](c)
 	if !exists {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
 	err := h.authService.DisableMFA(c.Request.Context(), userID.(string), req.MFACode)
 	if err != nil {
 		statusCode := http.StatusBadRequest
-		if err.Error() == errors.ErrUnauthorized {
+		if err.Error() == pkgerrors.ErrUnauthorized {
 			statusCode = http.StatusUnauthorized
 		}
 		c.JSON(statusCode, models.NewErrorResponse(err.Error()))
@@ -522,7 +524,7 @@ func (h *AuthHandler) RequestOTP(c *gin.Context) {
 	// Get the validated request from the middleware context
 	req, exists := middleware.GetValidatedRequest[models.RequestOTPRequest](c)
 	if !exists {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
@@ -548,7 +550,7 @@ func (h *AuthHandler) RequestOTP(c *gin.Context) {
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
@@ -576,7 +578,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 func (h *AuthHandler) ListUsers(c *gin.Context) {
 	adminID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
@@ -614,7 +616,7 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 func (h *AuthHandler) GetUser(c *gin.Context) {
 	adminID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
@@ -628,7 +630,7 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 	)
 	if err != nil {
 		status := http.StatusUnauthorized
-		if err.Error() == errors.ErrUserNotFound {
+		if err.Error() == pkgerrors.ErrUserNotFound {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, models.NewErrorResponse(err.Error()))
@@ -656,7 +658,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	// Extract user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
@@ -671,7 +673,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 		// Direct binding
 		if err := c.ShouldBindJSON(&req); err != nil {
 			slog.Error("Direct binding failed", "error", err)
-			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 			return
 		}
 
@@ -679,7 +681,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 		if len(req.Updates.PermissionsAdd) == 0 && len(req.Updates.PermissionsRemove) == 0 &&
 			len(req.Updates.GroupsAdd) == 0 && len(req.Updates.GroupsRemove) == 0 {
 			slog.Error("All permission and group lists are empty - invalid request")
-			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 			return
 		}
 	}
@@ -687,7 +689,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	// Call service
 	if err := h.authService.RequestUpdate(c.Request.Context(), userID.(string), &req); err != nil {
 		slog.Error("Service RequestUpdate returned error", "error", err)
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
