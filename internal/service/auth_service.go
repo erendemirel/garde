@@ -599,43 +599,107 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	// Handle update request approval/rejection
 	if targetUser.PendingUpdates != nil && (req.ApproveUpdate || req.RejectUpdate) {
 		if req.ApproveUpdate {
-			if targetUser.PendingUpdates.Fields.Permissions != nil {
+			// Safeguard: Prevent removing all permissions
+			if len(targetUser.PendingUpdates.Fields.PermissionsRemove) > 0 {
 				if !models.IsPermissionsLoaded() {
 					return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 				}
-				// Validate and update permissions with the pending updates
-				for perm, enabled := range *targetUser.PendingUpdates.Fields.Permissions {
-					// Validate permission exists
-					if !models.IsValidPermission(perm) {
-						slog.Warn("Invalid permission in pending update", "permission", perm, "user_id", targetUserID)
-						continue // Skip invalid permissions
+				// Count how many permissions user currently has
+				currentCount := 0
+				for _, enabled := range targetUser.Permissions {
+					if enabled {
+						currentCount++
 					}
-					targetUser.Permissions[perm] = enabled
+				}
+				// Calculate final count after add/remove operations
+				// Note: We don't check for duplicates (removing and adding same item) as that's unlikely
+				finalCount := currentCount - len(targetUser.PendingUpdates.Fields.PermissionsRemove) + len(targetUser.PendingUpdates.Fields.PermissionsAdd)
+				if finalCount <= 0 {
+					slog.Warn("Update request rejected: would remove all permissions", "user_id", targetUserID)
+					return fmt.Errorf(errors.ErrCannotRemoveAllPermissions)
 				}
 			}
-			if targetUser.PendingUpdates.Fields.Groups != nil {
+
+			// Safeguard: Prevent removing all groups
+			if len(targetUser.PendingUpdates.Fields.GroupsRemove) > 0 {
 				if !models.IsGroupsLoaded() {
 					return fmt.Errorf(errors.ErrGroupsNotLoaded)
 				}
-				// Create a new map to store the merged groups
-				mergedGroups := models.UserGroups{}
-
-				// Copy all existing groups
-				for group, enabled := range targetUser.Groups {
-					mergedGroups[group] = enabled
-				}
-
-				// Add or update groups from pending updates
-				for group, enabled := range *targetUser.PendingUpdates.Fields.Groups {
-					// Validate group exists
-					if !models.IsValidUserGroup(group) {
-						slog.Warn("Invalid group in pending update", "group", group, "user_id", targetUserID)
-						continue // Skip invalid groups
+				// Count how many groups user currently has
+				currentCount := 0
+				for _, enabled := range targetUser.Groups {
+					if enabled {
+						currentCount++
 					}
-					mergedGroups[group] = enabled
+				}
+				// Calculate final count after add/remove operations
+				// Note: We don't check for duplicates (removing and adding same item) as that's unlikely
+				finalCount := currentCount - len(targetUser.PendingUpdates.Fields.GroupsRemove) + len(targetUser.PendingUpdates.Fields.GroupsAdd)
+				if finalCount <= 0 {
+					slog.Warn("Update request rejected: would remove all groups", "user_id", targetUserID)
+					return fmt.Errorf(errors.ErrCannotRemoveAllGroups)
+				}
+			}
+
+			// Apply permission changes
+			if len(targetUser.PendingUpdates.Fields.PermissionsAdd) > 0 || len(targetUser.PendingUpdates.Fields.PermissionsRemove) > 0 {
+				if !models.IsPermissionsLoaded() {
+					return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+				}
+				// Remove permissions
+				for _, perm := range targetUser.PendingUpdates.Fields.PermissionsRemove {
+					if models.IsValidPermission(perm) {
+						delete(targetUser.Permissions, perm)
+					}
+				}
+				// Add permissions
+				for _, perm := range targetUser.PendingUpdates.Fields.PermissionsAdd {
+					if models.IsValidPermission(perm) {
+						targetUser.Permissions[perm] = true
+					}
+				}
+			}
+
+			// Apply group changes
+			if len(targetUser.PendingUpdates.Fields.GroupsAdd) > 0 || len(targetUser.PendingUpdates.Fields.GroupsRemove) > 0 {
+				if !models.IsGroupsLoaded() {
+					return fmt.Errorf(errors.ErrGroupsNotLoaded)
 				}
 
-				targetUser.Groups = mergedGroups
+				// For non-superuser admins: verify admin is in all groups they're trying to add
+				// (Remove is allowed for any groups once shared-group requirement is met, including the last shared group)
+				groupsToAdd := targetUser.PendingUpdates.Fields.GroupsAdd
+				if !isSuperUser && isAdmin {
+					filteredGroupsAdd := []models.UserGroup{}
+					unauthorizedGroups := []string{}
+					for _, group := range targetUser.PendingUpdates.Fields.GroupsAdd {
+						if admin.Groups[group] {
+							filteredGroupsAdd = append(filteredGroupsAdd, group)
+						} else {
+							unauthorizedGroups = append(unauthorizedGroups, string(group))
+							slog.Warn("Admin attempted to approve adding group they're not in", "admin_id", adminID, "group", group, "user_id", targetUserID)
+						}
+					}
+					// Return error if admin tried to add groups they're not in
+					if len(unauthorizedGroups) > 0 {
+						groupsList := fmt.Sprintf("'%s'", strings.Join(unauthorizedGroups, "', '"))
+						return fmt.Errorf("%s: %s", errors.ErrCannotAddGroupsNotIn, groupsList)
+					}
+					groupsToAdd = filteredGroupsAdd
+				}
+
+				// Remove groups (admins can remove any groups, including the last shared group)
+				for _, group := range targetUser.PendingUpdates.Fields.GroupsRemove {
+					if models.IsValidUserGroup(group) {
+						delete(targetUser.Groups, group)
+					}
+				}
+				// Add groups (filtered for admins)
+				for _, group := range groupsToAdd {
+					if models.IsValidUserGroup(group) {
+						targetUser.Groups[group] = true
+					}
+				}
 			}
 
 			// Update status to active if currently pending
@@ -714,6 +778,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		}
 
 		// Update the groups
+		// Note: Admins can remove the last shared group (intentional - allows removing users from their group)
 		targetUser.Groups = userGroups
 	}
 
@@ -726,7 +791,9 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	if targetUser.Status != originalStatus ||
 		targetUser.MFAEnforced != originalMFAEnforced ||
 		req.Permissions != nil ||
-		req.Groups != nil {
+		req.Groups != nil ||
+		req.ApproveUpdate ||
+		req.RejectUpdate {
 		targetUser.UpdatedAt = time.Now()
 		if err := s.repo.StoreUser(ctx, targetUser); err != nil {
 			return fmt.Errorf(errors.ErrOperationFailed)
@@ -1265,55 +1332,63 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
-	// Verify both permissions and groups are not empty
-	if len(req.Updates.Permissions) == 0 && len(req.Updates.Groups) == 0 {
+	// Validate that at least one change is requested
+	if len(req.Updates.PermissionsAdd) == 0 && len(req.Updates.PermissionsRemove) == 0 &&
+		len(req.Updates.GroupsAdd) == 0 && len(req.Updates.GroupsRemove) == 0 {
 		slog.Warn("Invalid update request", "reason", "empty permissions and groups", "user_id", userID)
 		return fmt.Errorf(errors.ErrInvalidRequest)
 	}
 
-	// Validate requested permissions exist in config
-	if len(req.Updates.Permissions) > 0 {
+	var userUpdateFields models.UserUpdateFields
+
+	// Validate and process permissions
+	if len(req.Updates.PermissionsAdd) > 0 || len(req.Updates.PermissionsRemove) > 0 {
 		if !models.IsPermissionsLoaded() {
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
-		for perm := range req.Updates.Permissions {
-			if !models.IsValidPermission(models.Permission(perm)) {
-				slog.Warn("Invalid permission requested", "permission", perm, "user_id", userID)
+		// Validate permissions to add
+		for _, permStr := range req.Updates.PermissionsAdd {
+			perm := models.Permission(permStr)
+			if !models.IsValidPermission(perm) {
+				slog.Warn("Invalid permission requested to add", "permission", permStr, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)
 			}
+			userUpdateFields.PermissionsAdd = append(userUpdateFields.PermissionsAdd, perm)
+		}
+		// Validate permissions to remove
+		for _, permStr := range req.Updates.PermissionsRemove {
+			perm := models.Permission(permStr)
+			if !models.IsValidPermission(perm) {
+				slog.Warn("Invalid permission requested to remove", "permission", permStr, "user_id", userID)
+				return fmt.Errorf(errors.ErrInvalidRequest)
+			}
+			userUpdateFields.PermissionsRemove = append(userUpdateFields.PermissionsRemove, perm)
 		}
 	}
 
-	// Validate requested groups exist in config
-	if len(req.Updates.Groups) > 0 {
+	// Validate and process groups
+	if len(req.Updates.GroupsAdd) > 0 || len(req.Updates.GroupsRemove) > 0 {
 		if !models.IsGroupsLoaded() {
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
-		for group := range req.Updates.Groups {
-			if !models.IsValidUserGroup(models.UserGroup(group)) {
-				slog.Warn("Invalid group requested", "group", group, "user_id", userID)
+		// Validate groups to add
+		for _, groupStr := range req.Updates.GroupsAdd {
+			group := models.UserGroup(groupStr)
+			if !models.IsValidUserGroup(group) {
+				slog.Warn("Invalid group requested to add", "group", groupStr, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)
 			}
+			userUpdateFields.GroupsAdd = append(userUpdateFields.GroupsAdd, group)
 		}
-	}
-
-	// Convert from RequestUpdateFields to UserUpdateFields
-	permissions := models.UserPermissions{}
-	for perm, enabled := range req.Updates.Permissions {
-		permissions[models.Permission(perm)] = enabled
-	}
-
-	groups := models.UserGroups{}
-	for group, enabled := range req.Updates.Groups {
-		groups[models.UserGroup(group)] = enabled
-	}
-
-	var userUpdateFields models.UserUpdateFields
-	if len(req.Updates.Permissions) > 0 {
-		userUpdateFields.Permissions = &permissions
-	}
-	if len(req.Updates.Groups) > 0 {
-		userUpdateFields.Groups = &groups
+		// Validate groups to remove
+		for _, groupStr := range req.Updates.GroupsRemove {
+			group := models.UserGroup(groupStr)
+			if !models.IsValidUserGroup(group) {
+				slog.Warn("Invalid group requested to remove", "group", groupStr, "user_id", userID)
+				return fmt.Errorf(errors.ErrInvalidRequest)
+			}
+			userUpdateFields.GroupsRemove = append(userUpdateFields.GroupsRemove, group)
+		}
 	}
 
 	// Create update request
@@ -1380,26 +1455,37 @@ func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups
 	}
 
 	// Keep all permission requests (admins can approve any permission changes)
-	if pending.Fields.Permissions != nil {
-		filtered.Fields.Permissions = pending.Fields.Permissions
-	}
+	filtered.Fields.PermissionsAdd = pending.Fields.PermissionsAdd
+	filtered.Fields.PermissionsRemove = pending.Fields.PermissionsRemove
 
-	// Filter group requests to only include groups the admin is in
-	if pending.Fields.Groups != nil {
-		filteredGroups := models.UserGroups{}
-		hasAny := false
-		for group, enabled := range *pending.Fields.Groups {
-			if adminGroups[group] {
-				filteredGroups[group] = enabled
-				hasAny = true
-			}
-		}
-		if hasAny {
-			filtered.Fields.Groups = &filteredGroups
+	// Filter group requests:
+	// - Add: Admin can only add groups they're in (to prevent adding to groups they don't have access to)
+	// - Remove: Admin can remove ANY groups once shared-group requirement is met (already checked at GetUser level)
+	filteredGroupsAdd := []models.UserGroup{}
+	filteredGroupsRemove := []models.UserGroup{}
+
+	// Only allow adding groups the admin is in
+	for _, group := range pending.Fields.GroupsAdd {
+		if adminGroups[group] {
+			filteredGroupsAdd = append(filteredGroupsAdd, group)
 		}
 	}
 
-	if filtered.Fields.Permissions == nil && filtered.Fields.Groups == nil {
+	// Allow removing ANY groups (admin already passed shared-group check to see this user)
+	for _, group := range pending.Fields.GroupsRemove {
+		filteredGroupsRemove = append(filteredGroupsRemove, group)
+	}
+
+	if len(filteredGroupsAdd) > 0 {
+		filtered.Fields.GroupsAdd = filteredGroupsAdd
+	}
+	if len(filteredGroupsRemove) > 0 {
+		filtered.Fields.GroupsRemove = filteredGroupsRemove
+	}
+
+	// Return nil if no changes remain after filtering
+	if len(filtered.Fields.PermissionsAdd) == 0 && len(filtered.Fields.PermissionsRemove) == 0 &&
+		len(filtered.Fields.GroupsAdd) == 0 && len(filtered.Fields.GroupsRemove) == 0 {
 		return nil
 	}
 

@@ -504,15 +504,22 @@ POST /users/request-update-from-admin
 Authorization: Bearer 572a399c-6c...
 {
     "updates": {
-        "permissions": {
-            "a_permission": true
-        },
-        "groups": {
-            "x": true
-        }
+        "permissions_add": ["a_permission", "another_permission"],
+        "permissions_remove": ["old_permission"],
+        "groups_add": ["x", "y"],
+        "groups_remove": ["z"]
     }
 }
 ```
+
+**Request Format:**
+- `permissions_add`: Array of permission names to add
+- `permissions_remove`: Array of permission names to remove
+- `groups_add`: Array of group names to add
+- `groups_remove`: Array of group names to remove
+- At least one of these arrays must be non-empty
+
+**Note:** The system uses explicit add/remove lists to clearly indicate what changes are being requested. This makes it easier for admins to understand what will be added vs removed when reviewing pending update requests.
 
 3. Admin Approving Changes (requires admin access):
 ```http
@@ -520,6 +527,31 @@ PUT /users/{user_id}
 Authorization: Bearer 572a399c-6c...
 {
     "approve_update": true
+}
+```
+
+**Approval Behavior:**
+- When approving, the system applies the explicit add/remove lists from the pending update request
+- **Safeguards:**
+  - Cannot approve requests that would remove all permissions (at least one permission must remain)
+  - Cannot approve requests that would remove all groups (at least one group must remain)
+  - Admins can only approve adding groups they are members of (returns error if attempting to add groups they're not in)
+- **Error Response** (when admin tries to approve adding groups they're not in):
+```json
+{
+    "error": {
+        "message": "cannot approve adding groups you are not a member of: 'GroupX', 'GroupY'"
+    }
+}
+```
+- Status Code: `401 Unauthorized`
+
+**Rejecting Changes:**
+```http
+PUT /users/{user_id}
+Authorization: Bearer 572a399c-6c...
+{
+    "reject_update": true
 }
 ```
 
@@ -598,9 +630,10 @@ Response shows only users in shared groups:
                 "pending_updates": {
                     "requested_at": "2024-03-14T12:00:00Z",
                     "fields": {
-                        "permissions": {
-                            "another_permission": true
-                        }
+                        "permissions_add": ["another_permission"],
+                        "permissions_remove": ["old_permission"],
+                        "groups_add": ["y"],
+                        "groups_remove": ["z"]
                     }
                 }
             }
@@ -633,7 +666,7 @@ Authorization: Bearer 572a399c-6c...
 Notes:
 - Admins see only users in their groups
 - Superuser sees all users
-- Shows pending update requests
+- Shows pending update requests (filtered for admins - only shows groups they can approve)
 
 2. Update user:
 ```http
@@ -656,6 +689,11 @@ Important Notes:
   - User must set up MFA before next login
   - User cannot disable MFA afterwards
 - Status changes to "locked" revoke all sessions
+- **Approval Restrictions:**
+  - Admins can only approve adding groups they are members of
+  - If a pending update request includes groups the admin is not in, approval will fail with an error listing those groups
+  - Admins can remove any groups (including the last shared group - this will revoke their access to manage that user)
+  - Cannot approve requests that would remove all permissions or all groups
 
 3. Revoke sessions:
 ```http

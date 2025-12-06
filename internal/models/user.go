@@ -252,8 +252,10 @@ type UserUpdateRequest struct {
 }
 
 type UserUpdateFields struct {
-	Permissions *UserPermissions `json:"permissions,omitempty"`
-	Groups      *UserGroups      `json:"groups,omitempty"`
+	PermissionsAdd    []Permission `json:"permissions_add,omitempty"`
+	PermissionsRemove []Permission `json:"permissions_remove,omitempty"`
+	GroupsAdd         []UserGroup  `json:"groups_add,omitempty"`
+	GroupsRemove      []UserGroup  `json:"groups_remove,omitempty"`
 }
 
 // MarshalJSON implements custom JSON marshaling

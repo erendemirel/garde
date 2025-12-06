@@ -57,8 +57,10 @@ type PasswordResetRequest struct {
 
 // RequestUpdateFields is specifically for permission update requests
 type RequestUpdateFields struct {
-	Permissions map[Permission]bool `json:"permissions,omitempty"`
-	Groups      map[UserGroup]bool  `json:"groups,omitempty"`
+	PermissionsAdd    []string `json:"permissions_add,omitempty"`
+	PermissionsRemove []string `json:"permissions_remove,omitempty"`
+	GroupsAdd         []string `json:"groups_add,omitempty"`
+	GroupsRemove      []string `json:"groups_remove,omitempty"`
 }
 
 type RequestUpdateRequest struct {
