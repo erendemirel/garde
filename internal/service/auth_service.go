@@ -1554,9 +1554,7 @@ func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups
 	}
 
 	// Allow removing ANY groups (admin already passed shared-group check to see this user)
-	for _, group := range pending.Fields.GroupsRemove {
-		filteredGroupsRemove = append(filteredGroupsRemove, group)
-	}
+	filteredGroupsRemove = append(filteredGroupsRemove, pending.Fields.GroupsRemove...)
 
 	if len(filteredGroupsAdd) > 0 {
 		filtered.Fields.GroupsAdd = filteredGroupsAdd
