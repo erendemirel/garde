@@ -47,6 +47,9 @@ const (
 	ErrGroupsNotLoaded            = "groups system not loaded"
 	ErrInvalidPermissionRequested = "invalid permission requested"
 	ErrInvalidGroupRequested      = "invalid group requested"
+	ErrCannotRemoveAllPermissions = "cannot approve update request that would remove all permissions"
+	ErrCannotRemoveAllGroups      = "cannot approve update request that would remove all groups"
+	ErrCannotAddGroupsNotIn       = "cannot approve adding groups you are not a member of"
 )
 
 // Input validation errors

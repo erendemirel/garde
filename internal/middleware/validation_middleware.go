@@ -257,14 +257,15 @@ func validateRevokeSessionRequest(req *models.RevokeSessionRequest) error {
 
 func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 
-	// Check if both Permissions and Groups are nil
-	if len(req.Updates.Permissions) == 0 && len(req.Updates.Groups) == 0 {
-		slog.Debug("Both Permissions and Groups are empty - invalid request")
+	// Check if at least one change is requested
+	if len(req.Updates.PermissionsAdd) == 0 && len(req.Updates.PermissionsRemove) == 0 &&
+		len(req.Updates.GroupsAdd) == 0 && len(req.Updates.GroupsRemove) == 0 {
+		slog.Debug("All permission and group lists are empty - invalid request")
 		return fmt.Errorf(errors.ErrInvalidRequest)
 	}
 
 	// Validate permissions if provided and permissions system is loaded
-	if len(req.Updates.Permissions) > 0 {
+	if len(req.Updates.PermissionsAdd) > 0 || len(req.Updates.PermissionsRemove) > 0 {
 		if !models.IsPermissionsLoaded() {
 			slog.Debug("Permissions system is not loaded")
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
@@ -278,11 +279,20 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 		}
 
 		slog.Debug("Permissions system is loaded, checking permissions")
-		for perm := range req.Updates.Permissions {
-			// Check if permission exists in our loaded permissions
+		// Validate permissions to add
+		for _, permStr := range req.Updates.PermissionsAdd {
+			perm := models.Permission(permStr)
 			if !permissionSet[perm] {
-				slog.Debug("Invalid permission requested", "permission", string(perm))
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested+": %s", string(perm))
+				slog.Debug("Invalid permission requested to add", "permission", permStr)
+				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + permStr)
+			}
+		}
+		// Validate permissions to remove
+		for _, permStr := range req.Updates.PermissionsRemove {
+			perm := models.Permission(permStr)
+			if !permissionSet[perm] {
+				slog.Debug("Invalid permission requested to remove", "permission", permStr)
+				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + permStr)
 			}
 		}
 		slog.Debug("Permissions validation successful")
@@ -291,7 +301,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 	}
 
 	// Validate groups if provided and groups system is loaded
-	if len(req.Updates.Groups) > 0 {
+	if len(req.Updates.GroupsAdd) > 0 || len(req.Updates.GroupsRemove) > 0 {
 		if !models.IsGroupsLoaded() {
 			slog.Debug("Groups system is not loaded")
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
@@ -305,11 +315,20 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 		}
 
 		slog.Debug("Groups system is loaded, checking group info")
-		for group := range req.Updates.Groups {
-			// Check if group exists in our loaded groups
+		// Validate groups to add
+		for _, groupStr := range req.Updates.GroupsAdd {
+			group := models.UserGroup(groupStr)
 			if !groupSet[group] {
-				slog.Debug("Invalid group requested", "group", string(group))
-				return fmt.Errorf(errors.ErrInvalidGroupRequested+": %s", string(group))
+				slog.Debug("Invalid group requested to add", "group", groupStr)
+				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": " + groupStr)
+			}
+		}
+		// Validate groups to remove
+		for _, groupStr := range req.Updates.GroupsRemove {
+			group := models.UserGroup(groupStr)
+			if !groupSet[group] {
+				slog.Debug("Invalid group requested to remove", "group", groupStr)
+				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": " + groupStr)
 			}
 		}
 		slog.Debug("Groups validation successful")

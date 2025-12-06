@@ -280,7 +280,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 }
 
 // @Summary Update user information
-// @Description Update user details or process pending update requests. Requires admin privileges. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).
+// @Description Update user details or process pending update requests. Requires admin privileges. Requires permissions.json and groups.json files to be present for permission checks (except for superuser). Approval restrictions: Admins can only approve adding groups they are members of. If a pending update request includes groups the admin is not in, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user).
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -288,9 +288,9 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 // @Security Bearer
 // @Param user_id path string true "Target User ID to update"
 // @Param request body models.UpdateUserRequest true "Update details including approve/reject flags for pending requests"
-// @Success 200 {object} models.SuccessResponse "User updated successfully"
+// @Success 200 {object} models.SuccessResponse{data=models.UserResponse} "User updated successfully"
 // @Failure 400 {object} models.ErrorResponse "Invalid request"
-// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized or admin tried to approve adding groups they're not a member of"
 // @Failure 403 {object} models.ErrorResponse "Forbidden - insufficient permissions"
 // @Failure 404 {object} models.ErrorResponse "User not found"
 // @Failure 409 {object} models.ErrorResponse "User update in progress or concurrent update detected"
@@ -340,7 +340,22 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
+	// Fetch and return the updated user
+	updatedUser, err := h.authService.GetUser(
+		c.Request.Context(),
+		adminID.(string),
+		userID,
+		c.GetBool("is_superuser"),
+		c.GetBool("is_admin"),
+	)
+	if err != nil {
+		// If we can't fetch the user, still return success but log the error
+		slog.Warn("Failed to fetch updated user after update", "error", err, "user_id", userID)
+		c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(updatedUser))
 }
 
 // @Summary Change password
@@ -624,18 +639,17 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 }
 
 // @Summary Request update for user information
-// @Description User requests changes from an admin to their permissions or groups. No mTLS required for this endpoint.
+// @Description User requests changes from an admin to their permissions or groups. Uses explicit add/remove lists to clearly indicate what changes are being requested. No mTLS required for this endpoint. Request format: permissions_add (array of permission names to add), permissions_remove (array of permission names to remove), groups_add (array of group names to add), groups_remove (array of group names to remove). At least one of these arrays must be non-empty.
 // @Tags Protected Routes
 // @Accept json
 // @Produce json
 // @Security SessionCookie
 // @Security Bearer
-// @Param request body models.RequestUpdateRequest true "Update request details (permissions/groups)"
+// @Param request body models.RequestUpdateRequest true "Update request with permissions_add, permissions_remove, groups_add, groups_remove arrays"
 // @Success 200 {object} models.SuccessResponse "Update request submitted successfully"
 // @Failure 400 {object} models.ErrorResponse "Invalid request format or empty update request"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized or invalid session"
 // @Failure 404 {object} models.ErrorResponse "User not found"
-// @Failure 409 {object} models.ErrorResponse "Update request already pending"
 // @Failure 500 {object} models.ErrorResponse "Operation failed"
 // @Router /users/request-update-from-admin [post]
 func (h *AuthHandler) RequestUpdate(c *gin.Context) {
@@ -662,8 +676,9 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 		}
 
 		// Validate request manually
-		if req.Updates.Permissions == nil && req.Updates.Groups == nil {
-			slog.Error("Both Permissions and Groups are nil - invalid request")
+		if len(req.Updates.PermissionsAdd) == 0 && len(req.Updates.PermissionsRemove) == 0 &&
+			len(req.Updates.GroupsAdd) == 0 && len(req.Updates.GroupsRemove) == 0 {
+			slog.Error("All permission and group lists are empty - invalid request")
 			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
