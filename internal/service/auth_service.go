@@ -1187,21 +1187,9 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*model
 	}, nil
 }
 
-func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.UserResponse, error) {
+func (s *AuthService) ListUsers(ctx context.Context, adminID string, isSuperUser bool, isAdmin bool) ([]models.UserResponse, error) {
 	// Check if user has admin or superuser privileges first
-	isSuperuserVal := ctx.Value("is_superuser")
-	isAdminVal := ctx.Value("is_admin")
-
-	// Handle nil values
-	var isSuperuser, isAdmin bool
-	if isSuperuserVal != nil {
-		isSuperuser = isSuperuserVal.(bool)
-	}
-	if isAdminVal != nil {
-		isAdmin = isAdminVal.(bool)
-	}
-
-	if !isSuperuser && !isAdmin {
+	if !isSuperUser && !isAdmin {
 		return nil, fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1212,7 +1200,7 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.U
 	}
 
 	// Check if groups system is loaded for admin operations
-	if isAdmin && !isSuperuser {
+	if isAdmin && !isSuperUser {
 		if !IsGroupsLoaded() {
 			return nil, fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
@@ -1226,7 +1214,7 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.U
 	var response []models.UserResponse
 	for _, user := range users {
 		// Superusers can see all users
-		if isSuperuser {
+		if isSuperUser {
 			response = append(response, models.UserResponse{
 				ID:             user.ID,
 				Email:          user.Email,

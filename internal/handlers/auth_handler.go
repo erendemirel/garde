@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"errors"
 	"garde/internal/middleware"
 	"garde/internal/models"
@@ -582,15 +581,12 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-	if isAdmin, exists := c.Get("is_admin"); exists {
-		ctx = context.WithValue(ctx, "is_admin", isAdmin)
-	}
-	if isSuperuser, exists := c.Get("is_superuser"); exists {
-		ctx = context.WithValue(ctx, "is_superuser", isSuperuser)
-	}
-
-	users, err := h.authService.ListUsers(ctx, adminID.(string))
+	users, err := h.authService.ListUsers(
+		c.Request.Context(),
+		adminID.(string),
+		c.GetBool("is_superuser"),
+		c.GetBool("is_admin"),
+	)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err.Error()))
 		return
