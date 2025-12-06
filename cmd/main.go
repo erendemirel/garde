@@ -81,36 +81,10 @@ func main() {
 
 	slog.Info("Logger initialized", "level", envLogLevel)
 
-	// Load permissions. See readme for more information
-	if err := models.LoadPermissions(); err != nil {
-		slog.Warn("Failed to load permissions", "error", err)
-		slog.Info("Running without permissions system")
-	}
-
-	// Load groups. See readme for more information
-	if err := models.LoadGroups(); err != nil {
-		slog.Warn("Failed to load groups", "error", err)
-		slog.Info("Running without groups system")
-	}
-
-	// For hot-reload
-	if err := config.StartConfigWatcher("configs", func(fileName string) {
-		switch fileName {
-		case "permissions.json":
-			if err := models.LoadPermissions(); err != nil {
-				slog.Error("Failed to reload permissions", "error", err)
-			} else {
-				slog.Info("Permissions reloaded successfully")
-			}
-		case "groups.json":
-			if err := models.LoadGroups(); err != nil {
-				slog.Error("Failed to reload groups", "error", err)
-			} else {
-				slog.Info("Groups reloaded successfully")
-			}
-		}
-	}); err != nil {
-		slog.Warn("Failed to start config file watcher", "error", err)
+	// Initialize permission repository (SQLite-based)
+	if err := service.InitPermissionRepository(); err != nil {
+		slog.Error("Failed to initialize permission repository", "error", err)
+		slog.Info("Running without permissions/groups system")
 	}
 
 	if err := validation.ValidateConfig(); err != nil {
@@ -219,9 +193,11 @@ func main() {
 	}
 
 	// Admin-only endpoints (require admin login, but no mTLS)
+	// AuthMiddleware runs first to set is_admin/is_superuser flags
+	// AdminMiddleware then checks those flags and blocks non-admins
 	adminProtected := router.Group("")
-	adminProtected.Use(middleware.AdminMiddleware(authService))
 	adminProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
+	adminProtected.Use(middleware.AdminMiddleware(authService))
 	{
 		adminProtected.GET("/users", authHandler.ListUsers)
 		adminProtected.GET("/users/:user_id", authHandler.GetUser)

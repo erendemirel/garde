@@ -63,7 +63,7 @@ func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) 
 		user.PasswordHash = hashedPassword
 		user.Status = models.UserStatusOk
 		user.MFAEnforced = mfaEnforced
-		user.Permissions = models.AdminPermissions()
+		user.Permissions = AdminPermissions()
 		user.UpdatedAt = time.Now()
 		if err := repo.StoreUser(ctx, user); err != nil {
 			return fmt.Errorf("superuser init failed: %w", err)
@@ -82,7 +82,7 @@ func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) 
 		MFAEnforced:  mfaEnforced,
 		CreatedAt:    now,
 		UpdatedAt:    now,
-		Permissions:  models.AdminPermissions(),
+		Permissions:  AdminPermissions(),
 		Groups:       models.UserGroups{},
 	}
 
@@ -140,7 +140,7 @@ func InitializeAdminUsers(ctx context.Context, repo *repository.RedisRepository)
 			MFAEnforced:  mfaEnforced,
 			CreatedAt:    now,
 			UpdatedAt:    now,
-			Permissions:  models.AdminPermissions(),
+			Permissions:  AdminPermissions(),
 			Groups:       models.UserGroups{},
 		}
 
@@ -514,7 +514,7 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		Groups:       models.UserGroups{},
 	}
 
-	user.Permissions = models.DefaultPermissions()
+	user.Permissions = DefaultPermissions()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
 		return nil, fmt.Errorf(errors.ErrUserCreationFailed)
@@ -555,7 +555,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	// Check if groups system is loaded for admin operations
 	// Superusers are exempt from group sharing checks
 	if !isSuperUser && isAdmin {
-		if !models.IsGroupsLoaded() {
+		if !IsGroupsLoaded() {
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 
@@ -601,7 +601,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		if req.ApproveUpdate {
 			// Safeguard: Prevent removing all permissions
 			if len(targetUser.PendingUpdates.Fields.PermissionsRemove) > 0 {
-				if !models.IsPermissionsLoaded() {
+				if !IsPermissionsLoaded() {
 					return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 				}
 				// Count how many permissions user currently has
@@ -622,7 +622,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 			// Safeguard: Prevent removing all groups
 			if len(targetUser.PendingUpdates.Fields.GroupsRemove) > 0 {
-				if !models.IsGroupsLoaded() {
+				if !IsGroupsLoaded() {
 					return fmt.Errorf(errors.ErrGroupsNotLoaded)
 				}
 				// Count how many groups user currently has
@@ -643,18 +643,34 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 			// Apply permission changes
 			if len(targetUser.PendingUpdates.Fields.PermissionsAdd) > 0 || len(targetUser.PendingUpdates.Fields.PermissionsRemove) > 0 {
-				if !models.IsPermissionsLoaded() {
+				if !IsPermissionsLoaded() {
 					return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 				}
+
+				// For non-superuser admins: verify admin can see all permissions they're approving
+				if !isSuperUser && isAdmin {
+					adminGroupNames := GetUserGroupNames(admin.Groups)
+					// Check permissions to add - admin must be able to see them
+					for _, perm := range targetUser.PendingUpdates.Fields.PermissionsAdd {
+						if !IsValidPermission(perm) {
+							continue
+						}
+						if len(adminGroupNames) > 0 && !IsPermissionVisibleToGroups(string(perm), adminGroupNames) {
+							slog.Warn("Admin attempted to approve adding permission they cannot see", "admin_id", adminID, "permission", perm, "user_id", targetUserID)
+							return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
+						}
+					}
+				}
+
 				// Remove permissions
 				for _, perm := range targetUser.PendingUpdates.Fields.PermissionsRemove {
-					if models.IsValidPermission(perm) {
+					if IsValidPermission(perm) {
 						delete(targetUser.Permissions, perm)
 					}
 				}
 				// Add permissions
 				for _, perm := range targetUser.PendingUpdates.Fields.PermissionsAdd {
-					if models.IsValidPermission(perm) {
+					if IsValidPermission(perm) {
 						targetUser.Permissions[perm] = true
 					}
 				}
@@ -662,7 +678,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 			// Apply group changes
 			if len(targetUser.PendingUpdates.Fields.GroupsAdd) > 0 || len(targetUser.PendingUpdates.Fields.GroupsRemove) > 0 {
-				if !models.IsGroupsLoaded() {
+				if !IsGroupsLoaded() {
 					return fmt.Errorf(errors.ErrGroupsNotLoaded)
 				}
 
@@ -690,13 +706,13 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 				// Remove groups (admins can remove any groups, including the last shared group)
 				for _, group := range targetUser.PendingUpdates.Fields.GroupsRemove {
-					if models.IsValidUserGroup(group) {
+					if IsValidUserGroup(group) {
 						delete(targetUser.Groups, group)
 					}
 				}
 				// Add groups (filtered for admins)
 				for _, group := range groupsToAdd {
-					if models.IsValidUserGroup(group) {
+					if IsValidUserGroup(group) {
 						targetUser.Groups[group] = true
 					}
 				}
@@ -742,15 +758,23 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	}
 
 	if req.Permissions != nil {
-		if !models.IsPermissionsLoaded() {
+		if !IsPermissionsLoaded() {
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
-		// Validate permissions exist (superuser exempt)
+		// Validate permissions exist and visibility (superuser exempt)
 		if !isSuperUser {
+			adminGroupNames := GetUserGroupNames(admin.Groups)
 			for perm := range *req.Permissions {
-				if !models.IsValidPermission(perm) {
+				if !IsValidPermission(perm) {
 					slog.Info("Invalid permission in update request", "permission", perm)
 					return fmt.Errorf(errors.ErrUnauthorized)
+				}
+				// For admins: check visibility - can only grant permissions they can see
+				if isAdmin && len(adminGroupNames) > 0 && (*req.Permissions)[perm] {
+					if !IsPermissionVisibleToGroups(string(perm), adminGroupNames) {
+						slog.Info("Admin attempted to grant permission they cannot see", "admin_id", adminID, "permission", perm, "user_id", targetUserID)
+						return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
+					}
 				}
 			}
 		}
@@ -762,10 +786,10 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		// Validate groups (superusers exempt)
 		if !isSuperUser {
 			for group := range *req.Groups {
-				if !models.IsGroupsLoaded() {
+				if !IsGroupsLoaded() {
 					return fmt.Errorf(errors.ErrGroupsNotLoaded)
 				}
-				if !models.IsValidUserGroup(group) {
+				if !IsValidUserGroup(group) {
 					return fmt.Errorf(errors.ErrUnauthorized)
 				}
 			}
@@ -1131,6 +1155,24 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*model
 		return nil, fmt.Errorf(errors.ErrUserNotFound)
 	}
 
+	// Filter permissions by visibility - regular users only see permissions visible to their groups
+	userGroupNames := GetUserGroupNames(user.Groups)
+	filteredPermissions := user.Permissions
+	if len(userGroupNames) > 0 {
+		visiblePerms := GetVisiblePermissions(userGroupNames)
+		visiblePermSet := make(map[models.Permission]bool)
+		for _, p := range visiblePerms {
+			visiblePermSet[p] = true
+		}
+		// Only include permissions that are visible to user
+		filteredPermissions = models.UserPermissions{}
+		for perm, enabled := range user.Permissions {
+			if enabled && visiblePermSet[perm] {
+				filteredPermissions[perm] = true
+			}
+		}
+	}
+
 	return &models.UserResponse{
 		ID:          user.ID,
 		Email:       user.Email,
@@ -1140,7 +1182,7 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*model
 		MFAEnabled:  user.MFAEnabled,
 		MFAEnforced: user.MFAEnforced,
 		Status:      user.Status,
-		Permissions: user.Permissions,
+		Permissions: filteredPermissions,
 		Groups:      user.Groups,
 	}, nil
 }
@@ -1171,7 +1213,7 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.U
 
 	// Check if groups system is loaded for admin operations
 	if isAdmin && !isSuperuser {
-		if !models.IsGroupsLoaded() {
+		if !IsGroupsLoaded() {
 			return nil, fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 	}
@@ -1206,6 +1248,24 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.U
 			// Filter pending updates to only show groups admin can approve
 			filteredPendingUpdates := filterPendingUpdatesForAdmin(user.PendingUpdates, admin.Groups)
 
+			// Filter permissions by visibility for admins
+			adminGroupNames := GetUserGroupNames(admin.Groups)
+			filteredPermissions := user.Permissions
+			if len(adminGroupNames) > 0 {
+				visiblePerms := GetVisiblePermissions(adminGroupNames)
+				visiblePermSet := make(map[models.Permission]bool)
+				for _, p := range visiblePerms {
+					visiblePermSet[p] = true
+				}
+				// Only include permissions that are visible to admin
+				filteredPermissions = models.UserPermissions{}
+				for perm, enabled := range user.Permissions {
+					if enabled && visiblePermSet[perm] {
+						filteredPermissions[perm] = true
+					}
+				}
+			}
+
 			response = append(response, models.UserResponse{
 				ID:             user.ID,
 				Email:          user.Email,
@@ -1215,7 +1275,7 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string) ([]models.U
 				MFAEnabled:     user.MFAEnabled,
 				MFAEnforced:    user.MFAEnforced,
 				Status:         user.Status,
-				Permissions:    user.Permissions,
+				Permissions:    filteredPermissions,
 				Groups:         user.Groups,
 				PendingUpdates: filteredPendingUpdates,
 			})
@@ -1276,7 +1336,7 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 
 	// Check if groups system is loaded for admin operations
 	if isAdmin {
-		if !models.IsGroupsLoaded() {
+		if !IsGroupsLoaded() {
 			return nil, fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 		if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
@@ -1290,6 +1350,26 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		pendingUpdates = filterPendingUpdatesForAdmin(targetUser.PendingUpdates, admin.Groups)
 	}
 
+	// Filter permissions by visibility for admins
+	filteredPermissions := targetUser.Permissions
+	if isAdmin && !isSuperUser {
+		adminGroupNames := GetUserGroupNames(admin.Groups)
+		if len(adminGroupNames) > 0 {
+			visiblePerms := GetVisiblePermissions(adminGroupNames)
+			visiblePermSet := make(map[models.Permission]bool)
+			for _, p := range visiblePerms {
+				visiblePermSet[p] = true
+			}
+			// Only include permissions that are visible to admin
+			filteredPermissions = models.UserPermissions{}
+			for perm, enabled := range targetUser.Permissions {
+				if enabled && visiblePermSet[perm] {
+					filteredPermissions[perm] = true
+				}
+			}
+		}
+	}
+
 	response := &models.UserResponse{
 		ID:             targetUser.ID,
 		Email:          targetUser.Email,
@@ -1299,7 +1379,7 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		MFAEnabled:     targetUser.MFAEnabled,
 		MFAEnforced:    targetUser.MFAEnforced,
 		Status:         targetUser.Status,
-		Permissions:    targetUser.Permissions,
+		Permissions:    filteredPermissions,
 		Groups:         targetUser.Groups,
 		PendingUpdates: pendingUpdates,
 	}
@@ -1343,23 +1423,37 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 
 	// Validate and process permissions
 	if len(req.Updates.PermissionsAdd) > 0 || len(req.Updates.PermissionsRemove) > 0 {
-		if !models.IsPermissionsLoaded() {
+		if !IsPermissionsLoaded() {
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
-		// Validate permissions to add
+
+		// Get user's groups for visibility checking
+		userGroupNames := GetUserGroupNames(user.Groups)
+
+		// Validate permissions to add - users can only request permissions visible to their groups
 		for _, permStr := range req.Updates.PermissionsAdd {
 			perm := models.Permission(permStr)
-			if !models.IsValidPermission(perm) {
+			if !IsValidPermission(perm) {
 				slog.Warn("Invalid permission requested to add", "permission", permStr, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)
 			}
+			// Check visibility - regular users can only request permissions visible to their groups
+			if len(userGroupNames) > 0 && !IsPermissionVisibleToGroups(permStr, userGroupNames) {
+				slog.Warn("User attempted to request permission not visible to their groups", "permission", permStr, "user_id", userID, "groups", userGroupNames)
+				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + permStr)
+			}
 			userUpdateFields.PermissionsAdd = append(userUpdateFields.PermissionsAdd, perm)
 		}
-		// Validate permissions to remove
+		// Validate permissions to remove - users can only remove permissions they have
 		for _, permStr := range req.Updates.PermissionsRemove {
 			perm := models.Permission(permStr)
-			if !models.IsValidPermission(perm) {
+			if !IsValidPermission(perm) {
 				slog.Warn("Invalid permission requested to remove", "permission", permStr, "user_id", userID)
+				return fmt.Errorf(errors.ErrInvalidRequest)
+			}
+			// Users can only remove permissions they currently have
+			if !user.Permissions[perm] {
+				slog.Warn("User attempted to remove permission they don't have", "permission", permStr, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)
 			}
 			userUpdateFields.PermissionsRemove = append(userUpdateFields.PermissionsRemove, perm)
@@ -1368,13 +1462,13 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 
 	// Validate and process groups
 	if len(req.Updates.GroupsAdd) > 0 || len(req.Updates.GroupsRemove) > 0 {
-		if !models.IsGroupsLoaded() {
+		if !IsGroupsLoaded() {
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 		// Validate groups to add
 		for _, groupStr := range req.Updates.GroupsAdd {
 			group := models.UserGroup(groupStr)
-			if !models.IsValidUserGroup(group) {
+			if !IsValidUserGroup(group) {
 				slog.Warn("Invalid group requested to add", "group", groupStr, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)
 			}
@@ -1383,7 +1477,7 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		// Validate groups to remove
 		for _, groupStr := range req.Updates.GroupsRemove {
 			group := models.UserGroup(groupStr)
-			if !models.IsValidUserGroup(group) {
+			if !IsValidUserGroup(group) {
 				slog.Warn("Invalid group requested to remove", "group", groupStr, "user_id", userID)
 				return fmt.Errorf(errors.ErrInvalidRequest)
 			}

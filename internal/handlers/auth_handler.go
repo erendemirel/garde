@@ -282,7 +282,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 }
 
 // @Summary Update user information
-// @Description Update user details or process pending update requests. Requires admin privileges. Requires permissions.json and groups.json files to be present for permission checks (except for superuser). Approval restrictions: Admins can only approve adding groups they are members of. If a pending update request includes groups the admin is not in, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user).
+// @Description Update user details or process pending update requests. Requires admin privileges. Requires permissions/groups system to be initialized (SQLite-based). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user).
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -427,7 +427,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 }
 
 // @Summary Revoke user sessions
-// @Description Revokes all active sessions for a user. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).
+// @Description Revokes all active sessions for a user. Requires permissions/groups system to be initialized (SQLite-based).
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -537,7 +537,7 @@ func (h *AuthHandler) RequestOTP(c *gin.Context) {
 }
 
 // @Summary Get current user information
-// @Description Returns the authenticated user's information. No mTLS required for this endpoint.
+// @Description Returns the authenticated user's information. Permissions are filtered by visibility - users (both regular users and admins) only see permissions visible to their groups. Superusers see all permissions. No mTLS required for this endpoint.
 // @Tags Protected Routes
 // @Accept json
 // @Produce json
@@ -564,7 +564,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 }
 
 // @Summary List users
-// @Description Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).
+// @Description Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (SQLite-based).
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -600,7 +600,7 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 }
 
 // @Summary Get user details
-// @Description Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).
+// @Description Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (SQLite-based).
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -641,7 +641,7 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 }
 
 // @Summary Request update for user information
-// @Description User requests changes from an admin to their permissions or groups. Uses explicit add/remove lists to clearly indicate what changes are being requested. No mTLS required for this endpoint. Request format: permissions_add (array of permission names to add), permissions_remove (array of permission names to remove), groups_add (array of group names to add), groups_remove (array of group names to remove). At least one of these arrays must be non-empty.
+// @Description User requests changes from an admin to their permissions or groups. Uses explicit add/remove lists to clearly indicate what changes are being requested. Visibility restrictions: Users can only request permissions visible to at least one of their groups. If a user tries to request a permission not visible to their groups, the request will fail. Users can only remove permissions they currently have. No mTLS required for this endpoint. Request format: permissions_add (array of permission names to add), permissions_remove (array of permission names to remove), groups_add (array of group names to add), groups_remove (array of group names to remove). At least one of these arrays must be non-empty.
 // @Tags Protected Routes
 // @Accept json
 // @Produce json
@@ -698,7 +698,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 }
 
 // @Summary List available permissions
-// @Description Returns all available permissions defined in the system
+// @Description Returns available permissions. Regular users and admins only see permissions visible to their groups. Superusers see all permissions. Permissions are managed via SQLite database.
 // @Tags Protected Routes
 // @Produce json
 // @Security SessionCookie
@@ -706,11 +706,42 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 // @Success 200 {object} models.SuccessResponse{data=[]models.PermissionResponse} "List of permissions"
 // @Router /permissions [get]
 func (h *AuthHandler) ListPermissions(c *gin.Context) {
-	allPerms := models.GetAllPermissions()
+	// Check if permissions system is loaded
+	if !service.IsPermissionsLoaded() {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse("permissions system not loaded"))
+		return
+	}
 
-	var response []models.PermissionResponse
+	// Get user's groups for visibility filtering
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+
+	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+
+	// Check if user is superuser - only superusers see all permissions
+	isSuperuser := c.GetBool("is_superuser")
+
+	var allPerms []models.Permission
+	if isSuperuser {
+		// Superusers see all permissions
+		allPerms = service.GetAllPermissions()
+	} else {
+		// Regular users and admins only see permissions visible to their groups
+		groupNames := service.GetUserGroupNames(user.Groups)
+		allPerms = service.GetVisiblePermissions(groupNames)
+	}
+
+	// Ensure response is always a slice, not nil
+	response := make([]models.PermissionResponse, 0, len(allPerms))
 	for _, perm := range allPerms {
-		info := models.GetPermissionInfo(perm)
+		info := service.GetPermissionInfo(perm)
 		response = append(response, models.PermissionResponse{
 			Key:         string(perm),
 			Name:        info.Name,
@@ -722,7 +753,7 @@ func (h *AuthHandler) ListPermissions(c *gin.Context) {
 }
 
 // @Summary List available groups
-// @Description Returns all available groups defined in the system
+// @Description Returns all available groups defined in the system. Groups are managed via SQLite database.
 // @Tags Protected Routes
 // @Produce json
 // @Security SessionCookie
@@ -730,11 +761,11 @@ func (h *AuthHandler) ListPermissions(c *gin.Context) {
 // @Success 200 {object} models.SuccessResponse{data=[]models.GroupResponse} "List of groups"
 // @Router /groups [get]
 func (h *AuthHandler) ListGroups(c *gin.Context) {
-	allGroups := models.GetAllUserGroups()
+	allGroups := service.GetAllUserGroups()
 
-	var response []models.GroupResponse
+	response := make([]models.GroupResponse, 0, len(allGroups))
 	for _, group := range allGroups {
-		info := models.GetGroupInfo(group)
+		info := service.GetGroupInfo(group)
 		response = append(response, models.GroupResponse{
 			Key:         string(group),
 			Name:        info.Name,

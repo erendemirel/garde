@@ -45,9 +45,17 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 #### Security Without Role Paradoxes:
 garde avoids traditional "roles" and "scopes" that often create security paradoxes:
 - **Granular Permissions**: Individual permissions instead of role bundles
-- **Permission Requests**: Users request changes, admins approve or modify. Users can display all permissions and groups
+- **Permission Requests**: Users request changes, admins approve or modify
 - **No Over-Privileging**: Admins get exactly the access they need
-- **JSON Configuration**: Permissions defined in `permissions.json` with descriptions
+- **Permission Visibility**: Permissions are visible to specific groups - users only see and can request permissions visible to their groups
+- **SQLite Database**: Permissions, groups, and visibility mappings stored in SQLite with memory-mapped I/O for performance
+
+#### Permission Visibility System:
+Permissions have visibility to groups. A permission is visible to a group if there's a mapping in the `permission_visibility` table. This controls:
+- **What users see**: Regular users only see permissions visible to at least one of their groups in GET endpoints
+- **What users can request**: Users can only request permissions visible to their groups
+- **What admins can grant**: Admins can only approve/grant permissions visible to their groups
+- **Superuser exemption**: Superusers see and can manage all permissions regardless of visibility
 
 #### Group-Based Access Control:
 Admins can manage a user only if they share at least one group with that user. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met:

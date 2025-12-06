@@ -145,12 +145,11 @@ func (r *RedisRepository) getUserByIDWithClient(ctx context.Context, client *red
 
 func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	// Use Redis WATCH for optimistic locking
 	txf := func(tx *redis.Tx) error {
@@ -215,12 +214,11 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 
 func (r *RedisRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return nil, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	// Get user ID from email index
 	userID, err := client.Get(ctx, "email_to_id:"+email).Result()
@@ -236,12 +234,11 @@ func (r *RedisRepository) GetUserByEmail(ctx context.Context, email string) (*mo
 
 func (r *RedisRepository) StoreSessionData(ctx context.Context, sessionID string, data *session.SessionData, duration time.Duration) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
@@ -254,24 +251,22 @@ func (r *RedisRepository) StoreSessionData(ctx context.Context, sessionID string
 
 func (r *RedisRepository) GetSessionData(ctx context.Context, sessionID string) (*session.SessionData, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return nil, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	return r.getSessionDataWithClient(ctx, client, sessionID)
 }
 
 func (r *RedisRepository) DeleteSession(ctx context.Context, sessionID string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	// Try to delete both session and any blacklist entry
 	pipe := client.Pipeline()
@@ -283,12 +278,11 @@ func (r *RedisRepository) DeleteSession(ctx context.Context, sessionID string) e
 
 func (r *RedisRepository) BlacklistSession(ctx context.Context, sessionID string, duration time.Duration) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := session.BlacklistPrefix + sessionID
 	return client.Set(ctx, key, "revoked", duration).Err()
@@ -296,12 +290,11 @@ func (r *RedisRepository) BlacklistSession(ctx context.Context, sessionID string
 
 func (r *RedisRepository) IsSessionBlacklisted(ctx context.Context, sessionID string) (bool, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return false, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := session.BlacklistPrefix + sessionID
 	exists, err := client.Exists(ctx, key).Result()
@@ -313,12 +306,11 @@ func (r *RedisRepository) IsSessionBlacklisted(ctx context.Context, sessionID st
 
 func (r *RedisRepository) IsIPBlocked(ctx context.Context, ip string) (bool, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return false, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := session.IPBlockPrefix + session.HashString(ip)
 	exists, err := client.Exists(ctx, key).Result()
@@ -330,12 +322,11 @@ func (r *RedisRepository) IsIPBlocked(ctx context.Context, ip string) (bool, err
 
 func (r *RedisRepository) BlockIP(ctx context.Context, ip string, duration time.Duration) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := session.IPBlockPrefix + session.HashString(ip)
 	return client.Set(ctx, key, "blocked", duration).Err()
@@ -343,12 +334,11 @@ func (r *RedisRepository) BlockIP(ctx context.Context, ip string, duration time.
 
 func (r *RedisRepository) RecordFailedLogin(ctx context.Context, email, ip string) (int64, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return 0, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := session.FailedLoginPrefix + email
 	ipKey := session.FailedLoginPrefix + session.HashString(ip)
@@ -388,12 +378,11 @@ func (r *RedisRepository) RecordFailedLogin(ctx context.Context, email, ip strin
 
 func (r *RedisRepository) ClearFailedLogins(ctx context.Context, email, ip string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	pipe := client.Pipeline()
 	pipe.Del(ctx, session.FailedLoginPrefix+email)
@@ -404,12 +393,11 @@ func (r *RedisRepository) ClearFailedLogins(ctx context.Context, email, ip strin
 
 func (r *RedisRepository) RecordSuspiciousActivity(ctx context.Context, userID, activityType string, details map[string]string, ttl time.Duration) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := "suspicious_activity:" + userID
 	activity := map[string]interface{}{
@@ -437,12 +425,11 @@ func (r *RedisRepository) RecordSuspiciousActivity(ctx context.Context, userID, 
 
 func (r *RedisRepository) GetRequestCount(ctx context.Context, userID string, duration time.Duration) (int64, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return 0, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("request_count:%s", userID)
 	count, err := client.Get(ctx, key).Int64()
@@ -454,12 +441,11 @@ func (r *RedisRepository) GetRequestCount(ctx context.Context, userID string, du
 
 func (r *RedisRepository) IncrementRequestCount(ctx context.Context, userID string, ttl time.Duration) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("request_count:%s", userID)
 	pipe := client.Pipeline()
@@ -471,12 +457,11 @@ func (r *RedisRepository) IncrementRequestCount(ctx context.Context, userID stri
 
 func (r *RedisRepository) GetLastRequestTime(ctx context.Context, userID string) (time.Time, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return time.Time{}, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("last_request:%s", userID)
 	timeStr, err := client.Get(ctx, key).Result()
@@ -491,12 +476,11 @@ func (r *RedisRepository) GetLastRequestTime(ctx context.Context, userID string)
 
 func (r *RedisRepository) UpdateLastRequestTime(ctx context.Context, userID string, ttl time.Duration) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("last_request:%s", userID)
 	return client.Set(ctx, key, time.Now().Format(time.RFC3339), ttl).Err()
@@ -504,12 +488,11 @@ func (r *RedisRepository) UpdateLastRequestTime(ctx context.Context, userID stri
 
 func (r *RedisRepository) GetActiveSessionInfo(ctx context.Context, userID string) (bool, string, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return false, "", errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	// Scan for active sessions for this user
 	pattern := "session:*"
@@ -551,24 +534,22 @@ func (r *RedisRepository) GetActiveSessionInfo(ctx context.Context, userID strin
 
 func (r *RedisRepository) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return nil, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	return r.getUserByIDWithClient(ctx, client, userID)
 }
 
 func (r *RedisRepository) ClearUserSecurityData(ctx context.Context, userID, email, ip string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	keysToDelete := []string{
 		fmt.Sprintf("failed_login:%s", email),
@@ -600,12 +581,11 @@ func (r *RedisRepository) ClearUserSecurityData(ctx context.Context, userID, ema
 
 func (r *RedisRepository) GetUserActiveSessions(ctx context.Context, userID string) ([]string, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return nil, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	var sessions []string
 	pattern := "session:*"
@@ -640,12 +620,11 @@ func (r *RedisRepository) GetUserActiveSessions(ctx context.Context, userID stri
 
 func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return nil, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	var users []*models.User
 	var cursor uint64
@@ -688,12 +667,11 @@ func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, e
 
 func (r *RedisRepository) StoreTempMFASecret(ctx context.Context, userID, secret string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("temp_mfa:%s", userID)
 	return client.Set(ctx, key, secret, 5*time.Minute).Err() // 5 minute TTL
@@ -701,12 +679,11 @@ func (r *RedisRepository) StoreTempMFASecret(ctx context.Context, userID, secret
 
 func (r *RedisRepository) GetTempMFASecret(ctx context.Context, userID string) (string, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return "", errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("temp_mfa:%s", userID)
 	secret, err := client.Get(ctx, key).Result()
@@ -718,12 +695,11 @@ func (r *RedisRepository) GetTempMFASecret(ctx context.Context, userID string) (
 
 func (r *RedisRepository) DeleteTempMFASecret(ctx context.Context, userID string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("temp_mfa:%s", userID)
 	return client.Del(ctx, key).Err()
@@ -731,12 +707,11 @@ func (r *RedisRepository) DeleteTempMFASecret(ctx context.Context, userID string
 
 func (r *RedisRepository) StoreOTP(ctx context.Context, userID string, hashedOTP string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("otp:%s", userID)
 	return client.Set(ctx, key, hashedOTP, 5*time.Minute).Err() // 5 minute TTL
@@ -744,12 +719,11 @@ func (r *RedisRepository) StoreOTP(ctx context.Context, userID string, hashedOTP
 
 func (r *RedisRepository) GetOTP(ctx context.Context, userID string) (string, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return "", errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("otp:%s", userID)
 	otp, err := client.Get(ctx, key).Result()
@@ -763,12 +737,11 @@ const maxResetAttempts = 5
 
 func (r *RedisRepository) TrackResetAttempt(ctx context.Context, userID string) (int, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return 0, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("reset_attempts:%s", userID)
 	attempts, err := client.Incr(ctx, key).Result()
@@ -791,12 +764,11 @@ func (r *RedisRepository) TrackResetAttempt(ctx context.Context, userID string) 
 
 func (r *RedisRepository) DeleteOTP(ctx context.Context, userID string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("otp:%s", userID)
 	return client.Del(ctx, key).Err()
@@ -804,24 +776,22 @@ func (r *RedisRepository) DeleteOTP(ctx context.Context, userID string) error {
 
 func (r *RedisRepository) DeleteKey(ctx context.Context, key string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	return client.Del(ctx, key).Err()
 }
 
 func (r *RedisRepository) RecordAuditLog(ctx context.Context, userID string, data map[string]interface{}, maxRecords int, ttl time.Duration) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := fmt.Sprintf("audit_log:%s", userID)
 
@@ -850,12 +820,11 @@ const securityCodeKeyPrefix = "security_code:"
 
 func (r *RedisRepository) StoreSecurityCode(ctx context.Context, userID string, code string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := securityCodeKeyPrefix + userID
 	return client.Set(ctx, key, code, 15*time.Second).Err() // 15 seconds TTL
@@ -863,12 +832,11 @@ func (r *RedisRepository) StoreSecurityCode(ctx context.Context, userID string, 
 
 func (r *RedisRepository) GetSecurityCode(ctx context.Context, userID string) (string, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return "", errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	key := securityCodeKeyPrefix + userID
 	return client.Get(ctx, key).Result()
@@ -876,12 +844,11 @@ func (r *RedisRepository) GetSecurityCode(ctx context.Context, userID string) (s
 
 func (r *RedisRepository) GetAllUsers(ctx context.Context) ([]*models.User, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return nil, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	var users []*models.User
 	var cursor uint64
@@ -922,24 +889,22 @@ func (r *RedisRepository) GetAllUsers(ctx context.Context) ([]*models.User, erro
 // Add distributed locking
 func (r *RedisRepository) AcquireUserLock(ctx context.Context, userID string, ttl time.Duration) (bool, error) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return false, errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	return client.SetNX(ctx, "lock:user:"+userID, "1", ttl).Result()
 }
 
 func (r *RedisRepository) ReleaseUserLock(ctx context.Context, userID string) error {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
-		r.mu.RUnlock()
 		return errRedisClientUnavailable
 	}
-	defer r.mu.RUnlock()
 
 	return client.Del(ctx, "lock:user:"+userID).Err()
 }

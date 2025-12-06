@@ -21,7 +21,7 @@
    ```
 
 2. **Review development configuration (Optional)**
-   - Check `dev.secrets` for default secrets; configure `configs/permissions.json` and `configs/groups.json` for permission and group systems.
+   - Check `dev.secrets` for default secrets. Permissions and groups are now managed via SQLite database (automatically initialized with sample data).
    - Modify as needed for your environment. The easiest way for this is:
        - **For secrets:** Following the comments inside `dev.secrets` file,  
        - **For configurations:** Seeing [Example Configuration Files](#example-configuration-files) for example JSONs, and following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) section in integration guide to understand how they work and how to structure the JSONs. You can also have a look at this section in [Key Concepts](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#security-without-role-paradoxes) to have the bigger picture.
@@ -120,12 +120,12 @@
 | `secret/garde/admin_users_json` | JSON object: `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`. Admins are auto-created/updated at startup and on secret reload. Public/admin-created signup cannot create these accounts. |
 
 **Permissions & Groups**:
-- Configure `configs/permissions.json` and `configs/groups.json` in your deployment.
-- Mount these files to `/app/configs/` in the container.
+- Permissions and groups are managed via SQLite database (automatically initialized with sample data).
+- The database is stored at `data/permissions.db` and is automatically created on first run.
+- No JSON configuration files needed.
 
 > [!TIP]
-> Both systems(permission, group) are optional for production. Omit the files from your deployment to disable them. Superuser access remains 
-unaffected. See [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for more info
+> The permissions/groups system is optional. If initialization fails, the system runs without it. Superuser access remains unaffected. See [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for more info
 
 **Other Production Configuration**
 - Logging: `secret/garde/log_level` (DEBUG/INFO/WARN/ERROR), `secret/garde/gin_mode` (debug/release)
@@ -153,8 +153,7 @@ See [Vault Guide](https://github.com/erendemirel/garde/blob/master/vault/README.
 ## Example Configuration Files
 
 - Secrets structure: [secrets/.gitkeep](https://github.com/erendemirel/garde/blob/master/secrets/.gitkeep)
-- Permissions List (optional): [permissions.json](https://github.com/erendemirel/garde/blob/master/configs/permissions.json)
-- Groups List (optional): [groups.json](https://github.com/erendemirel/garde/blob/master/configs/groups.json)
+- Permissions and groups are managed via SQLite database. See [API Integration Guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for details.
 
 ---
 
