@@ -1125,7 +1125,6 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 	}
 	otpStr := string(otp)
 
-	// Hash OTP
 	hashedOTP, err := crypto.HashPassword(otpStr)
 	if err != nil {
 		return fmt.Errorf(errors.ErrOperationFailed)
@@ -1377,7 +1376,6 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 
 func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *models.RequestUpdateRequest) error {
 
-	// Immediately check if request is nil
 	if req == nil {
 		slog.Warn("Request update failed", "reason", "request is nil", "user_id", userID)
 		return fmt.Errorf(errors.ErrInvalidRequest)
@@ -1473,7 +1471,6 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		}
 	}
 
-	// Create update request
 	updateReq := &models.UserUpdateRequest{
 		RequestedAt: time.Now(),
 		Fields:      userUpdateFields,
@@ -1548,7 +1545,7 @@ func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups
 
 	// Only allow adding groups the admin is in
 	for _, group := range pending.Fields.GroupsAdd {
-		if adminGroups[group] {
+			if adminGroups[group] {
 			filteredGroupsAdd = append(filteredGroupsAdd, group)
 		}
 	}
@@ -1558,7 +1555,7 @@ func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups
 
 	if len(filteredGroupsAdd) > 0 {
 		filtered.Fields.GroupsAdd = filteredGroupsAdd
-	}
+		}
 	if len(filteredGroupsRemove) > 0 {
 		filtered.Fields.GroupsRemove = filteredGroupsRemove
 	}

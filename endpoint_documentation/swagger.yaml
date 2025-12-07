@@ -1,4 +1,14 @@
 definitions:
+  models.AddPermissionVisibilityRequest:
+    properties:
+      group_name:
+        type: string
+      permission_name:
+        type: string
+    required:
+    - group_name
+    - permission_name
+    type: object
   models.ChangePasswordRequest:
     properties:
       mfa_code:
@@ -12,6 +22,26 @@ definitions:
     required:
     - new_password
     - old_password
+    type: object
+  models.CreateGroupRequest:
+    properties:
+      definition:
+        type: string
+      name:
+        type: string
+    required:
+    - definition
+    - name
+    type: object
+  models.CreatePermissionRequest:
+    properties:
+      definition:
+        type: string
+      name:
+        type: string
+    required:
+    - definition
+    - name
     type: object
   models.CreateUserRequest:
     properties:
@@ -122,6 +152,16 @@ definitions:
       name:
         type: string
     type: object
+  models.RemovePermissionVisibilityRequest:
+    properties:
+      group_name:
+        type: string
+      permission_name:
+        type: string
+    required:
+    - group_name
+    - permission_name
+    type: object
   models.RequestOTPRequest:
     properties:
       email:
@@ -131,14 +171,22 @@ definitions:
     type: object
   models.RequestUpdateFields:
     properties:
-      groups:
-        additionalProperties:
-          type: boolean
-        type: object
-      permissions:
-        additionalProperties:
-          type: boolean
-        type: object
+      groups_add:
+        items:
+          type: string
+        type: array
+      groups_remove:
+        items:
+          type: string
+        type: array
+      permissions_add:
+        items:
+          type: string
+        type: array
+      permissions_remove:
+        items:
+          type: string
+        type: array
     type: object
   models.RequestUpdateRequest:
     properties:
@@ -156,14 +204,23 @@ definitions:
     required:
     - user_id
     type: object
-  models.SessionValidationResponse:
-    properties:
-      valid:
-        type: boolean
-    type: object
   models.SuccessResponse:
     properties:
       data: {}
+    type: object
+  models.UpdateGroupRequest:
+    properties:
+      definition:
+        type: string
+    required:
+    - definition
+    type: object
+  models.UpdatePermissionRequest:
+    properties:
+      definition:
+        type: string
+    required:
+    - definition
     type: object
   models.UpdateUserRequest:
     properties:
@@ -233,10 +290,22 @@ definitions:
     - UserStatusApprovalRejected
   models.UserUpdateFields:
     properties:
-      groups:
-        $ref: '#/definitions/models.UserGroups'
-      permissions:
-        $ref: '#/definitions/models.UserPermissions'
+      groups_add:
+        items:
+          type: string
+        type: array
+      groups_remove:
+        items:
+          type: string
+        type: array
+      permissions_add:
+        items:
+          type: string
+        type: array
+      permissions_remove:
+        items:
+          type: string
+        type: array
     type: object
   models.UserUpdateRequest:
     properties:
@@ -251,9 +320,350 @@ info:
   title: garde
   version: "1.0"
 paths:
+  /admin/groups:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new group in the SQLite database. Only superuser can
+        perform this operation.
+      parameters:
+      - description: Group details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Group created
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.GroupResponse'
+              type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Group already exists
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Create a new group
+      tags:
+      - Superuser Routes
+  /admin/groups/{group_name}:
+    delete:
+      description: Deletes a group from the SQLite database. This will cascade delete
+        all visibility mappings. Only superuser can perform this operation.
+      parameters:
+      - description: Group name
+        in: path
+        name: group_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group deleted
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Group not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Delete a group
+      tags:
+      - Superuser Routes
+    put:
+      consumes:
+      - application/json
+      description: Updates a group's definition. Only superuser can perform this operation.
+      parameters:
+      - description: Group name
+        in: path
+        name: group_name
+        required: true
+        type: string
+      - description: Updated group definition
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group updated
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.GroupResponse'
+              type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Group not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Update a group
+      tags:
+      - Superuser Routes
+  /admin/permissions:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new permission in the SQLite database. Only superuser
+        can perform this operation.
+      parameters:
+      - description: Permission details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreatePermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Permission created
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.PermissionResponse'
+              type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Permission already exists
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Create a new permission
+      tags:
+      - Superuser Routes
+  /admin/permissions/{permission_name}:
+    delete:
+      description: Deletes a permission from the SQLite database. This will cascade
+        delete all visibility mappings. Only superuser can perform this operation.
+      parameters:
+      - description: Permission name
+        in: path
+        name: permission_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Permission deleted
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Permission not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Delete a permission
+      tags:
+      - Superuser Routes
+    put:
+      consumes:
+      - application/json
+      description: Updates a permission's definition. Only superuser can perform this
+        operation.
+      parameters:
+      - description: Permission name
+        in: path
+        name: permission_name
+        required: true
+        type: string
+      - description: Updated permission definition
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdatePermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Permission updated
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.PermissionResponse'
+              type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Permission not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Update a permission
+      tags:
+      - Superuser Routes
+  /admin/permissions/visibility:
+    delete:
+      consumes:
+      - application/json
+      description: Removes a permission's visibility from a specific group. Only superuser
+        can perform this operation.
+      parameters:
+      - description: Permission and group names
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.RemovePermissionVisibilityRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Visibility mapping removed
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Permission, group, or visibility mapping not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Remove permission visibility from a group
+      tags:
+      - Superuser Routes
+    post:
+      consumes:
+      - application/json
+      description: Makes a permission visible to a specific group. Only superuser
+        can perform this operation.
+      parameters:
+      - description: Permission and group names
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddPermissionVisibilityRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Visibility mapping added
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Permission or group not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Visibility mapping already exists
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Add permission visibility to a group
+      tags:
+      - Superuser Routes
   /groups:
     get:
-      description: Returns all available groups defined in the system
+      description: Returns all available groups defined in the system. Groups are
+        managed via SQLite database.
       produces:
       - application/json
       responses:
@@ -347,7 +757,9 @@ paths:
       - Protected Routes
   /permissions:
     get:
-      description: Returns all available permissions defined in the system
+      description: Returns available permissions. Regular users and admins only see
+        permissions visible to their groups. Superusers see all permissions. Permissions
+        are managed via SQLite database.
       produces:
       - application/json
       responses:
@@ -372,8 +784,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Revokes all active sessions for a user. Requires permissions.json
-        and groups.json files to be present for permission checks (except for superuser).
+      description: Revokes all active sessions for a user. Requires permissions/groups
+        system to be initialized (SQLite-based).
       parameters:
       - description: Session revocation request with user ID
         in: body
@@ -414,9 +826,12 @@ paths:
     get:
       consumes:
       - application/json
-      description: Returns users with their details and pending requests. Admins see
-        users in their groups, superusers see all. Requires permissions.json and groups.json
-        files to be present for permission checks (except for superuser).
+      description: 'Returns users with their details and pending requests. Admins
+        see users in their groups, superusers see all. Permission visibility filtering:
+        Regular users only see permissions visible to their groups in their own data.
+        Admins see user''s permissions, but filtered to only show permissions visible
+        to the admin''s groups. Superusers see all permissions for all users. Requires
+        permissions/groups system to be initialized (SQLite-based).'
       produces:
       - application/json
       responses:
@@ -488,8 +903,8 @@ paths:
       consumes:
       - application/json
       description: Returns details for a specific user. Admins can only access users
-        in their groups. Superuser can access all users. Requires permissions.json
-        and groups.json files to be present for permission checks (except for superuser).
+        in their groups. Superuser can access all users. Requires permissions/groups
+        system to be initialized (SQLite-based).
       parameters:
       - description: User ID
         in: path
@@ -533,9 +948,15 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update user details or process pending update requests. Requires
-        admin privileges. Requires permissions.json and groups.json files to be present
-        for permission checks (except for superuser).
+      description: 'Update user details or process pending update requests. Requires
+        admin privileges. Requires permissions/groups system to be initialized (SQLite-based).
+        Approval restrictions: Admins can only approve adding groups they are members
+        of. Admins can only approve adding permissions visible to their groups. If
+        a pending update request includes groups the admin is not in, approval will
+        fail with error. If a pending update request includes permissions the admin
+        cannot see, approval will fail with error. Cannot approve requests that would
+        remove all permissions or all groups. Admins can remove any groups (including
+        the last shared group - this will revoke their access to manage that user).'
       parameters:
       - description: Target User ID to update
         in: path
@@ -554,13 +975,19 @@ paths:
         "200":
           description: User updated successfully
           schema:
-            $ref: '#/definitions/models.SuccessResponse'
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.UserResponse'
+              type: object
         "400":
           description: Invalid request
           schema:
             $ref: '#/definitions/models.ErrorResponse'
         "401":
-          description: Unauthorized
+          description: Unauthorized or admin tried to approve adding groups they're
+            not a member of
           schema:
             $ref: '#/definitions/models.ErrorResponse'
         "403":
@@ -589,7 +1016,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: Returns the authenticated user's information. No mTLS required
+      description: Returns the authenticated user's information. Permissions are filtered
+        by visibility - users (both regular users and admins) only see permissions
+        visible to their groups. Superusers see all permissions. No mTLS required
         for this endpoint.
       produces:
       - application/json
@@ -862,10 +1291,18 @@ paths:
     post:
       consumes:
       - application/json
-      description: User requests changes from an admin to their permissions or groups.
-        No mTLS required for this endpoint.
+      description: 'User requests changes from an admin to their permissions or groups.
+        Uses explicit add/remove lists to clearly indicate what changes are being
+        requested. Visibility restrictions: Users can only request permissions visible
+        to at least one of their groups. If a user tries to request a permission not
+        visible to their groups, the request will fail. Users can only remove permissions
+        they currently have. No mTLS required for this endpoint. Request format: permissions_add
+        (array of permission names to add), permissions_remove (array of permission
+        names to remove), groups_add (array of group names to add), groups_remove
+        (array of group names to remove). At least one of these arrays must be non-empty.'
       parameters:
-      - description: Update request details (permissions/groups)
+      - description: Update request with permissions_add, permissions_remove, groups_add,
+          groups_remove arrays
         in: body
         name: request
         required: true
@@ -888,10 +1325,6 @@ paths:
             $ref: '#/definitions/models.ErrorResponse'
         "404":
           description: User not found
-          schema:
-            $ref: '#/definitions/models.ErrorResponse'
-        "409":
-          description: Update request already pending
           schema:
             $ref: '#/definitions/models.ErrorResponse'
         "500":
@@ -919,14 +1352,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session validation result with user ID and expiry
+          description: Session validation result with Response.valid and UserID fields
           schema:
-            allOf:
-            - $ref: '#/definitions/models.SuccessResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/models.SessionValidationResponse'
-              type: object
+            $ref: '#/definitions/models.SuccessResponse'
         "400":
           description: Invalid session ID format or missing session ID for API request
           schema:

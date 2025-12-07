@@ -70,3 +70,34 @@ type RequestUpdateRequest struct {
 type UpdateRequestResponse struct {
 	Message string `json:"message"`
 }
+
+// Permission management requests (superuser only)
+type CreatePermissionRequest struct {
+	Name       string `json:"name" binding:"required"`
+	Definition string `json:"definition" binding:"required"`
+}
+
+type UpdatePermissionRequest struct {
+	Definition string `json:"definition" binding:"required"`
+}
+
+// Group management requests (superuser only)
+type CreateGroupRequest struct {
+	Name       string `json:"name" binding:"required"`
+	Definition string `json:"definition" binding:"required"`
+}
+
+type UpdateGroupRequest struct {
+	Definition string `json:"definition" binding:"required"`
+}
+
+// Permission visibility management requests (superuser only)
+type AddPermissionVisibilityRequest struct {
+	PermissionName string `json:"permission_name" binding:"required"`
+	GroupName      string `json:"group_name" binding:"required"`
+}
+
+type RemovePermissionVisibilityRequest struct {
+	PermissionName string `json:"permission_name" binding:"required"`
+	GroupName      string `json:"group_name" binding:"required"`
+}

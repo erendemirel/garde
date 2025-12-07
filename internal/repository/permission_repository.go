@@ -23,7 +23,7 @@ var (
 	permissionRepoOnce sync.Once
 )
 
-// GetPermissionRepository returns a singleton instance of PermissionRepository
+// Singleton instance of PermissionRepository
 func GetPermissionRepository() (*PermissionRepository, error) {
 	var err error
 	permissionRepoOnce.Do(func() {
@@ -33,7 +33,6 @@ func GetPermissionRepository() (*PermissionRepository, error) {
 }
 
 func NewPermissionRepository() (*PermissionRepository, error) {
-	// Create data directory if it doesn't exist
 	dataDir := "data"
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
@@ -57,15 +56,10 @@ func NewPermissionRepository() (*PermissionRepository, error) {
 
 	repo := &PermissionRepository{db: db}
 
-	// Initialize schema and sample data
+	// Initialize schema
 	if err := repo.initSchema(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-
-	if err := repo.initSampleData(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to initialize sample data: %w", err)
 	}
 
 	slog.Info("Permission repository initialized", "db_path", dbPath)
@@ -102,100 +96,6 @@ func (r *PermissionRepository) initSchema() error {
 	return err
 }
 
-func (r *PermissionRepository) initSampleData() error {
-	// Check if data already exists
-	var count int
-	err := r.db.QueryRow("SELECT COUNT(*) FROM permissions").Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		slog.Info("Sample data already exists, skipping initialization")
-		return nil
-	}
-
-	// Insert sample permissions
-	permissions := []struct {
-		name       string
-		definition string
-	}{
-		{"a_permission", "Ability to perform A actions"},
-		{"another_permission", "Ability to perform something"},
-		{"permission_b", "Users who have this permission can perform B"},
-		{"some_permission", "To allow something"},
-		{"admin_permission", "Administrative permission"},
-		{"read_permission", "Read access permission"},
-		{"write_permission", "Write access permission"},
-	}
-
-	permIDs := make(map[string]int64)
-	for _, p := range permissions {
-		result, err := r.db.Exec("INSERT INTO permissions (name, definition) VALUES (?, ?)", p.name, p.definition)
-		if err != nil {
-			return fmt.Errorf("failed to insert permission %s: %w", p.name, err)
-		}
-		id, err := result.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get permission ID for %s: %w", p.name, err)
-		}
-		permIDs[p.name] = id
-	}
-
-	// Insert sample groups
-	groups := []struct {
-		name       string
-		definition string
-	}{
-		{"x", "X Group - Users of group x"},
-		{"y", "Y Role - y role"},
-		{"z", "Z Users - z users"},
-		{"admin_group", "Administrative group"},
-		{"user_group", "Regular user group"},
-	}
-
-	groupIDs := make(map[string]int64)
-	for _, g := range groups {
-		result, err := r.db.Exec("INSERT INTO groups (name, definition) VALUES (?, ?)", g.name, g.definition)
-		if err != nil {
-			return fmt.Errorf("failed to insert group %s: %w", g.name, err)
-		}
-		id, err := result.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get group ID for %s: %w", g.name, err)
-		}
-		groupIDs[g.name] = id
-	}
-
-	// Insert sample permission visibility mappings
-	visibility := []struct {
-		permission string
-		groups     []string
-	}{
-		{"a_permission", []string{"x", "z"}},
-		{"another_permission", []string{"y"}},
-		{"permission_b", []string{}},                 // No groups - not visible to anyone
-		{"some_permission", []string{"x", "y", "z"}}, // Visible to all groups
-		{"admin_permission", []string{"admin_group"}},
-		{"read_permission", []string{"user_group", "admin_group"}},
-		{"write_permission", []string{"admin_group"}},
-	}
-
-	for _, v := range visibility {
-		permID := permIDs[v.permission]
-		for _, groupName := range v.groups {
-			groupID := groupIDs[groupName]
-			_, err := r.db.Exec("INSERT INTO permission_visibility (permission_id, group_id) VALUES (?, ?)", permID, groupID)
-			if err != nil {
-				return fmt.Errorf("failed to insert visibility for permission %s to group %s: %w", v.permission, groupName, err)
-			}
-		}
-	}
-
-	slog.Info("Sample data initialized successfully")
-	return nil
-}
-
-// GetPermissionByID retrieves a permission by ID
 func (r *PermissionRepository) GetPermissionByID(ctx context.Context, id int64) (*entities.PermissionEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -212,7 +112,6 @@ func (r *PermissionRepository) GetPermissionByID(ctx context.Context, id int64) 
 	return &perm, nil
 }
 
-// GetPermissionByName retrieves a permission by name
 func (r *PermissionRepository) GetPermissionByName(ctx context.Context, name string) (*entities.PermissionEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -229,7 +128,6 @@ func (r *PermissionRepository) GetPermissionByName(ctx context.Context, name str
 	return &perm, nil
 }
 
-// GetAllPermissions retrieves all permissions
 func (r *PermissionRepository) GetAllPermissions(ctx context.Context) ([]entities.PermissionEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -251,7 +149,6 @@ func (r *PermissionRepository) GetAllPermissions(ctx context.Context) ([]entitie
 	return permissions, rows.Err()
 }
 
-// GetVisiblePermissions retrieves permissions visible to the given groups
 func (r *PermissionRepository) GetVisiblePermissions(ctx context.Context, groupNames []string) ([]entities.PermissionEntity, error) {
 	if len(groupNames) == 0 {
 		return []entities.PermissionEntity{}, nil
@@ -260,7 +157,6 @@ func (r *PermissionRepository) GetVisiblePermissions(ctx context.Context, groupN
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Build query with placeholders
 	args := make([]interface{}, len(groupNames))
 	for i, groupName := range groupNames {
 		args[i] = groupName
@@ -292,7 +188,6 @@ func (r *PermissionRepository) GetVisiblePermissions(ctx context.Context, groupN
 	return permissions, rows.Err()
 }
 
-// GetGroupByID retrieves a group by ID
 func (r *PermissionRepository) GetGroupByID(ctx context.Context, id int64) (*entities.GroupEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -309,7 +204,6 @@ func (r *PermissionRepository) GetGroupByID(ctx context.Context, id int64) (*ent
 	return &group, nil
 }
 
-// GetGroupByName retrieves a group by name
 func (r *PermissionRepository) GetGroupByName(ctx context.Context, name string) (*entities.GroupEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -326,7 +220,6 @@ func (r *PermissionRepository) GetGroupByName(ctx context.Context, name string) 
 	return &group, nil
 }
 
-// GetAllGroups retrieves all groups
 func (r *PermissionRepository) GetAllGroups(ctx context.Context) ([]entities.GroupEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -348,7 +241,6 @@ func (r *PermissionRepository) GetAllGroups(ctx context.Context) ([]entities.Gro
 	return groups, rows.Err()
 }
 
-// IsPermissionVisibleToGroups checks if a permission is visible to any of the given groups
 func (r *PermissionRepository) IsPermissionVisibleToGroups(ctx context.Context, permissionName string, groupNames []string) (bool, error) {
 	if len(groupNames) == 0 {
 		return false, nil
@@ -376,7 +268,6 @@ func (r *PermissionRepository) IsPermissionVisibleToGroups(ctx context.Context, 
 	return visible, err
 }
 
-// GetGroupsForPermission retrieves all groups that can see a permission
 func (r *PermissionRepository) GetGroupsForPermission(ctx context.Context, permissionName string) ([]entities.GroupEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -407,7 +298,165 @@ func (r *PermissionRepository) GetGroupsForPermission(ctx context.Context, permi
 	return groups, rows.Err()
 }
 
-// Close closes the database connection
+func (r *PermissionRepository) CreatePermission(ctx context.Context, name, definition string) (*entities.PermissionEntity, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result, err := r.db.ExecContext(ctx, "INSERT INTO permissions (name, definition) VALUES (?, ?)", name, definition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create permission: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get permission ID: %w", err)
+	}
+
+	return &entities.PermissionEntity{
+		ID:         id,
+		Name:       name,
+		Definition: definition,
+	}, nil
+}
+
+func (r *PermissionRepository) UpdatePermission(ctx context.Context, id int64, definition string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result, err := r.db.ExecContext(ctx, "UPDATE permissions SET definition = ? WHERE id = ?", definition, id)
+	if err != nil {
+		return fmt.Errorf("failed to update permission: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("permission not found")
+	}
+
+	return nil
+}
+
+func (r *PermissionRepository) DeletePermission(ctx context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result, err := r.db.ExecContext(ctx, "DELETE FROM permissions WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete permission: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("permission not found")
+	}
+
+	return nil
+}
+
+func (r *PermissionRepository) CreateGroup(ctx context.Context, name, definition string) (*entities.GroupEntity, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result, err := r.db.ExecContext(ctx, "INSERT INTO groups (name, definition) VALUES (?, ?)", name, definition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create group: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group ID: %w", err)
+	}
+
+	return &entities.GroupEntity{
+		ID:         id,
+		Name:       name,
+		Definition: definition,
+	}, nil
+}
+
+func (r *PermissionRepository) UpdateGroup(ctx context.Context, id int64, definition string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result, err := r.db.ExecContext(ctx, "UPDATE groups SET definition = ? WHERE id = ?", definition, id)
+	if err != nil {
+		return fmt.Errorf("failed to update group: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("group not found")
+	}
+
+	return nil
+}
+
+func (r *PermissionRepository) DeleteGroup(ctx context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result, err := r.db.ExecContext(ctx, "DELETE FROM groups WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete group: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("group not found")
+	}
+
+	return nil
+}
+
+func (r *PermissionRepository) AddPermissionVisibility(ctx context.Context, permissionID, groupID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	_, err := r.db.ExecContext(ctx, "INSERT INTO permission_visibility (permission_id, group_id) VALUES (?, ?)", permissionID, groupID)
+	if err != nil {
+		return fmt.Errorf("failed to add permission visibility: %w", err)
+	}
+
+	return nil
+}
+
+func (r *PermissionRepository) RemovePermissionVisibility(ctx context.Context, permissionID, groupID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result, err := r.db.ExecContext(ctx, "DELETE FROM permission_visibility WHERE permission_id = ? AND group_id = ?", permissionID, groupID)
+	if err != nil {
+		return fmt.Errorf("failed to remove permission visibility: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("permission visibility mapping not found")
+	}
+
+	return nil
+}
+
 func (r *PermissionRepository) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -417,7 +466,6 @@ func (r *PermissionRepository) Close() error {
 	return nil
 }
 
-// Helper function to build SQL placeholders
 func buildPlaceholdersFixed(count int) string {
 	if count == 0 {
 		return ""

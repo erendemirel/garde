@@ -58,7 +58,7 @@ func main() {
 	session.InitRapidRequestConfig()
 
 	// Initialize logger
-	logLevel := slog.LevelInfo // Default log level
+	logLevel := slog.LevelInfo
 
 	// Set log level
 	envLogLevel := strings.ToUpper(config.Get("LOG_LEVEL"))
@@ -81,7 +81,7 @@ func main() {
 
 	slog.Info("Logger initialized", "level", envLogLevel)
 
-	// Initialize permission repository (SQLite-based)
+	// Initialize permission repository (SQLite based in Memory I/O mode)
 	if err := service.InitPermissionRepository(); err != nil {
 		slog.Error("Failed to initialize permission repository", "error", err)
 		slog.Info("Running without permissions/groups system")
@@ -203,6 +203,28 @@ func main() {
 		adminProtected.GET("/users/:user_id", authHandler.GetUser)
 		adminProtected.PUT("/users/:user_id", authHandler.UpdateUser)
 		adminProtected.POST("/sessions/revoke", authHandler.RevokeUserSession)
+	}
+
+	// Superuser-only endpoints (require superuser login)
+	// AuthMiddleware runs first to set is_superuser flag
+	// SuperuserMiddleware then checks that flag and blocks non-superusers
+	superuserProtected := router.Group("")
+	superuserProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
+	superuserProtected.Use(middleware.SuperuserMiddleware())
+	{
+		// Permission management
+		superuserProtected.POST("/admin/permissions", authHandler.CreatePermission)
+		superuserProtected.PUT("/admin/permissions/:permission_name", authHandler.UpdatePermission)
+		superuserProtected.DELETE("/admin/permissions/:permission_name", authHandler.DeletePermission)
+
+		// Group management
+		superuserProtected.POST("/admin/groups", authHandler.CreateGroup)
+		superuserProtected.PUT("/admin/groups/:group_name", authHandler.UpdateGroup)
+		superuserProtected.DELETE("/admin/groups/:group_name", authHandler.DeleteGroup)
+
+		// Permission visibility management
+		superuserProtected.POST("/admin/permissions/visibility", authHandler.AddPermissionVisibility)
+		superuserProtected.DELETE("/admin/permissions/visibility", authHandler.RemovePermissionVisibility)
 	}
 
 	// Special case for /validate endpoint (API key + mTLS authentication only)

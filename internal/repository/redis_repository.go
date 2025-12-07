@@ -635,24 +635,24 @@ func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, e
 		// Scan user keys instead of using KEYS
 		keys, nextCursor, err := client.Scan(opCtx, cursor, "user:*", 100).Result()
 		cancel() // Cancel immediately after scan completes
+	if err != nil {
+		return nil, err
+	}
+
+	for _, key := range keys {
+			userData, err := client.Get(ctx, key).Bytes()
 		if err != nil {
-			return nil, err
+			continue // Skip failed reads
 		}
 
-		for _, key := range keys {
-			userData, err := client.Get(ctx, key).Bytes()
-			if err != nil {
-				continue // Skip failed reads
-			}
-
-			var user models.User
+		var user models.User
 			if err := json.Unmarshal(userData, &user); err != nil {
-				continue // Skip invalid data
-			}
+			continue // Skip invalid data
+		}
 
-			// Only include locked users
-			if user.Status != models.UserStatusOk {
-				users = append(users, &user)
+		// Only include locked users
+		if user.Status != models.UserStatusOk {
+			users = append(users, &user)
 			}
 		}
 

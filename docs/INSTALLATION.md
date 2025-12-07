@@ -5,7 +5,6 @@
 - [Production Installation](#production-installation)
 - [Verifying Installation](#verifying-installation)
 - [Vault Guide](#vault-guide)
-- [Example Configuration Files](#example-configuration-files)
 - [Detailed Integration Guide For Service Integrations](#detailed-integration-guide-for-service-integrations)
 
 ## Development Installation
@@ -21,13 +20,10 @@
    ```
 
 2. **Review development configuration (Optional)**
-   - Check `dev.secrets` for default secrets. Permissions and groups are now managed via SQLite database (automatically initialized with sample data).
-   - Modify as needed for your environment. The easiest way for this is:
+   - There are two types of things to configure. Secrets, permissions and groups. On dev, secrets are managed via `dev.secrets` file which is already populated with default values, permissions and groups are managed via an built-in SQLLite database, and requires no configuration.
+   - Modify as needed for your environment. The easiest way to learn about secrets and permission system is:
        - **For secrets:** Following the comments inside `dev.secrets` file,  
-       - **For configurations:** Seeing [Example Configuration Files](#example-configuration-files) for example JSONs, and following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) section in integration guide to understand how they work and how to structure the JSONs. You can also have a look at this section in [Key Concepts](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#security-without-role-paradoxes) to have the bigger picture.
-
-> [!TIP]
-> Both permission and group systems are optional. Remove the JSON files from `/configs` to disable them. When disabled, only the superuser maintains full access
+       - **For permission and group system:** Following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) section in integration guide to understand how they work. You can also have a look at this section in [Key Concepts](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#security-without-role-paradoxes) to have the bigger picture.
 
 3. **Start the development stack**
    ```bash
@@ -120,12 +116,17 @@
 | `secret/garde/admin_users_json` | JSON object: `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`. Admins are auto-created/updated at startup and on secret reload. Public/admin-created signup cannot create these accounts. |
 
 **Permissions & Groups**:
-- Permissions and groups are managed via SQLite database (automatically initialized with sample data).
+- Permissions and groups are managed via SQLite database.
 - The database is stored at `data/permissions.db` and is automatically created on first run.
-- No JSON configuration files needed.
+- **Database Schema:**
+  - `permissions` table: `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `name` (TEXT NOT NULL UNIQUE), `definition` (TEXT NOT NULL)
+  - `groups` table: `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `name` (TEXT NOT NULL UNIQUE), `definition` (TEXT NOT NULL)
+  - `permission_visibility` table: `permission_id` (INTEGER NOT NULL), `group_id` (INTEGER NOT NULL), PRIMARY KEY (permission_id, group_id) with FOREIGN KEY constraints
+- Superusers can manage permissions, groups, and visibility mappings via API endpoints (see [Superuser-Only Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#f-superuser-only-permission-and-group-management) in the integration guide).
+- See [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for detailed information.
 
 > [!TIP]
-> The permissions/groups system is optional. If initialization fails, the system runs without it. Superuser access remains unaffected. See [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for more info
+> The in-built SQLLite database doesn't require any configuration or infrastructure
 
 **Other Production Configuration**
 - Logging: `secret/garde/log_level` (DEBUG/INFO/WARN/ERROR), `secret/garde/gin_mode` (debug/release)
@@ -147,13 +148,6 @@ curl -X POST https://your-domain/login \
 ## Vault Guide
 
 See [Vault Guide](https://github.com/erendemirel/garde/blob/master/vault/README.md)
-
----
-
-## Example Configuration Files
-
-- Secrets structure: [secrets/.gitkeep](https://github.com/erendemirel/garde/blob/master/secrets/.gitkeep)
-- Permissions and groups are managed via SQLite database. See [API Integration Guide](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for details.
 
 ---
 

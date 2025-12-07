@@ -116,61 +116,6 @@ func StopWatcher() {
 	}
 }
 
-func StartConfigWatcher(configsDir string, reloadCallback func(configFile string)) error {
-	if configsDir == "" {
-		configsDir = "configs"
-	}
-
-	info, err := os.Stat(configsDir)
-	if err != nil || !info.IsDir() {
-		return fmt.Errorf("configs directory not found: %s", configsDir)
-	}
-
-	configWatcher, err = fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("failed to create config watcher: %w", err)
-	}
-
-	onConfigReload = reloadCallback
-
-	go func() {
-		for {
-			select {
-			case event, ok := <-configWatcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op&(fsnotify.Write|fsnotify.Create) != 0 {
-					fileName := filepath.Base(event.Name)
-					// Only react to .json files
-					if strings.HasSuffix(fileName, ".json") {
-						slog.Info("Config: Config file changed, reloading", "file", fileName)
-
-						// Small delay to ensure file write is complete
-						time.Sleep(100 * time.Millisecond)
-
-						if onConfigReload != nil {
-							onConfigReload(fileName)
-						}
-					}
-				}
-			case err, ok := <-configWatcher.Errors:
-				if !ok {
-					return
-				}
-				slog.Error("Config: Config watcher error", "error", err)
-			}
-		}
-	}()
-
-	if err := configWatcher.Add(configsDir); err != nil {
-		return fmt.Errorf("failed to watch configs directory: %w", err)
-	}
-
-	slog.Info("Config: Watching for config file changes", "path", configsDir)
-	return nil
-}
-
 func loadAllSecrets() error {
 	entries, err := os.ReadDir(secretsDir)
 	if err != nil {

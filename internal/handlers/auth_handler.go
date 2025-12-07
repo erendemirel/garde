@@ -12,6 +12,7 @@ import (
 	"garde/pkg/validation"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -121,7 +122,7 @@ type ValidateResponse struct {
 // @Security ApiKey
 // @Security Bearer
 // @Param session_id query string false "Session ID (required only for API requests with API key)"
-// @Success 200 {object} models.SuccessResponse{data=models.SessionValidationResponse} "Session validation result with user ID and expiry"
+// @Success 200 {object} models.SuccessResponse "Session validation result with Response.valid and UserID fields"
 // @Failure 400 {object} models.ErrorResponse "Invalid session ID format or missing session ID for API request"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized - invalid session, missing mTLS certificate for API requests, or invalid API key"
 // @Failure 403 {object} models.ErrorResponse "Forbidden - insufficient permissions (user not in admin's groups)"
@@ -273,7 +274,20 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 
 	resp, err := h.authService.CreateUser(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrEmailAlreadyExists {
+			c.JSON(http.StatusConflict, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrUnauthorized {
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrInvalidRequest {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))
 		return
 	}
 
@@ -337,7 +351,21 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 			c.JSON(http.StatusConflict, models.NewErrorResponse("User was modified by another request"))
 			return
 		}
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err.Error()))
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrUnauthorized ||
+			errStr == pkgerrors.ErrInvalidPermissionRequested ||
+			errStr == pkgerrors.ErrInvalidGroupRequested ||
+			errStr == pkgerrors.ErrCannotRemoveAllPermissions ||
+			errStr == pkgerrors.ErrCannotRemoveAllGroups ||
+			errStr == pkgerrors.ErrCannotAddGroupsNotIn {
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
 		return
 	}
 
@@ -418,7 +446,20 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	}
 
 	if err := h.authService.ResetPassword(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrUnauthorized || errStr == pkgerrors.ErrTooManyAttempts {
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrInvalidOTP || errStr == pkgerrors.ErrMFARequired || errStr == pkgerrors.ErrInvalidMFACode {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))
 		return
 	}
 
@@ -461,7 +502,16 @@ func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 		c.GetBool("is_admin"),
 	)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err.Error()))
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrUnauthorized {
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))
 		return
 	}
 
@@ -555,7 +605,12 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 
 	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID.(string))
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err.Error()))
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))
 		return
 	}
 
@@ -588,7 +643,12 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 		c.GetBool("is_admin"),
 	)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err.Error()))
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrUnauthorized {
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))
 		return
 	}
 
@@ -717,7 +777,12 @@ func (h *AuthHandler) ListPermissions(c *gin.Context) {
 
 	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID.(string))
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))
 		return
 	}
 
@@ -770,4 +835,445 @@ func (h *AuthHandler) ListGroups(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(response))
+}
+
+// Permission Management Handlers (Superuser Only)
+
+// @Summary Create a new permission
+// @Description Creates a new permission in the SQLite database. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param request body models.CreatePermissionRequest true "Permission details"
+// @Success 201 {object} models.SuccessResponse{data=models.PermissionResponse} "Permission created"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 409 {object} models.ErrorResponse "Permission already exists"
+// @Router /admin/permissions [post]
+func (h *AuthHandler) CreatePermission(c *gin.Context) {
+	var req models.CreatePermissionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	perm, err := permRepo.CreatePermission(c.Request.Context(), req.Name, req.Definition)
+	if err != nil {
+		// Check for unique constraint violation
+		errStr := err.Error()
+		if strings.Contains(errStr, "UNIQUE constraint failed") && strings.Contains(errStr, "permissions.name") {
+			c.JSON(http.StatusConflict, models.NewErrorResponse("permission already exists"))
+			return
+		}
+		slog.Error("Failed to create permission", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	response := models.PermissionResponse{
+		Key:         perm.Name,
+		Name:        perm.Name,
+		Description: perm.Definition,
+	}
+
+	c.JSON(http.StatusCreated, models.NewSuccessResponse(response))
+}
+
+// @Summary Update a permission
+// @Description Updates a permission's definition. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param permission_name path string true "Permission name"
+// @Param request body models.UpdatePermissionRequest true "Updated permission definition"
+// @Success 200 {object} models.SuccessResponse{data=models.PermissionResponse} "Permission updated"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 404 {object} models.ErrorResponse "Permission not found"
+// @Router /admin/permissions/{permission_name} [put]
+func (h *AuthHandler) UpdatePermission(c *gin.Context) {
+	permissionName := c.Param("permission_name")
+	if permissionName == "" {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	var req models.UpdatePermissionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Get permission by name to get ID
+	perm, err := permRepo.GetPermissionByName(c.Request.Context(), permissionName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("permission not found"))
+		return
+	}
+
+	// Update permission
+	err = permRepo.UpdatePermission(c.Request.Context(), perm.ID, req.Definition)
+	if err != nil {
+		if err.Error() == "permission not found" {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse("permission not found"))
+			return
+		}
+		slog.Error("Failed to update permission", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	response := models.PermissionResponse{
+		Key:         perm.Name,
+		Name:        perm.Name,
+		Description: req.Definition,
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(response))
+}
+
+// @Summary Delete a permission
+// @Description Deletes a permission from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param permission_name path string true "Permission name"
+// @Success 200 {object} models.SuccessResponse{data=object} "Permission deleted"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 404 {object} models.ErrorResponse "Permission not found"
+// @Router /admin/permissions/{permission_name} [delete]
+func (h *AuthHandler) DeletePermission(c *gin.Context) {
+	permissionName := c.Param("permission_name")
+	if permissionName == "" {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Get permission by name to get ID
+	perm, err := permRepo.GetPermissionByName(c.Request.Context(), permissionName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("permission not found"))
+		return
+	}
+
+	// Delete permission
+	err = permRepo.DeletePermission(c.Request.Context(), perm.ID)
+	if err != nil {
+		if err.Error() == "permission not found" {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse("permission not found"))
+			return
+		}
+		slog.Error("Failed to delete permission", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(map[string]string{"message": "permission deleted successfully"}))
+}
+
+// Group Management Handlers (Superuser Only)
+
+// @Summary Create a new group
+// @Description Creates a new group in the SQLite database. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param request body models.CreateGroupRequest true "Group details"
+// @Success 201 {object} models.SuccessResponse{data=models.GroupResponse} "Group created"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 409 {object} models.ErrorResponse "Group already exists"
+// @Router /admin/groups [post]
+func (h *AuthHandler) CreateGroup(c *gin.Context) {
+	var req models.CreateGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	group, err := permRepo.CreateGroup(c.Request.Context(), req.Name, req.Definition)
+	if err != nil {
+		// Check for unique constraint violation
+		errStr := err.Error()
+		if strings.Contains(errStr, "UNIQUE constraint failed") && strings.Contains(errStr, "groups.name") {
+			c.JSON(http.StatusConflict, models.NewErrorResponse("group already exists"))
+			return
+		}
+		slog.Error("Failed to create group", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	response := models.GroupResponse{
+		Key:         group.Name,
+		Name:        group.Name,
+		Description: group.Definition,
+	}
+
+	c.JSON(http.StatusCreated, models.NewSuccessResponse(response))
+}
+
+// @Summary Update a group
+// @Description Updates a group's definition. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param group_name path string true "Group name"
+// @Param request body models.UpdateGroupRequest true "Updated group definition"
+// @Success 200 {object} models.SuccessResponse{data=models.GroupResponse} "Group updated"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 404 {object} models.ErrorResponse "Group not found"
+// @Router /admin/groups/{group_name} [put]
+func (h *AuthHandler) UpdateGroup(c *gin.Context) {
+	groupName := c.Param("group_name")
+	if groupName == "" {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	var req models.UpdateGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Get group by name to get ID
+	group, err := permRepo.GetGroupByName(c.Request.Context(), groupName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("group not found"))
+		return
+	}
+
+	// Update group
+	err = permRepo.UpdateGroup(c.Request.Context(), group.ID, req.Definition)
+	if err != nil {
+		if err.Error() == "group not found" {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse("group not found"))
+			return
+		}
+		slog.Error("Failed to update group", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	response := models.GroupResponse{
+		Key:         group.Name,
+		Name:        group.Name,
+		Description: req.Definition,
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(response))
+}
+
+// @Summary Delete a group
+// @Description Deletes a group from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param group_name path string true "Group name"
+// @Success 200 {object} models.SuccessResponse{data=object} "Group deleted"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 404 {object} models.ErrorResponse "Group not found"
+// @Router /admin/groups/{group_name} [delete]
+func (h *AuthHandler) DeleteGroup(c *gin.Context) {
+	groupName := c.Param("group_name")
+	if groupName == "" {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Get group by name to get ID
+	group, err := permRepo.GetGroupByName(c.Request.Context(), groupName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("group not found"))
+		return
+	}
+
+	// Delete group
+	err = permRepo.DeleteGroup(c.Request.Context(), group.ID)
+	if err != nil {
+		if err.Error() == "group not found" {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse("group not found"))
+			return
+		}
+		slog.Error("Failed to delete group", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(map[string]string{"message": "group deleted successfully"}))
+}
+
+// Permission Visibility Management Handlers (Superuser Only)
+
+// @Summary Add permission visibility to a group
+// @Description Makes a permission visible to a specific group. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param request body models.AddPermissionVisibilityRequest true "Permission and group names"
+// @Success 201 {object} models.SuccessResponse{data=object} "Visibility mapping added"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 404 {object} models.ErrorResponse "Permission or group not found"
+// @Failure 409 {object} models.ErrorResponse "Visibility mapping already exists"
+// @Router /admin/permissions/visibility [post]
+func (h *AuthHandler) AddPermissionVisibility(c *gin.Context) {
+	var req models.AddPermissionVisibilityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Get permission by name
+	perm, err := permRepo.GetPermissionByName(c.Request.Context(), req.PermissionName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("permission not found"))
+		return
+	}
+
+	// Get group by name
+	group, err := permRepo.GetGroupByName(c.Request.Context(), req.GroupName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("group not found"))
+		return
+	}
+
+	// Add visibility mapping
+	err = permRepo.AddPermissionVisibility(c.Request.Context(), perm.ID, group.ID)
+	if err != nil {
+		// Check for unique constraint violation
+		errStr := err.Error()
+		if strings.Contains(errStr, "UNIQUE constraint failed") && strings.Contains(errStr, "permission_visibility") {
+			c.JSON(http.StatusConflict, models.NewErrorResponse("visibility mapping already exists"))
+			return
+		}
+		slog.Error("Failed to add permission visibility", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.NewSuccessResponse(map[string]string{
+		"message": "permission visibility added successfully",
+	}))
+}
+
+// @Summary Remove permission visibility from a group
+// @Description Removes a permission's visibility from a specific group. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param request body models.RemovePermissionVisibilityRequest true "Permission and group names"
+// @Success 200 {object} models.SuccessResponse{data=object} "Visibility mapping removed"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 404 {object} models.ErrorResponse "Permission, group, or visibility mapping not found"
+// @Router /admin/permissions/visibility [delete]
+func (h *AuthHandler) RemovePermissionVisibility(c *gin.Context) {
+	var req models.RemovePermissionVisibilityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Get permission by name
+	perm, err := permRepo.GetPermissionByName(c.Request.Context(), req.PermissionName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("permission not found"))
+		return
+	}
+
+	// Get group by name
+	group, err := permRepo.GetGroupByName(c.Request.Context(), req.GroupName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse("group not found"))
+		return
+	}
+
+	// Remove visibility mapping
+	err = permRepo.RemovePermissionVisibility(c.Request.Context(), perm.ID, group.ID)
+	if err != nil {
+		if err.Error() == "permission visibility mapping not found" {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse("visibility mapping not found"))
+			return
+		}
+		slog.Error("Failed to remove permission visibility", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(map[string]string{
+		"message": "permission visibility removed successfully",
+	}))
 }

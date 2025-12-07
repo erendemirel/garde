@@ -11,8 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Verifies that the user has admin or superuser privileges
-// Assumes AuthMiddleware has already run and set is_admin/is_superuser flags
 func AdminMiddleware(authService *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get admin/superuser flags set by AuthMiddleware
