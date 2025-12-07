@@ -58,7 +58,7 @@ func main() {
 	session.InitRapidRequestConfig()
 
 	// Initialize logger
-	logLevel := slog.LevelInfo // Default log level
+	logLevel := slog.LevelInfo
 
 	// Set log level
 	envLogLevel := strings.ToUpper(config.Get("LOG_LEVEL"))
@@ -81,36 +81,10 @@ func main() {
 
 	slog.Info("Logger initialized", "level", envLogLevel)
 
-	// Load permissions. See readme for more information
-	if err := models.LoadPermissions(); err != nil {
-		slog.Warn("Failed to load permissions", "error", err)
-		slog.Info("Running without permissions system")
-	}
-
-	// Load groups. See readme for more information
-	if err := models.LoadGroups(); err != nil {
-		slog.Warn("Failed to load groups", "error", err)
-		slog.Info("Running without groups system")
-	}
-
-	// For hot-reload
-	if err := config.StartConfigWatcher("configs", func(fileName string) {
-		switch fileName {
-		case "permissions.json":
-			if err := models.LoadPermissions(); err != nil {
-				slog.Error("Failed to reload permissions", "error", err)
-			} else {
-				slog.Info("Permissions reloaded successfully")
-			}
-		case "groups.json":
-			if err := models.LoadGroups(); err != nil {
-				slog.Error("Failed to reload groups", "error", err)
-			} else {
-				slog.Info("Groups reloaded successfully")
-			}
-		}
-	}); err != nil {
-		slog.Warn("Failed to start config file watcher", "error", err)
+	// Initialize permission repository (SQLite based in Memory I/O mode)
+	if err := service.InitPermissionRepository(); err != nil {
+		slog.Error("Failed to initialize permission repository", "error", err)
+		slog.Info("Running without permissions/groups system")
 	}
 
 	if err := validation.ValidateConfig(); err != nil {
@@ -219,14 +193,38 @@ func main() {
 	}
 
 	// Admin-only endpoints (require admin login, but no mTLS)
+	// AuthMiddleware runs first to set is_admin/is_superuser flags
+	// AdminMiddleware then checks those flags and blocks non-admins
 	adminProtected := router.Group("")
-	adminProtected.Use(middleware.AdminMiddleware(authService))
 	adminProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
+	adminProtected.Use(middleware.AdminMiddleware(authService))
 	{
 		adminProtected.GET("/users", authHandler.ListUsers)
 		adminProtected.GET("/users/:user_id", authHandler.GetUser)
 		adminProtected.PUT("/users/:user_id", authHandler.UpdateUser)
 		adminProtected.POST("/sessions/revoke", authHandler.RevokeUserSession)
+	}
+
+	// Superuser-only endpoints (require superuser login)
+	// AuthMiddleware runs first to set is_superuser flag
+	// SuperuserMiddleware then checks that flag and blocks non-superusers
+	superuserProtected := router.Group("")
+	superuserProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
+	superuserProtected.Use(middleware.SuperuserMiddleware())
+	{
+		// Permission management
+		superuserProtected.POST("/admin/permissions", authHandler.CreatePermission)
+		superuserProtected.PUT("/admin/permissions/:permission_name", authHandler.UpdatePermission)
+		superuserProtected.DELETE("/admin/permissions/:permission_name", authHandler.DeletePermission)
+
+		// Group management
+		superuserProtected.POST("/admin/groups", authHandler.CreateGroup)
+		superuserProtected.PUT("/admin/groups/:group_name", authHandler.UpdateGroup)
+		superuserProtected.DELETE("/admin/groups/:group_name", authHandler.DeleteGroup)
+
+		// Permission visibility management
+		superuserProtected.POST("/admin/permissions/visibility", authHandler.AddPermissionVisibility)
+		superuserProtected.DELETE("/admin/permissions/visibility", authHandler.RemovePermissionVisibility)
 	}
 
 	// Special case for /validate endpoint (API key + mTLS authentication only)

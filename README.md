@@ -23,10 +23,10 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 - **Authentication**: Three modes (browser, API, API key) with server side session management<br>
 - **Permissions**: Easy permission system avoiding traditional role/scope paradoxes and request/approval system<br>
 - **Implementation**: Vault secrets, data encryption, secure error handling, privacy protection<br>
-- **Hot Reload**: All secrets and config changes without restart<br>
+- **Hot Reload**: All secrets changes without restart<br>
 
 > [!TIP]
-> garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes. Additionally, it enables users to request permissions from admins
+> garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes or maintainability issues. Additionally, it enables users to request permissions from admins
 
 ---
 
@@ -44,22 +44,20 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 #### Security Without Role Paradoxes:
 garde avoids traditional "roles" and "scopes" that often create security paradoxes:
-- **Granular Permissions**: Individual permissions instead of role bundles
-- **Permission Requests**: Users request changes, admins approve or modify. Users can display all permissions and groups
-- **No Over-Privileging**: Admins get exactly the access they need
-- **JSON Configuration**: Permissions defined in `permissions.json` with descriptions
+- **Permission Requests**: Users request changes, admins approve or modify
+- **Permission Visibility**: Permissions are visible to specific groups - users only see and can request permissions visible to their groups. Similarly, admins can only approve/reject permissions visible to their groups.
 
-#### Group-Based Access Control:
-Admins can manage a user only if they share at least one group with that user. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met:
+#### Group-Based Access Control and Permission Visibility:
+Admins can manage a user only if they share at least one group with that user. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met. In addition to this, permissions have visibility to groups. A permission is visible to a group if there's a mapping in the `permission_visibility` table that controls what users see and perform. Admins and users can see only the permissions visible to their groups:
 
-| Admin Groups | Target User Groups | Can Admin Modify Permissions? | Can Admin Modify Groups? |
-|--------------|-------------------|-------------------------------|--------------------------|
-| `[]` | `[A]` | ❌ No | ❌ No shared groups |
-| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A, cannot add any |
-| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A and B, cannot add any |
-| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add B, can remove A |
-| `[A]` | `[B]` | ❌ No | ❌ No shared groups |
-| `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
+| Admin Groups | Target User Groups | Permissions: Add | Permissions: Remove | Groups: Add | Groups: Remove |
+|--------------|-------------------|------------------|---------------------|-------------|----------------|
+| `[]` | `[A]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+| `[A]` | `[A]` | Permissions visible to A | Any permission | ❌ None | A |
+| `[A]` | `[A, B]` | Permissions visible to A only | Any permission | ❌ None | A, B |
+| `[A, B]` | `[A]` | Permissions visible to A or B | Any permission | B | A |
+| `[A]` | `[B]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+| `[A]` | `[]` (none) | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
 
 Initial group assignments can only be done by Superuser.
 

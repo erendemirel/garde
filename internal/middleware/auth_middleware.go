@@ -98,6 +98,17 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			}
 		}
 
+		user, err := authService.GetCurrentUser(c.Request.Context(), validationResult.UserID)
+		if err == nil {
+			superUserEmail := config.Get("SUPERUSER_EMAIL")
+			isSuperUser := user.Email == superUserEmail
+
+			isAdmin := user.IsUserAdmin()
+
+			c.Set("is_superuser", isSuperUser)
+			c.Set("is_admin", isAdmin)
+		}
+
 		// Store user ID and session ID in context for later use
 		c.Set("user_id", validationResult.UserID)
 		c.Set("session_id", sessionID)

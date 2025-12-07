@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"garde/internal/models"
+	"garde/internal/service"
 	"garde/pkg/errors"
 	"garde/pkg/validation"
 	"io"
@@ -266,13 +267,13 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 
 	// Validate permissions if provided and permissions system is loaded
 	if len(req.Updates.PermissionsAdd) > 0 || len(req.Updates.PermissionsRemove) > 0 {
-		if !models.IsPermissionsLoaded() {
+		if !service.IsPermissionsLoaded() {
 			slog.Debug("Permissions system is not loaded")
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
 
 		// Get all valid permissions
-		validPermissions := models.GetAllPermissions()
+		validPermissions := service.GetAllPermissions()
 		permissionSet := make(map[models.Permission]bool)
 		for _, p := range validPermissions {
 			permissionSet[p] = true
@@ -302,13 +303,13 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 
 	// Validate groups if provided and groups system is loaded
 	if len(req.Updates.GroupsAdd) > 0 || len(req.Updates.GroupsRemove) > 0 {
-		if !models.IsGroupsLoaded() {
+		if !service.IsGroupsLoaded() {
 			slog.Debug("Groups system is not loaded")
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 
 		// Get all valid groups
-		validGroups := models.GetAllUserGroups()
+		validGroups := service.GetAllUserGroups()
 		groupSet := make(map[models.UserGroup]bool)
 		for _, g := range validGroups {
 			groupSet[g] = true
@@ -352,13 +353,13 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 	if req.Permissions != nil && len(*req.Permissions) > 0 {
 		slog.Debug("Validating permissions", "count", len(*req.Permissions))
 
-		if !models.IsPermissionsLoaded() {
+		if !service.IsPermissionsLoaded() {
 			slog.Debug("Permissions system is not loaded")
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
 
 		// Get all valid permissions
-		validPermissions := models.GetAllPermissions()
+		validPermissions := service.GetAllPermissions()
 		permissionSet := make(map[models.Permission]bool)
 		for _, p := range validPermissions {
 			permissionSet[p] = true
@@ -383,13 +384,13 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 	if req.Groups != nil && len(*req.Groups) > 0 {
 		slog.Debug("Validating groups", "count", len(*req.Groups))
 
-		if !models.IsGroupsLoaded() {
+		if !service.IsGroupsLoaded() {
 			slog.Debug("Groups system is not loaded")
 			return fmt.Errorf(errors.ErrGroupsNotLoaded)
 		}
 
 		// Get all valid groups
-		validGroups := models.GetAllUserGroups()
+		validGroups := service.GetAllUserGroups()
 		groupSet := make(map[models.UserGroup]bool)
 		for _, g := range validGroups {
 			groupSet[g] = true

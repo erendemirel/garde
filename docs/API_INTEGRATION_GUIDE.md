@@ -2,6 +2,48 @@
 
 This guide explains how to integrate and use garde in your applications.
 
+## Table of Contents
+
+- [Authentication Methods](#authentication-methods)
+  - [1. Browser-based Authentication](#1-browser-based-authentication)
+  - [2. API Authentication](#2-api-authentication)
+  - [3. Internal Service Authentication (mTLS + API Key)](#3-internal-service-authentication-mtls--api-key)
+- [Common Workflows](#common-workflows)
+  - [1. User Registration and Account Management](#1-user-registration-and-account-management)
+    - [Initial Registration](#initial-registration)
+    - [View Current User Info](#view-current-user-info)
+  - [2. Authentication Flows](#2-authentication-flows)
+    - [Regular Login](#regular-login)
+    - [Logout](#logout)
+  - [3. Password Management](#3-password-management)
+    - [A. Change Password (When Logged In)](#a-change-password-when-logged-in)
+    - [B. Password Reset Flow (When Locked Out)](#b-password-reset-flow-when-locked-out)
+  - [4. MFA Management](#4-mfa-management)
+    - [Understanding MFA States](#understanding-mfa-states)
+    - [A. Setting Up MFA](#a-setting-up-mfa)
+    - [B. Disabling MFA](#b-disabling-mfa)
+  - [5. Permission and Group Management](#5-permission-and-group-management)
+    - [A. Overview](#a-overview)
+    - [B. Permissions](#b-permissions)
+    - [C. Groups](#c-groups)
+    - [D. Permission Management](#d-permission-management)
+    - [E. Admin Management](#e-admin-management)
+    - [F. Superuser-Only Permission and Group Management](#f-superuser-only-permission-and-group-management)
+    - [G. Superuser Management](#g-superuser-management)
+  - [6. Admin Operations](#6-admin-operations)
+    - [A. User Management](#a-user-management)
+    - [B. Session Validation](#b-session-validation)
+    - [C. User Details](#c-user-details)
+  - [7. Security Event Responses](#7-security-event-responses)
+    - [Suspicious Activity Detection](#suspicious-activity-detection)
+    - [A. Session Termination Events](#a-session-termination-events)
+    - [B. Account Locking Events](#b-account-locking-events)
+    - [C. IP Blocking](#c-ip-blocking)
+    - [D. Session Blacklisting](#d-session-blacklisting)
+    - [E. Security Measures and Recovery](#e-security-measures-and-recovery)
+- [Email Management](#email-management)
+  - [Email Configuration](#email-configuration)
+
 ## Authentication Methods
 
 ### 1. Browser-based Authentication
@@ -25,7 +67,6 @@ POST /login
 Success Response:
 ```json
 {
-    "success": true,
     "data": {
         "session_id": "cd374181-b8..."  // Also set in HTTP-only cookie
     }
@@ -102,7 +143,10 @@ Success Response:
 ```json
 {
     "data": {
-        "valid": true
+        "Response": {
+            "valid": true
+        },
+        "UserID": "usr_xyz..."
     }
 }
 ```
@@ -146,10 +190,11 @@ Error Response:
 ```json
 {
     "error": {
-        "message": "Email already exists"
+        "message": "email already exists"
     }
 }
 ```
+Status Code: `409 Conflict`
 
 Important Notes:
 - User status starts as "pending_approval" until approved by admin
@@ -178,7 +223,10 @@ Success Response:
             "a_permission": true,
             "another_permission": false
         },
-        "user_groups": ["group1", "group2"]
+        "groups": {
+            "group1": true,
+            "group2": true
+        }
     }
 }
 ```
@@ -371,106 +419,52 @@ Notes:
 ### 5. Permission and Group Management
 
 #### A. Overview
-The API uses a permission and group structure:
-- The permissions and groups systems are optional and can be disabled
+The API uses a permission and group structure with permission visibility:
+- The permissions and groups systems are stored in SQLite database (`data/permissions.db`)
 - Permissions are individual access rights
 - Groups are for easier organization of admins - the users they are responsible of
+- **Permission Visibility**: Permissions are visible to specific groups via the `permission_visibility` table
 - Admins can ONLY manage users who share at least one group with them (no exceptions)
 - Only superusers can assign initial groups to users who have no groups yet
-- Superusers have access to all groups and permissions
+- Superusers have access to all groups and permissions (exempt from visibility checks)
+
+**Permission Visibility Rules:**
+- Users only see permissions visible to at least one of their groups in GET endpoints
+- Users can only request permissions visible to their groups
+- Admins can only approve/grant permissions visible to their groups
+- Superusers see and can manage all permissions regardless of visibility
 
 #### B. Permissions
-Permissions are defined in `configs/permissions.json`:
+Permissions are stored in SQLite database with the following structure:
 
-```json
-{
-    "a_permission": {
-        "name": "A Permission",
-        "description": "Ability to perform A actions",
-        "groups": ["x", "z"]
-    },
-    "another_permission": {
-        "name": "Another permission",
-        "description": "Ability to perform something",
-        "groups": ["y"]
-    },
-    "permission_b": {
-        "name": "Permission B",
-        "description": "Users who have this permission can perform B",
-        "groups": []  // Empty array for no group associations
-    },
-    "some_permission": {
-        "name": "Some Permission",
-        "description": "To allow something"
-        // groups field can be omitted entirely
-    }
-}
-```
+**Database Schema:**
+- `permissions` table: `id` (INTEGER PRIMARY KEY), `name` (TEXT UNIQUE), `definition` (TEXT)
+- `groups` table: `id` (INTEGER PRIMARY KEY), `name` (TEXT UNIQUE), `definition` (TEXT)
+- `permission_visibility` table: `permission_id` (INTEGER), `group_id` (INTEGER), PRIMARY KEY (permission_id, group_id)
 
-Each permission:
-- Has a unique identifier (e.g., "a_permission")
-- Contains a human-readable name and description
-- The "groups" field is for documentation/organization only - it does NOT automatically grant permissions when a user joins a group
+**Permission Visibility:**
+- A permission is visible to a group if there's an entry in `permission_visibility` linking them
+- If a permission has no visibility mappings, it's not visible to any regular users (only superusers can see it)
+- Users with multiple groups see the union of all permissions visible to any of their groups
+
+**Permission Characteristics:**
+- Each permission has a unique identifier (name)
+- Contains a human-readable name and definition (description)
 - Is stored as a boolean (enabled/disabled) for each user
-- If permissions.json is missing or empty, the permissions system will be disabled
-- When disabled, only permission-related operations (currently: updating the permissions of a user with an admin user) will return "permissions system not loaded"
-- Admin operations not involving permissions remain available
+- Visibility is controlled by the `permission_visibility` table
+- If the permissions system fails to initialize, permission-related operations will return "permissions system not loaded"
 - Superuser operations remain unaffected by permissions system state
 
-When writing permissions.json:
-1. Permission names (keys):
-   - Must be unique
-   - Use lowercase with underscores
-   - Should be descriptive but concise
-   - Avoid special characters except underscore
-
-2. Required fields:
-   - "name": Human-readable display name
-   - "description": Clear explanation of the permission
-   - "groups": Optional array of group IDs for documentation purposes only (can be empty [] or omitted). Note: This field is NOT used by the backend - permissions and groups are managed separately.
-
-
 #### C. Groups
-Groups are defined in `configs/groups.json`:
+Groups are stored in SQLite database:
 
-```json
-{
-    "x": {
-        "name": "X Group",
-        "description": "Users of group x"
-    },
-    "y": {
-        "name": "Y Role",
-        "description": "y role"
-    },
-    "z": {
-        "name": "Z Users",
-        "description": "z users"
-    }
-}
-```
-
-Group characteristics:
-- Each group has a unique identifier
-- Contains a display name and description
+**Group Characteristics:**
+- Each group has a unique identifier (name)
+- Contains a display name and definition (description)
 - Users can belong to multiple groups
 - Admins can only manage users in their shared groups
-- If groups.json is missing or empty, the groups system will be disabled
-- When disabled, all group-related operations (currently: admin user operations) will return "groups system not loaded"
+- If the groups system fails to initialize, all group-related operations will return "groups system not loaded"
 - Superuser operations remain unaffected by groups system state
-
-When writing groups.json:
-1. Group names (keys):
-   - Must be unique
-   - Avoid special characters
-
-2. Required fields:
-   - "name": Human-readable display name
-   - "description": Clear explanation of the group's purpose
-
-3. Important considerations:
-   - The "groups" field in permissions.json is for documentation only and not validated against groups.json
-   - Consider future scalability when designing group structure
 
 #### D. Permission Management
 
@@ -480,7 +474,7 @@ GET /users/me
 Authorization: Bearer bccf1b28-fd...
 ```
 
-Response includes permissions and groups:
+Response includes permissions and groups (filtered by visibility):
 ```json
 {
     "data": {
@@ -488,7 +482,7 @@ Response includes permissions and groups:
             "a_permission": true,
             "another_permission": false
         },
-        "user_groups": {
+        "groups": {
             "x": true,
             "y": false
         }
@@ -496,9 +490,41 @@ Response includes permissions and groups:
 }
 ```
 
-In case of disabled group-permission system, Permissions and Groups will return as empty
+**Important Notes:**
+- Regular users only see permissions visible to at least one of their groups
+- Admins see the user's permissions, but filtered to only show permissions visible to the admin's groups
+- Superusers see all permissions regardless of visibility
 
-2. Requesting Permission Changes:
+2. Listing Available Permissions:
+```http
+GET /permissions
+Authorization: Bearer bccf1b28-fd...
+```
+
+**Response Behavior:**
+- Regular users: Only see permissions visible to their groups
+- Admins: Only see permissions visible to their groups (same as regular users)
+- Superusers: See all permissions
+
+Response example:
+```json
+{
+    "data": [
+        {
+            "key": "a_permission",
+            "name": "A Permission",
+            "description": "Ability to perform A actions"
+        },
+        {
+            "key": "another_permission",
+            "name": "Another permission",
+            "description": "Ability to perform something"
+        }
+    ]
+}
+```
+
+3. Requesting Permission Changes:
 ```http
 POST /users/request-update-from-admin
 Authorization: Bearer 572a399c-6c...
@@ -519,9 +545,14 @@ Authorization: Bearer 572a399c-6c...
 - `groups_remove`: Array of group names to remove
 - At least one of these arrays must be non-empty
 
+**Visibility Restrictions:**
+- Users can only request permissions visible to at least one of their groups
+- If a user tries to request a permission not visible to their groups, the request will fail with an error
+- Users can only remove permissions they currently have
+
 **Note:** The system uses explicit add/remove lists to clearly indicate what changes are being requested. This makes it easier for admins to understand what will be added vs removed when reviewing pending update requests.
 
-3. Admin Approving Changes (requires admin access):
+4. Admin Approving Changes (requires admin access):
 ```http
 PUT /users/{user_id}
 Authorization: Bearer 572a399c-6c...
@@ -536,7 +567,10 @@ Authorization: Bearer 572a399c-6c...
   - Cannot approve requests that would remove all permissions (at least one permission must remain)
   - Cannot approve requests that would remove all groups (at least one group must remain)
   - Admins can only approve adding groups they are members of (returns error if attempting to add groups they're not in)
-- **Error Response** (when admin tries to approve adding groups they're not in):
+  - **Admins can only approve adding permissions visible to their groups** (returns error if attempting to approve permissions they cannot see)
+- **Error Responses:**
+
+When admin tries to approve adding groups they're not in:
 ```json
 {
     "error": {
@@ -544,7 +578,17 @@ Authorization: Bearer 572a399c-6c...
     }
 }
 ```
-- Status Code: `401 Unauthorized`
+Status Code: `403 Forbidden`
+
+When admin tries to approve adding permissions they cannot see:
+```json
+{
+    "error": {
+        "message": "invalid permission requested: permission_name"
+    }
+}
+```
+Status Code: `403 Forbidden`
 
 **Rejecting Changes:**
 ```http
@@ -555,23 +599,6 @@ Authorization: Bearer 572a399c-6c...
 }
 ```
 
-Error responses when permissions system is disabled:
-```json
-{
-    "error": {
-        "message": "permissions system not loaded"
-    }
-}
-```
-
-- When groups system is disabled:
-```json
-{
-    "error": {
-        "message": "groups system not loaded"
-    }
-}
-```
 
 #### E. Admin Management
 
@@ -586,14 +613,14 @@ Admins are provisioned from secrets (no public signup):
 
 Admins can only manage users who **already share at least one group** with them. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met:
 
-| Admin Groups | Target User Groups | Can Admin Modify Permissions? | Can Admin Modify Groups? |
-|--------------|-------------------|-------------------------------|--------------------------|
-| `[]` | `[A]` | ❌ No | ❌ No shared groups |
-| `[A]` | `[A]` | ✅ Yes | ✅ Can remove A, cannot add any |
-| `[A]` | `[A, B]` | ✅ Yes | ✅ Can remove A and B, cannot add any |
-| `[A, B]` | `[A]` | ✅ Yes | ✅ Can add B, can remove A |
-| `[A]` | `[B]` | ❌ No | ❌ No shared groups |
-| `[A]` | `[]` (none) | ❌ No | ❌ No shared groups |
+| Admin Groups | Target User Groups | Permissions: Add | Permissions: Remove | Groups: Add | Groups: Remove |
+|--------------|-------------------|------------------|---------------------|-------------|----------------|
+| `[]` | `[A]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+| `[A]` | `[A]` | Permissions visible to A | Any permission | ❌ None | A |
+| `[A]` | `[A, B]` | Permissions visible to A only | Any permission | ❌ None | A, B |
+| `[A, B]` | `[A]` | Permissions visible to A or B | Any permission | B | A |
+| `[A]` | `[B]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+| `[A]` | `[]` (none) | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
 
 **Key rules:**
 1. Admins can ONLY view and manage users who already share at least one group with them
@@ -601,11 +628,6 @@ Admins can only manage users who **already share at least one group** with them.
 3. Admins cannot "claim" users by adding them to their groups if they don't already share a group beforehand
 4. Only superusers can assign initial groups to users with no groups
 5. Group membership is for organization (you can use it to form roles, permission inheritance etc. on your frontend)
-6. Permission operations are blocked when permissions system is disabled
-
-**When groups.json is disabled:**
-- Admins can manage all users (no group restrictions apply)
-- This simplifies admin management when group-based delegation is not needed
 
 Example admin listing users in their groups:
 ```http
@@ -624,7 +646,7 @@ Response shows only users in shared groups:
                 "permissions": {
                     "a_permission": true
                 },
-                "user_groups": {
+                "groups": {
                     "x": true
                 },
                 "pending_updates": {
@@ -642,7 +664,120 @@ Response shows only users in shared groups:
 }
 ```
 
-#### F. Superuser Management
+#### F. Superuser-Only Permission and Group Management
+
+Superusers have exclusive access to manage the permission and group system stored in SQLite database. These endpoints allow creating, updating, and deleting permissions, groups, and permission visibility mappings.
+
+**Permission Management:**
+
+1. **Create Permission:**
+```http
+POST /admin/permissions
+Authorization: Bearer <superuser_token>
+Content-Type: application/json
+
+{
+    "name": "new_permission",
+    "definition": "Description of the new permission"
+}
+```
+
+Response:
+```json
+{
+    "data": {
+        "key": "new_permission",
+        "name": "new_permission",
+        "description": "Description of the new permission"
+    }
+}
+```
+
+2. **Update Permission:**
+```http
+PUT /admin/permissions/{permission_name}
+Authorization: Bearer <superuser_token>
+Content-Type: application/json
+
+{
+    "definition": "Updated description"
+}
+```
+
+3. **Delete Permission:**
+```http
+DELETE /admin/permissions/{permission_name}
+Authorization: Bearer <superuser_token>
+```
+
+**Group Management:**
+
+1. **Create Group:**
+```http
+POST /admin/groups
+Authorization: Bearer <superuser_token>
+Content-Type: application/json
+
+{
+    "name": "new_group",
+    "definition": "Description of the new group"
+}
+```
+
+2. **Update Group:**
+```http
+PUT /admin/groups/{group_name}
+Authorization: Bearer <superuser_token>
+Content-Type: application/json
+
+{
+    "definition": "Updated description"
+}
+```
+
+3. **Delete Group:**
+```http
+DELETE /admin/groups/{group_name}
+Authorization: Bearer <superuser_token>
+```
+
+**Permission Visibility Management:**
+
+1. **Add Permission Visibility:**
+```http
+POST /admin/permissions/visibility
+Authorization: Bearer <superuser_token>
+Content-Type: application/json
+
+{
+    "permission_name": "a_permission",
+    "group_name": "x"
+}
+```
+
+This makes `a_permission` visible to users in group `x`.
+
+2. **Remove Permission Visibility:**
+```http
+DELETE /admin/permissions/visibility
+Authorization: Bearer <superuser_token>
+Content-Type: application/json
+
+{
+    "permission_name": "a_permission",
+    "group_name": "x"
+}
+```
+
+This removes visibility of `a_permission` from group `x`.
+
+**Important Notes:**
+- All these operations require superuser authentication
+- Deleting a permission or group will cascade delete all related visibility mappings
+- Permission and group names must be unique
+- Visibility mappings must be unique (cannot add the same mapping twice)
+
+#### G. Superuser Management
 
 Superuser is provisioned from secrets only (no public signup):
 - `SUPERUSER_EMAIL` and `SUPERUSER_PASSWORD` come from secrets.
@@ -667,6 +802,10 @@ Notes:
 - Admins see only users in their groups
 - Superuser sees all users
 - Shows pending update requests (filtered for admins - only shows groups they can approve)
+- **Permission Visibility Filtering:**
+  - Regular users: Only see permissions visible to their groups in their own data
+  - Admins: See user's permissions, but filtered to only show permissions visible to the admin's groups
+  - Superusers: See all permissions for all users
 
 2. Update user:
 ```http
@@ -691,9 +830,14 @@ Important Notes:
 - Status changes to "locked" revoke all sessions
 - **Approval Restrictions:**
   - Admins can only approve adding groups they are members of
+  - Admins can only approve adding permissions visible to their groups
   - If a pending update request includes groups the admin is not in, approval will fail with an error listing those groups
+  - If a pending update request includes permissions the admin cannot see, approval will fail with an error
   - Admins can remove any groups (including the last shared group - this will revoke their access to manage that user)
   - Cannot approve requests that would remove all permissions or all groups
+- **Direct Permission Updates:**
+  - Admins can only grant permissions visible to their groups when using direct updates (not via approval)
+  - Superusers can grant any permissions
 
 3. Revoke sessions:
 ```http
@@ -721,9 +865,11 @@ X-API-Key: your_api_key
 Response:
 ```json
 {
-    "success": true,
     "data": {
-        "valid": true
+        "Response": {
+            "valid": true
+        },
+        "UserID": "usr_xyz..."
     }
 }
 ```
@@ -748,109 +894,8 @@ Notes:
 - Admin can only access users in their groups
 - Superuser can access any user
 
-### 7. Authentication Requirements
 
-#### Endpoints Requiring Authentication
-These endpoints require a valid session token:
-```
-GET    /users/me              # Get current user info
-POST   /logout               # Logout current session
-POST   /users/mfa/disable    # Disable MFA
-POST   /users/password/change # Change password
-POST   /users/request-update-from-admin # Request permission/group update
-GET    /permissions          # List available permissions
-GET    /groups               # List available groups
-```
-
-#### Endpoints Not Requiring Authentication
-These endpoints are accessible without a session:
-```
-POST   /login                # Login
-POST   /users                # Create new user
-POST   /users/password/otp   # Request password reset OTP
-POST   /users/password/reset # Reset password with OTP
-```
-
-#### Admin-Only Endpoints
-These require both authentication and admin privileges:
-```
-GET    /users                # List users
-GET    /users/{id}           # Get specific user
-PUT    /users/{id}           # Update user
-POST   /sessions/revoke      # Revoke user sessions
-```
-
-#### Special Case: MFA Setup Endpoints
-The MFA setup endpoints have conditional authentication requirements:
-
-```
-POST   /users/mfa/setup      # Requires auth UNLESS MFA is enforced but not set up
-POST   /users/mfa/verify     # Requires auth UNLESS MFA is enforced but not set up
-```
-
-When MFA is enforced (either globally or by admin) but not yet set up:
-1. User must be in "ok" status
-2. User can log in once without MFA
-3. User can access MFA setup endpoints without authentication
-4. All other endpoints will return 401 until MFA is set up
-
-In all other cases, these endpoints require authentication.
-
-### 8. Response Status Codes and Headers
-
-#### Status Codes
-- 200: Successful operation
-- 201: Resource created (new user registration)
-- 400: Invalid request format or validation failed
-- 401: Unauthorized (invalid/expired session)
-- 403: Forbidden (insufficient permissions)
-- 404: Resource not found
-- 429: Too many requests (rate limit exceeded)
-- 500: Server error
-
-#### Required Headers
-
-For authenticated requests:
-```http
-Authorization: Bearer 572a399c-6c...
-Content-Type: application/json
-```
-
-For internal service requests:
-```http
-X-API-Key: your_api_key
-Content-Type: application/json
-// Plus valid client certificate
-```
-
-### 9. Rate Limiting
-
-Different endpoints have different rate limits:
-- Login: 5 attempts per minute
-- Password reset: 3 attempts per 5 minutes
-- Other endpoints: 60 requests per minute
-
-When rate limit is exceeded:
-- Returns 429 status code
-- Includes Retry-After header
-- May trigger security measures on repeated violations
-
-### 10. Account States and Transitions
-
-Users can be in following states:
-- pending_approval: After registration (for non-admin users) or password reset
-- ok: Normal active state
-- locked_by_admin: Manually locked by admin
-- locked_by_security: Automatically locked due to suspicious activity
-
-Important Notes:
-- Only admins/superusers can change user states
-- Locked states prevent login (but password reset via OTP is still possible)
-- State changes to "locked" automatically revoke all sessions
-- Password reset always sets state to "pending_approval"
-- Requesting permission/group updates does NOT change user status (the request is tracked separately in pending_updates field)
-
-### 11. Security Event Responses
+### 7. Security Event Responses
 
 #### Suspicious Activity Detection
 The API automatically detects:

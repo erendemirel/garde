@@ -13,8 +13,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o garde ./cmd/main.go
 
 FROM alpine:3.19 AS service
 WORKDIR /app
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates sqlite
 COPY --from=builder /build/garde .
-RUN mkdir -p /app/certs /app/configs
+RUN mkdir -p /app/certs /app/configs /app/data
 RUN chmod +x /app/garde
 CMD ["./garde"] 

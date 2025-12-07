@@ -7,6 +7,574 @@
         "version": "1.0"
     },
     "paths": {
+        "/admin/groups": {
+            "post": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Creates a new group in the SQLite database. Only superuser can perform this operation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Create a new group",
+                "parameters": [
+                    {
+                        "description": "Group details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Group created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.GroupResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request format",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Group already exists",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/groups/{group_name}": {
+            "put": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Updates a group's definition. Only superuser can perform this operation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Update a group",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group name",
+                        "name": "group_name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated group definition",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Group updated",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.GroupResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request format",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Group not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Deletes a group from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Delete a group",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group name",
+                        "name": "group_name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Group deleted",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Group not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/permissions": {
+            "post": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Creates a new permission in the SQLite database. Only superuser can perform this operation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Create a new permission",
+                "parameters": [
+                    {
+                        "description": "Permission details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreatePermissionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Permission created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.PermissionResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request format",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Permission already exists",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/permissions/visibility": {
+            "post": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Makes a permission visible to a specific group. Only superuser can perform this operation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Add permission visibility to a group",
+                "parameters": [
+                    {
+                        "description": "Permission and group names",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AddPermissionVisibilityRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Visibility mapping added",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request format",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Permission or group not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Visibility mapping already exists",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Removes a permission's visibility from a specific group. Only superuser can perform this operation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Remove permission visibility from a group",
+                "parameters": [
+                    {
+                        "description": "Permission and group names",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RemovePermissionVisibilityRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Visibility mapping removed",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request format",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Permission, group, or visibility mapping not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/permissions/{permission_name}": {
+            "put": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Updates a permission's definition. Only superuser can perform this operation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Update a permission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Permission name",
+                        "name": "permission_name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated permission definition",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdatePermissionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Permission updated",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.PermissionResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request format",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Permission not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Deletes a permission from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Delete a permission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Permission name",
+                        "name": "permission_name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Permission deleted",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Permission not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/groups": {
             "get": {
                 "security": [
@@ -17,7 +585,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "Returns all available groups defined in the system",
+                "description": "Returns all available groups defined in the system. Groups are managed via SQLite database.",
                 "produces": [
                     "application/json"
                 ],
@@ -173,7 +741,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "Returns all available permissions defined in the system",
+                "description": "Returns available permissions. Regular users and admins only see permissions visible to their groups. Superusers see all permissions. Permissions are managed via SQLite database.",
                 "produces": [
                     "application/json"
                 ],
@@ -216,7 +784,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "Revokes all active sessions for a user. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).",
+                "description": "Revokes all active sessions for a user. Requires permissions/groups system to be initialized (SQLite-based).",
                 "consumes": [
                     "application/json"
                 ],
@@ -282,7 +850,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).",
+                "description": "Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (SQLite-based).",
                 "consumes": [
                     "application/json"
                 ],
@@ -399,7 +967,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "Returns the authenticated user's information. No mTLS required for this endpoint.",
+                "description": "Returns the authenticated user's information. Permissions are filtered by visibility - users (both regular users and admins) only see permissions visible to their groups. Superusers see all permissions. No mTLS required for this endpoint.",
                 "consumes": [
                     "application/json"
                 ],
@@ -829,7 +1397,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "User requests changes from an admin to their permissions or groups. No mTLS required for this endpoint.",
+                "description": "User requests changes from an admin to their permissions or groups. Uses explicit add/remove lists to clearly indicate what changes are being requested. Visibility restrictions: Users can only request permissions visible to at least one of their groups. If a user tries to request a permission not visible to their groups, the request will fail. Users can only remove permissions they currently have. No mTLS required for this endpoint. Request format: permissions_add (array of permission names to add), permissions_remove (array of permission names to remove), groups_add (array of group names to add), groups_remove (array of group names to remove). At least one of these arrays must be non-empty.",
                 "consumes": [
                     "application/json"
                 ],
@@ -842,7 +1410,7 @@
                 "summary": "Request update for user information",
                 "parameters": [
                     {
-                        "description": "Update request details (permissions/groups)",
+                        "description": "Update request with permissions_add, permissions_remove, groups_add, groups_remove arrays",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -876,12 +1444,6 @@
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
                     },
-                    "409": {
-                        "description": "Update request already pending",
-                        "schema": {
-                            "$ref": "#/definitions/models.ErrorResponse"
-                        }
-                    },
                     "500": {
                         "description": "Operation failed",
                         "schema": {
@@ -901,7 +1463,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).",
+                "description": "Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (SQLite-based).",
                 "consumes": [
                     "application/json"
                 ],
@@ -975,7 +1537,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "Update user details or process pending update requests. Requires admin privileges. Requires permissions.json and groups.json files to be present for permission checks (except for superuser).",
+                "description": "Update user details or process pending update requests. Requires admin privileges. Requires permissions/groups system to be initialized (SQLite-based). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user).",
                 "consumes": [
                     "application/json"
                 ],
@@ -1008,7 +1570,19 @@
                     "200": {
                         "description": "User updated successfully",
                         "schema": {
-                            "$ref": "#/definitions/models.SuccessResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.UserResponse"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -1018,7 +1592,7 @@
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "Unauthorized or admin tried to approve adding groups they're not a member of",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
@@ -1084,21 +1658,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session validation result with user ID and expiry",
+                        "description": "Session validation result with Response.valid and UserID fields",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/models.SuccessResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/models.SessionValidationResponse"
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/models.SuccessResponse"
                         }
                     },
                     "400": {
@@ -1130,6 +1692,21 @@
         }
     },
     "definitions": {
+        "models.AddPermissionVisibilityRequest": {
+            "type": "object",
+            "required": [
+                "group_name",
+                "permission_name"
+            ],
+            "properties": {
+                "group_name": {
+                    "type": "string"
+                },
+                "permission_name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ChangePasswordRequest": {
             "type": "object",
             "required": [
@@ -1147,6 +1724,36 @@
                 "old_password": {
                     "type": "string",
                     "minLength": 8
+                }
+            }
+        },
+        "models.CreateGroupRequest": {
+            "type": "object",
+            "required": [
+                "definition",
+                "name"
+            ],
+            "properties": {
+                "definition": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CreatePermissionRequest": {
+            "type": "object",
+            "required": [
+                "definition",
+                "name"
+            ],
+            "properties": {
+                "definition": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },
@@ -1316,6 +1923,21 @@
                 }
             }
         },
+        "models.RemovePermissionVisibilityRequest": {
+            "type": "object",
+            "required": [
+                "group_name",
+                "permission_name"
+            ],
+            "properties": {
+                "group_name": {
+                    "type": "string"
+                },
+                "permission_name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.RequestOTPRequest": {
             "type": "object",
             "required": [
@@ -1330,16 +1952,28 @@
         "models.RequestUpdateFields": {
             "type": "object",
             "properties": {
-                "groups": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "boolean"
+                "groups_add": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
                     }
                 },
-                "permissions": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "boolean"
+                "groups_remove": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "permissions_add": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "permissions_remove": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
                     }
                 }
             }
@@ -1369,18 +2003,32 @@
                 }
             }
         },
-        "models.SessionValidationResponse": {
-            "type": "object",
-            "properties": {
-                "valid": {
-                    "type": "boolean"
-                }
-            }
-        },
         "models.SuccessResponse": {
             "type": "object",
             "properties": {
                 "data": {}
+            }
+        },
+        "models.UpdateGroupRequest": {
+            "type": "object",
+            "required": [
+                "definition"
+            ],
+            "properties": {
+                "definition": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdatePermissionRequest": {
+            "type": "object",
+            "required": [
+                "definition"
+            ],
+            "properties": {
+                "definition": {
+                    "type": "string"
+                }
             }
         },
         "models.UpdateUserRequest": {
@@ -1482,11 +2130,29 @@
         "models.UserUpdateFields": {
             "type": "object",
             "properties": {
-                "groups": {
-                    "$ref": "#/definitions/models.UserGroups"
+                "groups_add": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
-                "permissions": {
-                    "$ref": "#/definitions/models.UserPermissions"
+                "groups_remove": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "permissions_add": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "permissions_remove": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
