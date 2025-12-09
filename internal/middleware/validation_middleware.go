@@ -81,7 +81,6 @@ func ValidateRequestParameters() gin.HandlerFunc {
 				slog.Debug("Validating request update from admin")
 				handleRequestValidation(c, &models.RequestUpdateRequest{}, validateUpdateRequest)
 			default:
-				// Log the unrecognized path for troubleshooting
 				slog.Debug("Path not matched in validation middleware",
 					"path", c.Request.URL.Path,
 					"full_path", c.FullPath())
@@ -380,7 +379,8 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 		slog.Debug("No permissions provided in update user request")
 	}
 
-	// Validate groups if provided and groups system is loaded
+	// Group existence validation happens here, but authorization checks
+	// (e.g., whether user can assign groups) happen in the service layer
 	if req.Groups != nil && len(*req.Groups) > 0 {
 		slog.Debug("Validating groups", "count", len(*req.Groups))
 
@@ -396,7 +396,6 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 			groupSet[g] = true
 		}
 
-		slog.Debug("Groups system is loaded, checking group info")
 		for groupStr := range *req.Groups {
 			group := models.UserGroup(groupStr)
 

@@ -33,3 +33,6 @@ vault/role-id
 vault/secret-id
 vault/*.token
 vault/dev-token
+
+# SQLLite database
+*.db

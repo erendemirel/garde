@@ -170,6 +170,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	// Get user for security checks
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
+		slog.Debug("User lookup failed during login", "email", req.Email, "error", err)
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
@@ -200,15 +201,19 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	}
 
 	valid, err := crypto.VerifyPassword(req.Password, user.PasswordHash)
-	if err != nil || !valid {
+	if err != nil {
+		return nil, fmt.Errorf(errors.ErrAuthFailed)
+	}
+	if !valid {
 		// Record failed attempt
 		failedAttempts, err := s.repo.RecordFailedLogin(ctx, req.Email, ip)
 		if err != nil {
-			slog.Debug("Failed to record failed login", "error", err, "email", req.Email, "ip", ip)
+			slog.Debug("Failed to record failed login", "error", err)
 		}
 
 		// Block if threshold exceeded
 		if !config.GetBool("DISABLE_IP_BLACKLISTING") && failedAttempts >= session.FailedLoginThreshold {
+			slog.Warn("IP blocked due to too many failed login attempts", "ip", ip, "attempts", failedAttempts)
 			s.repo.BlockIP(ctx, ip, session.FailedLoginBlockDuration)
 			user.Status = models.UserStatusLockedBySecurity
 			s.repo.StoreUser(ctx, user)
@@ -526,7 +531,6 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 }
 
 func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUserID string, req *models.UpdateUserRequest, isSuperUser bool, isAdmin bool) error {
-
 	// Get admin user for group checks
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
@@ -542,13 +546,14 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Only superuser can modify superuser
-	if targetUser.Email == config.Get("SUPERUSER_EMAIL") && !isSuperUser {
+	superUserEmail := config.Get("SUPERUSER_EMAIL")
+	if targetUser.Email == superUserEmail && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
 	// Check if admin has permission to modify this user
 	if !isSuperUser && !isAdmin {
-		slog.Info("Unauthorized update attempt", "reason", "user is neither superuser nor admin", "admin_id", adminID)
+		slog.Debug("Unauthorized update attempt", "reason", "user is neither superuser nor admin", "admin_id", adminID)
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -561,7 +566,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 		// Admin must share at least one group with target user (no "claiming" allowed)
 		if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
-			slog.Info("Unauthorized update attempt", "reason", "admin doesn't share groups with target user", "admin_id", adminID, "target_user_id", targetUserID)
+			slog.Debug("Unauthorized update attempt", "reason", "admin doesn't share groups with target user", "admin_id", adminID, "target_user_id", targetUserID)
 			return fmt.Errorf(errors.ErrUnauthorized)
 		}
 
@@ -572,7 +577,6 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 				// If user is already in the group, admin can keep them there
 				isNewGroup := enabled && !targetUser.Groups[group]
 				if isNewGroup && !admin.Groups[group] {
-					slog.Info("Unauthorized update attempt", "reason", "admin not in group they're trying to add user to", "group", group, "admin_id", adminID)
 					return fmt.Errorf(errors.ErrUnauthorized)
 				}
 			}
@@ -787,12 +791,16 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		if !isSuperUser {
 			for group := range *req.Groups {
 				if !IsGroupsLoaded() {
+					slog.Debug("Groups system not loaded when trying to update user groups", "admin_id", adminID, "target_user_id", targetUserID)
 					return fmt.Errorf(errors.ErrGroupsNotLoaded)
 				}
 				if !IsValidUserGroup(group) {
+					slog.Debug("Invalid group requested in user update", "group", string(group), "admin_id", adminID, "target_user_id", targetUserID)
 					return fmt.Errorf(errors.ErrUnauthorized)
 				}
 			}
+		} else {
+			slog.Debug("Superuser updating user groups - skipping group validation", "admin_id", adminID, "target_user_id", targetUserID, "groups", req.Groups)
 		}
 
 		// Convert directly without type casting
@@ -1291,15 +1299,6 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 		return nil, fmt.Errorf(errors.ErrUserNotFound)
 	}
 
-	slog.Debug("Getting user details",
-		"target_user_id", targetUser.ID,
-		"has_pending_updates", targetUser.PendingUpdates != nil)
-
-	if targetUser.PendingUpdates != nil {
-		slog.Debug("Pending update details",
-			"requested_at", targetUser.PendingUpdates.RequestedAt.Format(time.RFC3339))
-	}
-
 	// Superusers can see any user
 	if isSuperUser {
 		response := &models.UserResponse{
@@ -1315,9 +1314,6 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 			Groups:         targetUser.Groups,
 			PendingUpdates: targetUser.PendingUpdates,
 		}
-		slog.Debug("Prepared response for superuser",
-			"user_id", response.ID,
-			"has_pending_updates", response.PendingUpdates != nil)
 		return response, nil
 	}
 
@@ -1387,10 +1383,6 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		slog.Warn("Request update failed", "error", err, "user_id", userID)
 		return fmt.Errorf(errors.ErrUserNotFound)
 	}
-
-	slog.Debug("Processing update request",
-		"user_id", userID,
-		"has_pending_updates", user.PendingUpdates != nil)
 
 	// Don't allow superuser to request updates
 	if user.Email == config.Get("SUPERUSER_EMAIL") {
@@ -1476,11 +1468,8 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		Fields:      userUpdateFields,
 	}
 
-	slog.Debug("Creating update request", "user_id", userID)
-
 	// Store update request
 	user.PendingUpdates = updateReq
-	slog.Debug("Added pending updates to user")
 
 	// Always update timestamp to force Redis to save the change
 	user.UpdatedAt = time.Now()
@@ -1545,7 +1534,7 @@ func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups
 
 	// Only allow adding groups the admin is in
 	for _, group := range pending.Fields.GroupsAdd {
-			if adminGroups[group] {
+		if adminGroups[group] {
 			filteredGroupsAdd = append(filteredGroupsAdd, group)
 		}
 	}
@@ -1555,7 +1544,7 @@ func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups
 
 	if len(filteredGroupsAdd) > 0 {
 		filtered.Fields.GroupsAdd = filteredGroupsAdd
-		}
+	}
 	if len(filteredGroupsRemove) > 0 {
 		filtered.Fields.GroupsRemove = filteredGroupsRemove
 	}

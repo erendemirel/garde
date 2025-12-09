@@ -37,11 +37,8 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID,
 	// 1. Check for rapid requests (potential automated attack)
 	if !session.IsRapidRequestCheckDisabled() {
 		requestCount, err := d.repo.GetRequestCount(ctx, userID, time.Minute)
-		if err != nil {
-			slog.Debug("Failed to get request count", "error", err, "user_id", userID)
-		}
-		if requestCount > session.RapidRequestThreshold {
-			slog.Warn("Rapid request pattern detected", "user_id", userID, "count", requestCount)
+		if err == nil && requestCount > session.RapidRequestThreshold {
+			slog.Warn("SecurityAnalyzer: Rapid request pattern detected", "user_id", userID, "count", requestCount, "threshold", session.RapidRequestThreshold)
 			patterns = append(patterns, session.ActivityRapidRequests)
 		}
 	}
@@ -49,35 +46,36 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID,
 	// 2. Check for automated behavior (requests too fast for human)
 	if !session.IsRapidRequestCheckDisabled() {
 		lastRequestTime, err := d.repo.GetLastRequestTime(ctx, userID)
-		if err != nil {
-			slog.Debug("Failed to get last request time", "error", err, "user_id", userID)
-		}
-		if !lastRequestTime.IsZero() && time.Since(lastRequestTime) < session.AutomatedRequestTimeout {
-			slog.Warn("Automated behavior pattern detected", "user_id", userID, "time_since_last", time.Since(lastRequestTime))
-			patterns = append(patterns, session.ActivityAutomatedBehavior)
+		if err == nil && !lastRequestTime.IsZero() {
+			timeSince := time.Since(lastRequestTime)
+			if timeSince < session.AutomatedRequestTimeout {
+				slog.Warn("SecurityAnalyzer: Automated behavior pattern detected", "user_id", userID, "time_since_last", timeSince, "timeout", session.AutomatedRequestTimeout)
+				patterns = append(patterns, session.ActivityAutomatedBehavior)
+			}
 		}
 	}
 
 	// 3. Check for unusual User-Agent patterns
-	if d.isUnusualUserAgent(userAgent) {
-		slog.Warn("Unusual user agent detected", "user_id", userID, "user_agent", userAgent)
+	isUnusual := d.isUnusualUserAgent(userAgent)
+	if isUnusual {
+		slog.Warn("SecurityAnalyzer: Unusual user agent detected", "user_id", userID, "user_agent", userAgent)
 		patterns = append(patterns, session.ActivityUnusualUserAgent)
 	}
 
 	// 4. Check for multiple IP sessions
 	if !config.GetBool("DISABLE_MULTIPLE_IP_CHECK") {
 		hasActiveSession, activeIP, err := d.repo.GetActiveSessionInfo(ctx, userID)
-		if err != nil {
-			slog.Debug("Failed to get active session info", "error", err, "user_id", userID)
-		}
-		if hasActiveSession && activeIP != session.HashString(ip) {
-			slog.Warn("Multiple IP session pattern detected", "user_id", userID, "new_ip_hash", session.HashString(ip))
-			patterns = append(patterns, multipleIPPattern)
+		if err == nil {
+			currentIPHash := session.HashString(ip)
+			if hasActiveSession && activeIP != currentIPHash {
+				slog.Warn("SecurityAnalyzer: Multiple IP session pattern detected", "user_id", userID, "active_ip_hash", activeIP[:8], "new_ip_hash", currentIPHash[:8])
+				patterns = append(patterns, multipleIPPattern)
+			}
 		}
 	}
 
 	if len(patterns) > 0 {
-		slog.Info("Suspicious patterns detected", "user_id", userID, "patterns", patterns)
+		slog.Info("SecurityAnalyzer: Suspicious patterns detected", "user_id", userID, "patterns", patterns)
 	}
 
 	return patterns
@@ -125,11 +123,9 @@ func (d *SecurityAnalyzer) TrackRequest(ctx context.Context, userID string) erro
 	}
 
 	if err := d.repo.IncrementRequestCount(ctx, userID, requestCountTTL); err != nil {
-		slog.Debug("Failed to increment request count", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to increment request count")
 	}
 	if err := d.repo.UpdateLastRequestTime(ctx, userID, lastRequestTimeTTL); err != nil {
-		slog.Debug("Failed to update last request time", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to update last request time")
 	}
 	return nil
@@ -164,7 +160,6 @@ func (d *SecurityAnalyzer) RecordPattern(ctx context.Context, userID, pattern, i
 }
 
 func (d *SecurityAnalyzer) CleanupSecurityRecords(ctx context.Context, userID, email, ip string) error {
-	slog.Debug("Cleaning up security records", "user_id", userID, "email", email, "ip", ip)
 
 	// Clean up analyzer specific records
 	analyzerKeys := []string{
