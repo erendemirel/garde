@@ -291,7 +291,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, resp)
+	c.JSON(http.StatusCreated, models.NewSuccessResponse(resp))
 }
 
 // @Summary Update user information
@@ -338,14 +338,18 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	// Get superuser/admin flags
+	isSuperUser := c.GetBool("is_superuser")
+	isAdmin := c.GetBool("is_admin")
+
 	// Update user
 	if err := h.authService.UpdateUser(
 		c.Request.Context(),
 		adminID.(string),
 		userID,
 		&req,
-		c.GetBool("is_superuser"),
-		c.GetBool("is_admin"),
+		isSuperUser,
+		isAdmin,
 	); err != nil {
 		if errors.Is(err, repository.ErrConcurrentUpdate) {
 			c.JSON(http.StatusConflict, models.NewErrorResponse("User was modified by another request"))

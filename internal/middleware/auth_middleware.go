@@ -62,7 +62,6 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 				true,
 			)
 
-			slog.Debug("Auth middleware: Session validation failed", "path", c.Request.URL.Path, "ip", ip)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
 			return
 		}
@@ -71,6 +70,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 		if !session.IsRapidRequestCheckDisabled() && securityAnalyzer != nil {
 			patterns := securityAnalyzer.DetectSuspiciousPatterns(c.Request.Context(), validationResult.UserID, ip, userAgent)
 			if len(patterns) > 0 {
+				slog.Warn("AuthMiddleware: Suspicious patterns detected, blocking request", "user_id", validationResult.UserID, "path", c.Request.URL.Path, "patterns", patterns)
 				// Record all detected patterns
 				for _, pattern := range patterns {
 					securityAnalyzer.RecordPattern(c.Request.Context(), validationResult.UserID, pattern, ip, userAgent)
@@ -83,6 +83,8 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			if err := securityAnalyzer.TrackRequest(c.Request.Context(), validationResult.UserID); err != nil {
 				slog.Warn("Failed to track request", "error", err, "user_id", validationResult.UserID)
 			}
+		} else {
+			slog.Debug("AuthMiddleware: Security analyzer check skipped", "rapid_check_disabled", session.IsRapidRequestCheckDisabled(), "analyzer_nil", securityAnalyzer == nil)
 		}
 
 		// Check if user needs MFA setup (MFA enforced but not enabled)
@@ -99,15 +101,20 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 		}
 
 		user, err := authService.GetCurrentUser(c.Request.Context(), validationResult.UserID)
-		if err == nil {
-			superUserEmail := config.Get("SUPERUSER_EMAIL")
-			isSuperUser := user.Email == superUserEmail
-
-			isAdmin := user.IsUserAdmin()
-
-			c.Set("is_superuser", isSuperUser)
-			c.Set("is_admin", isAdmin)
+		if err != nil {
+			slog.Warn("AuthMiddleware: Failed to get current user", "user_id", validationResult.UserID, "error", err)
+			// If we can't retrieve user data, we can't complete authentication
+			// Return 401 Unauthorized (not 404) because this is an authentication failure
+			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
+			return
 		}
+
+		superUserEmail := config.Get("SUPERUSER_EMAIL")
+		isSuperUser := user.Email == superUserEmail
+		isAdmin := user.IsUserAdmin()
+
+		c.Set("is_superuser", isSuperUser)
+		c.Set("is_admin", isAdmin)
 
 		// Store user ID and session ID in context for later use
 		c.Set("user_id", validationResult.UserID)
