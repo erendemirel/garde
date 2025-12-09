@@ -588,7 +588,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		"type":      "update_attempt",
 		"admin_id":  adminID,
 		"timestamp": time.Now(),
-	}, 10, 30*24*time.Hour)
+	}, 10, 7*24*time.Hour)
 	if err != nil {
 		slog.Warn("Failed to record audit log", "error", err)
 	}
@@ -836,7 +836,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			"type":      "update_success",
 			"admin_id":  adminID,
 			"timestamp": time.Now(),
-		}, 10, 30*24*time.Hour)
+		}, 10, 7*24*time.Hour)
 	}
 
 	return nil
@@ -982,7 +982,7 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 		"deleted_user_id": targetUserID,
 		"deleted_email":   targetUser.Email,
 		"timestamp":       time.Now(),
-	}, 10, 30*24*time.Hour)
+	}, 10, 7*24*time.Hour)
 
 	return nil
 }

@@ -28,7 +28,7 @@ const (
 
 	// Add audit logging with longer retention
 	maxAuditRecords = 10
-	auditLogTTL     = 30 * 24 * time.Hour // 30 days
+	auditLogTTL     = 7 * 24 * time.Hour // 7 days
 )
 
 func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID, ip, userAgent string) []string {
