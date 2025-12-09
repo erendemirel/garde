@@ -588,7 +588,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		"type":      "update_attempt",
 		"admin_id":  adminID,
 		"timestamp": time.Now(),
-	}, 10, 30*24*time.Hour)
+	}, 10, 7*24*time.Hour)
 	if err != nil {
 		slog.Warn("Failed to record audit log", "error", err)
 	}
@@ -836,7 +836,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			"type":      "update_success",
 			"admin_id":  adminID,
 			"timestamp": time.Now(),
-		}, 10, 30*24*time.Hour)
+		}, 10, 7*24*time.Hour)
 	}
 
 	return nil
@@ -909,6 +909,82 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 	}
 
 	return fmt.Errorf(errors.ErrUnauthorized)
+}
+
+func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUserID string, isSuperUser bool, isAdmin bool) error {
+	admin, err := s.repo.GetUserByID(ctx, adminID)
+	if err != nil {
+		return fmt.Errorf(errors.ErrUnauthorized)
+	}
+
+	// Get target user
+	targetUser, err := s.repo.GetUserByID(ctx, targetUserID)
+	if err != nil {
+		return fmt.Errorf(errors.ErrUserNotFound)
+	}
+
+	// Only superuser can delete superuser
+	superUserEmail := config.Get("SUPERUSER_EMAIL")
+	if targetUser.Email == superUserEmail && !isSuperUser {
+		return fmt.Errorf(errors.ErrUnauthorized)
+	}
+
+	// Prevent self-deletion
+	if adminID == targetUserID {
+		return fmt.Errorf(errors.ErrUnauthorized)
+	}
+
+	// Check if admin has permission to delete this user
+	if !isSuperUser && !isAdmin {
+		return fmt.Errorf(errors.ErrUnauthorized)
+	}
+
+	// Superusers are exempt from group sharing checks
+	if !isSuperUser && isAdmin {
+		if !IsGroupsLoaded() {
+			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+		}
+
+		// Admin must share at least one group with target user
+		if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
+			return fmt.Errorf(errors.ErrUnauthorized)
+		}
+	}
+
+	// Revoke all active sessions
+	sessions, err := s.repo.GetUserActiveSessions(ctx, targetUserID)
+	if err != nil {
+		slog.Warn("Failed to get active sessions for user deletion", "error", err, "user_id", targetUserID)
+	} else {
+		for _, sessionID := range sessions {
+			if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
+				slog.Warn("Failed to blacklist session during user deletion", "error", err, "session_id", sessionID)
+			}
+			if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
+				slog.Warn("Failed to delete session during user deletion", "error", err, "session_id", sessionID)
+			}
+		}
+	}
+
+	// Clean up security records
+	if err := s.securityAnalyzer.CleanupSecurityRecords(ctx, targetUserID, targetUser.Email, ""); err != nil {
+		slog.Warn("Failed to cleanup security records during user deletion", "error", err, "user_id", targetUserID)
+	}
+
+	// Delete user from repository
+	if err := s.repo.DeleteUser(ctx, targetUserID); err != nil {
+		return fmt.Errorf(errors.ErrOperationFailed)
+	}
+
+	// Record deletion in audit log (using admin's audit log since target user is deleted)
+	s.repo.RecordAuditLog(ctx, adminID, map[string]interface{}{
+		"type":            "user_deleted",
+		"deleted_user_id": targetUserID,
+		"deleted_email":   targetUser.Email,
+		"timestamp":       time.Now(),
+	}, 10, 7*24*time.Hour)
+
+	return nil
 }
 
 func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordResetRequest) error {

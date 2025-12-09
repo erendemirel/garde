@@ -700,6 +700,54 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 	c.JSON(http.StatusOK, models.NewSuccessResponse(user))
 }
 
+// @Summary Delete user
+// @Description Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (SQLite-based) for admin operations.
+// @Tags Protected and Admin-Only Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param user_id path string true "User ID"
+// @Success 200 {object} models.SuccessResponse "User deleted successfully"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Failure 403 {object} models.ErrorResponse "Forbidden - insufficient permissions"
+// @Failure 404 {object} models.ErrorResponse "User not found"
+// @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
+// @Router /users/{user_id} [delete]
+func (h *AuthHandler) DeleteUser(c *gin.Context) {
+	adminID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+
+	userID := c.Param("user_id")
+
+	// Delete user
+	if err := h.authService.DeleteUser(
+		c.Request.Context(),
+		adminID.(string),
+		userID,
+		c.GetBool("is_superuser"),
+		c.GetBool("is_admin"),
+	); err != nil {
+		errStr := err.Error()
+		if errStr == pkgerrors.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrUnauthorized ||
+			errStr == pkgerrors.ErrGroupsNotLoaded {
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
+}
+
 // @Summary Request update for user information
 // @Description User requests changes from an admin to their permissions or groups. Uses explicit add/remove lists to clearly indicate what changes are being requested. Visibility restrictions: Users can only request permissions visible to at least one of their groups. If a user tries to request a permission not visible to their groups, the request will fail. Users can only remove permissions they currently have. No mTLS required for this endpoint. Request format: permissions_add (array of permission names to add), permissions_remove (array of permission names to remove), groups_add (array of group names to add), groups_remove (array of group names to remove). At least one of these arrays must be non-empty.
 // @Tags Protected Routes
