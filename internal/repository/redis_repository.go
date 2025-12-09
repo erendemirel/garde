@@ -579,6 +579,36 @@ func (r *RedisRepository) ClearUserSecurityData(ctx context.Context, userID, ema
 	return nil
 }
 
+func (r *RedisRepository) DeleteUser(ctx context.Context, userID string) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	client := r.client
+	if client == nil {
+		return errRedisClientUnavailable
+	}
+
+	// Get user to retrieve email for index deletion
+	user, err := r.getUserByIDWithClient(ctx, client, userID)
+	if err != nil {
+		return err
+	}
+
+	// Delete user data and email index in a pipeline
+	pipe := client.Pipeline()
+	pipe.Del(ctx, "user:"+userID)
+	pipe.Del(ctx, "email_to_id:"+user.Email)
+
+	// Also delete related keys
+	pipe.Del(ctx, fmt.Sprintf("audit_log:%s", userID))
+	pipe.Del(ctx, fmt.Sprintf("otp:%s", userID))
+	pipe.Del(ctx, fmt.Sprintf("reset_attempts:%s", userID))
+	pipe.Del(ctx, fmt.Sprintf("security_code:%s", userID))
+	pipe.Del(ctx, fmt.Sprintf("mfa_secret:%s", userID))
+
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
 func (r *RedisRepository) GetUserActiveSessions(ctx context.Context, userID string) ([]string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -635,24 +665,24 @@ func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, e
 		// Scan user keys instead of using KEYS
 		keys, nextCursor, err := client.Scan(opCtx, cursor, "user:*", 100).Result()
 		cancel() // Cancel immediately after scan completes
-	if err != nil {
-		return nil, err
-	}
-
-	for _, key := range keys {
-			userData, err := client.Get(ctx, key).Bytes()
 		if err != nil {
-			continue // Skip failed reads
+			return nil, err
 		}
 
-		var user models.User
+		for _, key := range keys {
+			userData, err := client.Get(ctx, key).Bytes()
+			if err != nil {
+				continue // Skip failed reads
+			}
+
+			var user models.User
 			if err := json.Unmarshal(userData, &user); err != nil {
-			continue // Skip invalid data
-		}
+				continue // Skip invalid data
+			}
 
-		// Only include locked users
-		if user.Status != models.UserStatusOk {
-			users = append(users, &user)
+			// Only include locked users
+			if user.Status != models.UserStatusOk {
+				users = append(users, &user)
 			}
 		}
 

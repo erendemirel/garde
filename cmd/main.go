@@ -202,6 +202,7 @@ func main() {
 		adminProtected.GET("/users", authHandler.ListUsers)
 		adminProtected.GET("/users/:user_id", authHandler.GetUser)
 		adminProtected.PUT("/users/:user_id", authHandler.UpdateUser)
+		adminProtected.DELETE("/users/:user_id", authHandler.DeleteUser)
 		adminProtected.POST("/sessions/revoke", authHandler.RevokeUserSession)
 	}
 
