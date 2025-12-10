@@ -298,6 +298,37 @@ func (r *PermissionRepository) GetGroupsForPermission(ctx context.Context, permi
 	return groups, rows.Err()
 }
 
+// Permission visibility mappings
+// Returns a map where key is permission name and value is slice of group names
+func (r *PermissionRepository) GetAllPermissionVisibility(ctx context.Context) (map[string][]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	query := `
+		SELECT p.name, g.name
+		FROM permission_visibility pv
+		INNER JOIN permissions p ON pv.permission_id = p.id
+		INNER JOIN groups g ON pv.group_id = g.id
+		ORDER BY p.name, g.name
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	visibilityMap := make(map[string][]string)
+	for rows.Next() {
+		var permName, groupName string
+		if err := rows.Scan(&permName, &groupName); err != nil {
+			return nil, err
+		}
+		visibilityMap[permName] = append(visibilityMap[permName], groupName)
+	}
+	return visibilityMap, rows.Err()
+}
+
 func (r *PermissionRepository) CreatePermission(ctx context.Context, name, definition string) (*entities.PermissionEntity, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

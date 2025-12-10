@@ -618,6 +618,10 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		return
 	}
 
+	// Add superuser and admin flags from context
+	user.IsSuperuser = c.GetBool("is_superuser")
+	user.IsAdmin = c.GetBool("is_admin")
+
 	c.JSON(http.StatusOK, models.NewSuccessResponse(user))
 }
 
@@ -887,6 +891,127 @@ func (h *AuthHandler) ListGroups(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(response))
+}
+
+// @Summary Get all permission visibility mappings
+// @Description Returns all permission visibility mappings (which groups can see which permissions). Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=map[string][]string} "Map of permission names to group names"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 500 {object} models.ErrorResponse "Permissions system not loaded or operation failed"
+// @Router /admin/permissions/visibility [get]
+func (h *AuthHandler) GetAllPermissionVisibility(c *gin.Context) {
+	permRepo, err := repository.GetPermissionRepository()
+	if err != nil {
+		slog.Error("Failed to get permission repository", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse("permissions system not loaded"))
+		return
+	}
+
+	visibilityMap, err := permRepo.GetAllPermissionVisibility(c.Request.Context())
+	if err != nil {
+		slog.Error("Failed to get all permission visibility", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(visibilityMap))
+}
+
+// @Summary Get all group-user mappings
+// @Description Returns all group-user mappings (which users belong to which groups). Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=map[string][]string} "Map of group names to user emails"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 500 {object} models.ErrorResponse "Operation failed"
+// @Router /admin/groups/users [get]
+func (h *AuthHandler) GetAllGroupUsers(c *gin.Context) {
+	users, err := h.authService.ListUsers(
+		c.Request.Context(),
+		c.GetString("user_id"),
+		true,  // isSuperUser
+		false, // isAdmin
+	)
+	if err != nil {
+		slog.Error("Failed to list users for group mapping", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Build group -> users mapping
+	groupUsers := make(map[string][]string)
+	for _, user := range users {
+		for groupName, enabled := range user.Groups {
+			if enabled {
+				groupUsers[string(groupName)] = append(groupUsers[string(groupName)], user.Email)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(groupUsers))
+}
+
+// @Summary Get admin-user management relationships
+// @Description Returns which admins can manage which users (based on shared groups). Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=map[string][]string} "Map of admin emails to user emails they can manage"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Failure 500 {object} models.ErrorResponse "Operation failed"
+// @Router /admin/users/management [get]
+func (h *AuthHandler) GetAdminUserManagement(c *gin.Context) {
+	allUsers, err := h.authService.ListUsers(
+		c.Request.Context(),
+		c.GetString("user_id"),
+		true,  // isSuperUser
+		false, // isAdmin
+	)
+	if err != nil {
+		slog.Error("Failed to list users for admin management mapping", "error", err)
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
+		return
+	}
+
+	// Identify admins (users with admin flag or in admin config)
+	adminMap := config.GetAdminUsersMap()
+	adminUserManagement := make(map[string][]string)
+
+	// Get all admins
+	admins := []models.UserResponse{}
+	for _, user := range allUsers {
+		_, isAdminInConfig := adminMap[user.Email]
+		if user.IsAdmin || isAdminInConfig {
+			admins = append(admins, user)
+		}
+	}
+
+	// For each admin, find users they can manage (users who share at least one group)
+	for _, admin := range admins {
+		manageableUsers := []string{}
+		for _, user := range allUsers {
+			// Skip self
+			if user.ID == admin.ID {
+				continue
+			}
+			// Check if they share any groups
+			if models.SharesAnyUserGroup(admin.Groups, user.Groups) {
+				manageableUsers = append(manageableUsers, user.Email)
+			}
+		}
+		if len(manageableUsers) > 0 {
+			adminUserManagement[admin.Email] = manageableUsers
+		}
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(adminUserManagement))
 }
 
 // Permission Management Handlers (Superuser Only)

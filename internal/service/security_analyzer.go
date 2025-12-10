@@ -32,13 +32,28 @@ const (
 )
 
 func (d *SecurityAnalyzer) DetectSuspiciousPatterns(ctx context.Context, userID, ip, userAgent string) []string {
+	return d.DetectSuspiciousPatternsWithRole(ctx, userID, ip, userAgent, false, false)
+}
+
+func (d *SecurityAnalyzer) DetectSuspiciousPatternsWithRole(ctx context.Context, userID, ip, userAgent string, isAdmin, isSuperuser bool) []string {
 	var patterns []string
+
+	// Determine threshold based on user role
+	// Admins/superusers get higher thresholds for legitimate UI operations
+	threshold := session.RapidRequestThreshold
+	if isSuperuser {
+		// Superusers get 5x higher threshold(e.g., 600 req/min instead of 120)
+		threshold = session.RapidRequestThreshold * 5
+	} else if isAdmin {
+		// Admins get 3x higher threshold(e.g., 360 req/min instead of 120)
+		threshold = session.RapidRequestThreshold * 3
+	}
 
 	// 1. Check for rapid requests (potential automated attack)
 	if !session.IsRapidRequestCheckDisabled() {
 		requestCount, err := d.repo.GetRequestCount(ctx, userID, time.Minute)
-		if err == nil && requestCount > session.RapidRequestThreshold {
-			slog.Warn("SecurityAnalyzer: Rapid request pattern detected", "user_id", userID, "count", requestCount, "threshold", session.RapidRequestThreshold)
+		if err == nil && requestCount > threshold {
+			slog.Warn("SecurityAnalyzer: Rapid request pattern detected", "user_id", userID, "count", requestCount, "threshold", threshold, "is_admin", isAdmin, "is_superuser", isSuperuser)
 			patterns = append(patterns, session.ActivityRapidRequests)
 		}
 	}

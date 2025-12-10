@@ -104,8 +104,8 @@
 |-------------------|-------------|
 | `secret/garde/cors_allow_origins` | Allowed CORS origins (comma-separated) |
 | `secret/garde/enforce_mfa` | Enforce MFA for all users |
-| `secret/garde/rate_limit` | IP rate limiting: `limit,interval_seconds` (e.g., `100,60`). Use `0,0` to disable. |
-| `secret/garde/rapid_request_config` | User-based rapid request detection: `max_per_min,min_interval_ms` (e.g., `120,10`). Use `0,0` to disable. |
+| `secret/garde/rate_limit` | IP-based rate limiting for public/unauthenticated endpoints: `limit,interval_seconds` (e.g., `100,60` means 100 requests per 60 seconds). Use `0,0` to disable. |
+| `secret/garde/rapid_request_config` | User-based rapid request detection for authenticated endpoints with role-aware thresholds: `max_per_min,min_interval_ms` (e.g., `120,10` means 120 requests per minute with 10ms minimum interval). Admins get 3x threshold, superusers get 5x threshold. Use `0,0` to disable. |
 | `secret/garde/disable_user_agent_check` | Disable UA validation |
 | `secret/garde/disable_ip_blacklisting` | Disable automatic IP blocking |
 | `secret/garde/disable_multiple_ip_check` | Disable concurrent session IP detection |

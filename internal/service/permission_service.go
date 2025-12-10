@@ -14,7 +14,6 @@ var (
 	permRepoErr  error
 )
 
-// InitPermissionRepository initializes the permission repository
 // This should be called once at application startup
 func InitPermissionRepository() error {
 	permRepoOnce.Do(func() {
@@ -28,22 +27,18 @@ func InitPermissionRepository() error {
 	return permRepoErr
 }
 
-// GetPermissionRepository returns the permission repository instance
 func GetPermissionRepository() *repository.PermissionRepository {
 	return permRepo
 }
 
-// IsPermissionsLoaded checks if permissions system is loaded
 func IsPermissionsLoaded() bool {
 	return permRepo != nil
 }
 
-// IsGroupsLoaded checks if groups system is loaded
 func IsGroupsLoaded() bool {
 	return permRepo != nil
 }
 
-// GetAllPermissions returns all permissions (for superuser/admin use)
 func GetAllPermissions() []models.Permission {
 	if permRepo == nil {
 		return []models.Permission{}
@@ -63,7 +58,6 @@ func GetAllPermissions() []models.Permission {
 	return perms
 }
 
-// GetVisiblePermissions returns permissions visible to the given groups
 func GetVisiblePermissions(groupNames []string) []models.Permission {
 	if permRepo == nil {
 		return []models.Permission{}
@@ -87,7 +81,6 @@ func GetVisiblePermissions(groupNames []string) []models.Permission {
 	return perms
 }
 
-// GetAllUserGroups returns all groups
 func GetAllUserGroups() []models.UserGroup {
 	if permRepo == nil {
 		return []models.UserGroup{}
@@ -107,7 +100,6 @@ func GetAllUserGroups() []models.UserGroup {
 	return groups
 }
 
-// GetPermissionInfo returns permission info by name
 func GetPermissionInfo(p models.Permission) models.PermissionInfo {
 	if permRepo == nil {
 		return models.PermissionInfo{
@@ -131,7 +123,6 @@ func GetPermissionInfo(p models.Permission) models.PermissionInfo {
 	}
 }
 
-// GetGroupInfo returns group info by name
 func GetGroupInfo(g models.UserGroup) models.UserGroupInfo {
 	if permRepo == nil {
 		return models.UserGroupInfo{
@@ -155,7 +146,6 @@ func GetGroupInfo(g models.UserGroup) models.UserGroupInfo {
 	}
 }
 
-// IsValidPermission checks if a permission exists
 func IsValidPermission(p models.Permission) bool {
 	if permRepo == nil {
 		return false
@@ -203,7 +193,22 @@ func GetUserGroupNames(groups models.UserGroups) []string {
 	return names
 }
 
-// DefaultPermissions returns default permissions map (all false)
+// Permission visibility mappings
+// Returns a map where key is permission name and value is slice of group names
+func GetAllPermissionVisibility() map[string][]string {
+	if permRepo == nil {
+		return make(map[string][]string)
+	}
+
+	ctx := context.Background()
+	visibilityMap, err := permRepo.GetAllPermissionVisibility(ctx)
+	if err != nil {
+		slog.Error("Failed to get all permission visibility", "error", err)
+		return make(map[string][]string)
+	}
+	return visibilityMap
+}
+
 func DefaultPermissions() models.UserPermissions {
 	perms := models.UserPermissions{}
 	allPerms := GetAllPermissions()
@@ -213,7 +218,6 @@ func DefaultPermissions() models.UserPermissions {
 	return perms
 }
 
-// AdminPermissions returns admin permissions map (all true)
 func AdminPermissions() models.UserPermissions {
 	perms := models.UserPermissions{}
 	allPerms := GetAllPermissions()

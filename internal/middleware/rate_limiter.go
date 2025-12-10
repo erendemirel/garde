@@ -16,21 +16,29 @@ import (
 )
 
 const (
-	defaultRequestsPerWindow = 60
-	defaultWindowSeconds     = 60
-	rateLimitPrefix          = "rate_limit:"
+	defaultRequestsPerWindow     = 60
+	defaultWindowSeconds         = 60
+	defaultAuthenticatedRequests = 300  // Higher limit for authenticated users
+	defaultAdminRequests         = 1000 // Even higher for admins/superusers
+	rateLimitPrefix              = "rate_limit:"
 )
 
 type RateLimiter struct {
-	repo       *repository.RedisRepository
-	maxReqs    int
-	windowSize time.Duration
+	repo                 *repository.RedisRepository
+	maxReqs              int
+	authenticatedMaxReqs int
+	adminMaxReqs         int
+	windowSize           time.Duration
 }
 
-// Format: "limit" or "limit,window_seconds" e.g. "100,60" means 100 requests per 60 seconds
+// Format: "limit" or "limit,window_seconds" or "limit,window_seconds,auth_limit,admin_limit"
+// e.g. "100,60" means 100 requests per 60 seconds for unauthenticated
+// e.g. "100,60,300,1000" means 100 for unauthenticated, 300 for authenticated, 1000 for admins
 // Use "0" or "0,0" to disable rate limiting
 func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
 	maxReqs := defaultRequestsPerWindow
+	authenticatedMaxReqs := defaultAuthenticatedRequests
+	adminMaxReqs := defaultAdminRequests
 	windowSecs := defaultWindowSeconds
 
 	if envLimit := config.Get("RATE_LIMIT"); envLimit != "" {
@@ -45,12 +53,24 @@ func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
 				windowSecs = parsed
 			}
 		}
+		if len(parts) >= 3 {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil && parsed > 0 {
+				authenticatedMaxReqs = parsed
+			}
+		}
+		if len(parts) >= 4 {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[3])); err == nil && parsed > 0 {
+				adminMaxReqs = parsed
+			}
+		}
 	}
 
 	return &RateLimiter{
-		repo:       repo,
-		maxReqs:    maxReqs,
-		windowSize: time.Duration(windowSecs) * time.Second,
+		repo:                 repo,
+		maxReqs:              maxReqs,
+		authenticatedMaxReqs: authenticatedMaxReqs,
+		adminMaxReqs:         adminMaxReqs,
+		windowSize:           time.Duration(windowSecs) * time.Second,
 	}
 }
 

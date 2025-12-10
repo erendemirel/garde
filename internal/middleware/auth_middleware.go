@@ -66,27 +66,6 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			return
 		}
 
-		// Check for suspicious patterns
-		if !session.IsRapidRequestCheckDisabled() && securityAnalyzer != nil {
-			patterns := securityAnalyzer.DetectSuspiciousPatterns(c.Request.Context(), validationResult.UserID, ip, userAgent)
-			if len(patterns) > 0 {
-				slog.Warn("AuthMiddleware: Suspicious patterns detected, blocking request", "user_id", validationResult.UserID, "path", c.Request.URL.Path, "patterns", patterns)
-				// Record all detected patterns
-				for _, pattern := range patterns {
-					securityAnalyzer.RecordPattern(c.Request.Context(), validationResult.UserID, pattern, ip, userAgent)
-				}
-				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrAccessRestricted))
-				return
-			}
-
-			// Track legitimate request
-			if err := securityAnalyzer.TrackRequest(c.Request.Context(), validationResult.UserID); err != nil {
-				slog.Warn("Failed to track request", "error", err, "user_id", validationResult.UserID)
-			}
-		} else {
-			slog.Debug("AuthMiddleware: Security analyzer check skipped", "rapid_check_disabled", session.IsRapidRequestCheckDisabled(), "analyzer_nil", securityAnalyzer == nil)
-		}
-
 		// Check if user needs MFA setup (MFA enforced but not enabled)
 		// Allow only MFA setup endpoints, user info (for frontend redirect), and logout
 		path := c.Request.URL.Path
@@ -115,6 +94,27 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 
 		c.Set("is_superuser", isSuperUser)
 		c.Set("is_admin", isAdmin)
+
+		// Check for suspicious patterns (after we know user role, use role-aware thresholds)
+		if !session.IsRapidRequestCheckDisabled() && securityAnalyzer != nil {
+			patterns := securityAnalyzer.DetectSuspiciousPatternsWithRole(c.Request.Context(), validationResult.UserID, ip, userAgent, isAdmin, isSuperUser)
+			if len(patterns) > 0 {
+				slog.Warn("AuthMiddleware: Suspicious patterns detected, blocking request", "user_id", validationResult.UserID, "path", c.Request.URL.Path, "patterns", patterns)
+				// Record all detected patterns
+				for _, pattern := range patterns {
+					securityAnalyzer.RecordPattern(c.Request.Context(), validationResult.UserID, pattern, ip, userAgent)
+				}
+				c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrAccessRestricted))
+				return
+			}
+
+			// Track legitimate request
+			if err := securityAnalyzer.TrackRequest(c.Request.Context(), validationResult.UserID); err != nil {
+				slog.Warn("Failed to track request", "error", err, "user_id", validationResult.UserID)
+			}
+		} else {
+			slog.Debug("AuthMiddleware: Security analyzer check skipped", "rapid_check_disabled", session.IsRapidRequestCheckDisabled(), "analyzer_nil", securityAnalyzer == nil)
+		}
 
 		// Store user ID and session ID in context for later use
 		c.Set("user_id", validationResult.UserID)

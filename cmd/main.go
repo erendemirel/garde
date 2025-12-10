@@ -224,8 +224,13 @@ func main() {
 		superuserProtected.DELETE("/admin/groups/:group_name", authHandler.DeleteGroup)
 
 		// Permission visibility management
+		superuserProtected.GET("/admin/permissions/visibility", authHandler.GetAllPermissionVisibility)
 		superuserProtected.POST("/admin/permissions/visibility", authHandler.AddPermissionVisibility)
 		superuserProtected.DELETE("/admin/permissions/visibility", authHandler.RemovePermissionVisibility)
+
+		// Group-user and admin-user management mappings
+		superuserProtected.GET("/admin/groups/users", authHandler.GetAllGroupUsers)
+		superuserProtected.GET("/admin/users/management", authHandler.GetAdminUserManagement)
 	}
 
 	// Special case for /validate endpoint (API key + mTLS authentication only)
