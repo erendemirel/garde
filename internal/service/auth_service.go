@@ -189,8 +189,14 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	}
 
 	// Check for suspicious patterns including multiple IP sessions
+	// Determine user role for appropriate threshold
+	superUserEmail := config.Get("SUPERUSER_EMAIL")
+	isSuperuser := user.Email == superUserEmail
+	adminMap := config.GetAdminUsersMap()
+	isAdmin := len(adminMap) > 0 && adminMap[user.Email] != ""
+
 	if !session.IsRapidRequestCheckDisabled() {
-		patterns := s.securityAnalyzer.DetectSuspiciousPatterns(ctx, user.ID, ip, userAgent)
+		patterns := s.securityAnalyzer.DetectSuspiciousPatternsWithRole(ctx, user.ID, ip, userAgent, isAdmin, isSuperuser)
 		if len(patterns) > 0 {
 			// Record all detected patterns
 			for _, pattern := range patterns {

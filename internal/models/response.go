@@ -46,6 +46,8 @@ type UserResponse struct {
 	Permissions    UserPermissions    `json:"permissions"`
 	Groups         UserGroups         `json:"groups"`
 	PendingUpdates *UserUpdateRequest `json:"pending_updates,omitempty"`
+	IsSuperuser    bool               `json:"is_superuser,omitempty"`
+	IsAdmin        bool               `json:"is_admin,omitempty"`
 }
 
 func (u *UserResponse) IsUserAdmin() bool {

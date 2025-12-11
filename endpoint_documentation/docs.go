@@ -87,6 +87,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/groups/users": {
+            "get": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns all group-user mappings (which users belong to which groups). Only superuser can perform this operation.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Get all group-user mappings",
+                "responses": {
+                    "200": {
+                        "description": "Map of group names to user emails",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Operation failed",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/groups/{group_name}": {
             "put": {
                 "security": [
@@ -298,6 +356,62 @@ const docTemplate = `{
             }
         },
         "/admin/permissions/visibility": {
+            "get": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns all permission visibility mappings (which groups can see which permissions). Only superuser can perform this operation.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Get all permission visibility mappings",
+                "responses": {
+                    "200": {
+                        "description": "Map of permission names to group names",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Permissions system not loaded or operation failed",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -576,6 +690,64 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Permission not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/management": {
+            "get": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns which admins can manage which users (based on shared groups). Only superuser can perform this operation.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superuser Routes"
+                ],
+                "summary": "Get admin-user management relationships",
+                "responses": {
+                    "200": {
+                        "description": "Map of admin emails to user emails they can manage",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - superuser access required",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Operation failed",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
@@ -1630,6 +1802,68 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "SessionCookie": []
+                    },
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (SQLite-based) for admin operations.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Protected and Admin-Only Routes"
+                ],
+                "summary": "Delete user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User deleted successfully",
+                        "schema": {
+                            "$ref": "#/definitions/models.SuccessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - insufficient permissions",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error or permissions system not loaded",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/validate": {
@@ -2094,6 +2328,12 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_admin": {
+                    "type": "boolean"
+                },
+                "is_superuser": {
+                    "type": "boolean"
                 },
                 "last_login": {
                     "type": "string"

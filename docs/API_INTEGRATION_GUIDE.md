@@ -900,17 +900,27 @@ Notes:
 #### Suspicious Activity Detection
 The API automatically detects:
 - Multiple failed login attempts
-- Rapid requests from same IP
+- Rapid requests from same IP (public endpoints)
+- Rapid requests from same user (authenticated endpoints, with role-aware thresholds)
 - Multiple IP sessions
 - Unusual request patterns
 - Session inactivity timeouts
 - Multiple suspicious patterns that trigger session invalidation
 
 System Responses:
-- Rate limiting
+- Rate limiting (IP-based for public, user-based with role-aware thresholds for authenticated)
 - Session invalidation
 - Account locking
 - IP blocking
+
+**Rate Limiting Details:**
+- **Public Endpoints** (login, register, password reset): IP-based rate limiting via `RATE_LIMIT` config
+- **Authenticated Endpoints**: User-based rapid request detection via `RAPID_REQUEST_CONFIG` with role-aware thresholds:
+  - Regular users: Base threshold (default: 120 req/min)
+  - Admins: 3x threshold (default: 360 req/min)
+  - Superusers: 5x threshold (default: 600 req/min)
+  
+This design allows legitimate UI operations (which often make multiple simultaneous API calls) while maintaining security for regular users.
 
 #### A. Session Termination Events
 Sessions are immediately terminated when:
@@ -918,7 +928,10 @@ Sessions are immediately terminated when:
    - Multiple concurrent sessions from different IPs
    - Automated/bot-like behavior detected (when requests are < session.AutomatedRequestTimeout apart)
    - Unusual User-Agent patterns (containing bot/crawler identifiers or missing common browser strings)
-   - Rapid requests exceeding threshold (>60 requests/minute)
+   - Rapid requests exceeding role-aware threshold:
+     - Regular users: Base threshold (default: 120 requests/minute)
+     - Admins: 3x threshold (default: 360 requests/minute)
+     - Superusers: 5x threshold (default: 600 requests/minute)
 2. Security status changes:
    - User account gets locked
    - Password is changed or reset
@@ -942,7 +955,7 @@ When an account is locked:
 #### C. IP Blocking
 IPs are automatically blocked when:
 1. Failed login attempts exceed threshold (5 attempts per minute)
-2. Rate limit is repeatedly exceeded (>60 requests per minute)
+2. IP-based rate limit is repeatedly exceeded (configured via `RATE_LIMIT`, default: 60 requests per minute for public endpoints)
 
 When an IP is blocked:
 - All requests return 429 (Too Many Requests)
