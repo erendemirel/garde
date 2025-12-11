@@ -3,9 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>garde docs</title>
+  <title>garde API Documentation</title>
   <!-- Swagger UI CSS -->
   <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.20.2/swagger-ui.css">
+  <style>
+    html {
+      box-sizing: border-box;
+      overflow: -moz-scrollbars-vertical;
+      overflow-y: scroll;
+    }
+    *, *:before, *:after {
+      box-sizing: inherit;
+    }
+    body {
+      margin:0;
+      background: #fafafa;
+    }
+  </style>
 </head>
 <body>
   <div id="swagger-ui"></div>
@@ -16,7 +30,7 @@
 
   <script>
     const ui = SwaggerUIBundle({
-      url: "swagger.yaml",
+      url: "./swagger.yaml",
       dom_id: '#swagger-ui',
       deepLinking: true,
       presets: [
@@ -25,7 +39,8 @@
       ],
       plugins: [
         SwaggerUIBundle.plugins.DownloadUrl
-      ]
+      ],
+      layout: "StandaloneLayout"
     })
   </script>
 </body>

@@ -259,6 +259,10 @@ definitions:
         $ref: '#/definitions/models.UserGroups'
       id:
         type: string
+      is_admin:
+        type: boolean
+      is_superuser:
+        type: boolean
       last_login:
         type: string
       mfa_enabled:
@@ -445,6 +449,40 @@ paths:
       summary: Update a group
       tags:
       - Superuser Routes
+  /admin/groups/users:
+    get:
+      description: Returns all group-user mappings (which users belong to which groups).
+        Only superuser can perform this operation.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of group names to user emails
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    items:
+                      type: string
+                    type: array
+                  type: object
+              type: object
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Get all group-user mappings
+      tags:
+      - Superuser Routes
   /admin/permissions:
     post:
       consumes:
@@ -614,6 +652,39 @@ paths:
       summary: Remove permission visibility from a group
       tags:
       - Superuser Routes
+    get:
+      description: Returns all permission visibility mappings (which groups can see
+        which permissions). Only superuser can perform this operation.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of permission names to group names
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    items:
+                      type: string
+                    type: array
+                  type: object
+              type: object
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Permissions system not loaded or operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Get all permission visibility mappings
+      tags:
+      - Superuser Routes
     post:
       consumes:
       - application/json
@@ -658,6 +729,40 @@ paths:
       - SessionCookie: []
       - Bearer: []
       summary: Add permission visibility to a group
+      tags:
+      - Superuser Routes
+  /admin/users/management:
+    get:
+      description: Returns which admins can manage which users (based on shared groups).
+        Only superuser can perform this operation.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of admin emails to user emails they can manage
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.SuccessResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    items:
+                      type: string
+                    type: array
+                  type: object
+              type: object
+        "401":
+          description: Unauthorized - superuser access required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Get admin-user management relationships
       tags:
       - Superuser Routes
   /groups:
@@ -899,6 +1004,48 @@ paths:
       tags:
       - Public Routes
   /users/{user_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a user from the system. Admins can only delete users who
+        share at least one group with them. Superuser can delete any user except themselves.
+        All active sessions are revoked and security records are cleaned up. Requires
+        permissions/groups system to be initialized (SQLite-based) for admin operations.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User deleted successfully
+          schema:
+            $ref: '#/definitions/models.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden - insufficient permissions
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error or permissions system not loaded
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - SessionCookie: []
+      - Bearer: []
+      summary: Delete user
+      tags:
+      - Protected and Admin-Only Routes
     get:
       consumes:
       - application/json
