@@ -52,6 +52,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	cookieDomain := config.Get("DOMAIN_NAME")
+	// If DOMAIN_NAME is empty, use empty string (cookies will work for current domain)
+	// This is for dev/render etc. environments where domain might not be set
 
 	// Set secure cookie with session ID
 	c.SetCookie(

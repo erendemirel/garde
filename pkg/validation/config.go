@@ -54,7 +54,9 @@ func ValidateConfig() error {
 		}
 	}
 
-	if config.Get("DOMAIN_NAME") == "" {
+	// DOMAIN_NAME is optional in dev mode (DOCKER_PROFILE=with-redis)
+	// For dev/render etc., we can use a default or leave empty (cookies will work without domain)
+	if dockerProfile != "with-redis" && config.Get("DOMAIN_NAME") == "" {
 		return fmt.Errorf("DOMAIN_NAME is required")
 	}
 
