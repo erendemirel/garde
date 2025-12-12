@@ -8,4 +8,6 @@ services:
       - key: NODE_ENV
         value: production
     healthCheckPath: /
+    plan: free
+    branch: main
 
