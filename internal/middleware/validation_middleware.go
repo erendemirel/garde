@@ -136,12 +136,10 @@ func handleRequestValidation[T any](c *gin.Context, req *T, validator func(*T) e
 
 func validateLoginRequest(req *models.LoginRequest) error {
 	if err := validation.ValidateEmail(req.Email); err != nil {
-		slog.Debug("Email validation failed", "error", err)
-		return err
+		return fmt.Errorf("email validation failed: %w", err)
 	}
 	if err := validation.ValidatePassword(req.Password); err != nil {
-		slog.Debug("Password validation failed", "error", err)
-		return err
+		return fmt.Errorf("password validation failed: %w", err)
 	}
 	if req.MFACode != "" {
 		sanitized, err := validation.Sanitize(req.MFACode)
