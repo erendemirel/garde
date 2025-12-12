@@ -39,7 +39,15 @@ func NewRedisRepository() (*RedisRepository, error) {
 	dbNum, _ := strconv.Atoi(config.Get("REDIS_DB"))
 
 	var host, port string
-	if config.Get("DOCKER_PROFILE") == "with-redis" {
+	// Prioritize environment variables if set (for Render, production, etc.)
+	if config.Get("REDIS_HOST") != "" {
+		host = config.Get("REDIS_HOST")
+		port = config.Get("REDIS_PORT")
+		if port == "" {
+			port = "6379"
+		}
+	} else if config.Get("DOCKER_PROFILE") == "with-redis" {
+		// Fallback to Docker Compose service name for local dev
 		host = "dev-redis"
 		port = "6379"
 	} else {
