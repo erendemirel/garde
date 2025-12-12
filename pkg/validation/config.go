@@ -39,7 +39,9 @@ func ValidateConfig() error {
 	if config.Get("REDIS_PORT") == "" {
 		return fmt.Errorf("REDIS_PORT is required")
 	}
-	if config.Get("REDIS_PASSWORD") == "" {
+	dockerProfile := config.Get("DOCKER_PROFILE")
+	allowEmptyPassword := dockerProfile == "with-redis"
+	if !allowEmptyPassword && config.Get("REDIS_PASSWORD") == "" {
 		return fmt.Errorf("REDIS_PASSWORD is required")
 	}
 
