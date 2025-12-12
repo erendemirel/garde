@@ -2,7 +2,6 @@ services:
   # Backend API Service
   - type: web
     name: garde-backend
-    rootDir: /
     env: docker
     dockerfilePath: ./Dockerfile.render
     dockerContext: ./
@@ -29,3 +28,5 @@ services:
     name: garde-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
+    ipAllowList:
+      - 0.0.0.0/0  # Allow all IPs (for internal Render network access)
