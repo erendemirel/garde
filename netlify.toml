@@ -1,4 +1,4 @@
-# Netlify configuration for deploying UI + Mock API
+# UI and Mock API
 
 [build]
   command = "cd web && npm install && npm run build"
@@ -7,7 +7,7 @@
 # Proxy API requests to mock server
 [[redirects]]
   from = "/api/*"
-  to = "https://aaaa.onrender.com/:splat"
+  to = "https://garde-mock-server.onrender.com/:splat"
   status = 200
   force = true
   headers = {
@@ -23,6 +23,5 @@
   to = "/index.html"
   status = 200
 
-# Environment variables (set these in Netlify dashboard)
-# PUBLIC_API_URL=https://aaaa.onrender.com
+# PUBLIC_API_URL=https://garde-mock-server.onrender.com
 
