@@ -22,11 +22,3 @@ services:
         value: '{"test.admin@test.com":true}'
     plan: free
     branch: master
-
-  # Redis Database
-  - type: redis
-    name: garde-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList:
-      - "0.0.0.0/0"
