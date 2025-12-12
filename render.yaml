@@ -10,5 +10,5 @@ services:
         value: production
     healthCheckPath: /
     plan: free
-    branch: main
+    branch: master
 
