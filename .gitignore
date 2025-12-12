@@ -1,28 +1,73 @@
+# Compiled binaries
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 *.test
-go.sum
 *.out
+garde.exe
+
+# Go specific
 go.work
 vendor/
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-dump.rdb
+# Note: go.sum should be committed
+
+# Build outputs
 /bin/
 /build/
+/web/build/
+/web/.svelte-kit/
+/.svelte-kit/
+
+# Certificates and keys
 /certs/
 *.pem
 *.key
 *.crt
 *.csr
+
+# Environment files
 .env
-web
+.env.local
+.env.*.local
+.env.production
+.env.development
+dev.secrets
+*.secrets
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+# Note: package-lock.json should be committed
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+dump.rdb
 
 # Secrets directory (except .gitkeep)
 secrets/*
@@ -34,5 +79,28 @@ vault/secret-id
 vault/*.token
 vault/dev-token
 
-# SQLLite database
+# Database files
 *.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.temp/
+tmp/
+temp/
+
+# Coverage reports
+coverage/
+*.cover
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# SvelteKit
+.svelte-kit/

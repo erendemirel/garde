@@ -1,0 +1,28 @@
+# Netlify configuration for deploying UI + Mock API
+
+[build]
+  command = "cd web && npm install && npm run build"
+  publish = "web/build"
+
+# Proxy API requests to mock server
+[[redirects]]
+  from = "/api/*"
+  to = "https://aaaaa.railway.app/:splat"
+  status = 200
+  force = true
+  headers = {
+    X-From = "Netlify",
+    Access-Control-Allow-Origin = "*",
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS",
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+  }
+
+# Fallback for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Environment variables (set these in Netlify dashboard)
+# PUBLIC_API_URL=https://your-mock-server-url.railway.app
+

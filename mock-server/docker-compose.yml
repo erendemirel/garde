@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  mock-api:
+    image: stoplight/prism:latest
+    container_name: garde-mock-server
+    ports:
+      - "4010:4010"
+    volumes:
+      - ../endpoint_documentation:/spec:ro
+    command: mock /spec/swagger.yaml --host 0.0.0.0 --port 4010
+    restart: unless-stopped
+
