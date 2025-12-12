@@ -1,13 +1,13 @@
-# UI and Mock API
+# UI Configuration
 
 [build]
   command = "cd web && npm install && npm run build"
   publish = "web/build"
 
-# Proxy API requests to mock server
+# Proxy API requests to backend
 [[redirects]]
   from = "/api/*"
-  to = "https://garde-mock-server.onrender.com/:splat"
+  to = "https://garde-backend.onrender.com/:splat"
   status = 200
   force = true
 
@@ -25,6 +25,4 @@
   from = "/*"
   to = "/index.html"
   status = 200
-
-# PUBLIC_API_URL=https://garde-mock-server.onrender.com
 
