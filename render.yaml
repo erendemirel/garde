@@ -27,5 +27,7 @@ services:
         value: DevAdminTest123!
       - key: ADMIN_USERS_JSON
         value: '{"test.admin@test.com":true}'
+      - key: DOMAIN_NAME
+        value: ""
     plan: free
     branch: master
