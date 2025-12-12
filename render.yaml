@@ -26,7 +26,7 @@ services:
       - key: SUPERUSER_PASSWORD
         value: DevAdminTest123!
       - key: ADMIN_USERS_JSON
-        value: '{"test.admin@test.com":true}'
+        value: '{"test.admin@test.com":"DevAdminTest123!","test.admin.2@test.com":"DevAdminTest123!"}'
       - key: DOMAIN_NAME
         value: ""
     plan: free
