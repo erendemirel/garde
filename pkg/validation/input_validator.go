@@ -42,21 +42,31 @@ func (e PasswordError) HasErrors() bool {
 }
 
 func ValidatePassword(password string) error {
-	sanitized, err := Sanitize(password)
-	if err != nil {
-		return err
+	password = strings.TrimSpace(password)
+
+	// Remove control characters
+	password = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, password)
+
+	// Check for disallowed characters
+	if strings.ContainsAny(password, "<>{}[]") {
+		return fmt.Errorf(errors.ErrDisallowedCharacters)
 	}
 
-	if len(sanitized) < MinPasswordLength || len(sanitized) > MaxPasswordLength {
+	if len(password) < MinPasswordLength || len(password) > MaxPasswordLength {
 		return fmt.Errorf(errors.ErrPasswordLength)
 	}
 
-	if strings.Count(sanitized, " ") > MaxWhitespace {
+	if strings.Count(password, " ") > MaxWhitespace {
 		return fmt.Errorf(errors.ErrDisallowedCharacters)
 	}
 
 	var hasUpper, hasLower, hasNumber, hasSpecial bool
-	for _, char := range sanitized {
+	for _, char := range password {
 		switch {
 		case unicode.IsUpper(char):
 			hasUpper = true
