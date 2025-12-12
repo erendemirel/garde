@@ -7,7 +7,7 @@
 # Proxy API requests to mock server
 [[redirects]]
   from = "/api/*"
-  to = "https://aaaaa.railway.app/:splat"
+  to = "https://aaaa.onrender.com/:splat"
   status = 200
   force = true
   headers = {
@@ -24,5 +24,5 @@
   status = 200
 
 # Environment variables (set these in Netlify dashboard)
-# PUBLIC_API_URL=https://your-mock-server-url.railway.app
+# PUBLIC_API_URL=https://aaaa.onrender.com
 
