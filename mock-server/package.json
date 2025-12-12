@@ -8,7 +8,7 @@
     "dev": "prism mock ../endpoint_documentation/swagger.yaml --host 0.0.0.0 --port 4010 --watch"
   },
   "dependencies": {
-    "@stoplight/prism-cli": "^6.0.0"
+    "@stoplight/prism-cli": "^5.14.2"
   },
   "engines": {
     "node": ">=18.0.0"
