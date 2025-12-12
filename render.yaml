@@ -2,12 +2,19 @@ services:
   # Backend API Service
   - type: web
     name: garde-backend
-    env: docker
+    region: frankfurt
+    runtime: docker
     dockerfilePath: ./Dockerfile.render
     dockerContext: ./
     envVars:
       - key: DOCKER_PROFILE
         value: with-redis
+      - key: REDIS_HOST
+        value: red-d4tv7o1r0fns739fqot0
+      - key: REDIS_PORT
+        value: "6379"
+      - key: REDIS_PASSWORD
+        value: "" 
       - key: REDIS_DB
         value: "0"
       - key: PORT
