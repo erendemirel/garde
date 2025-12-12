@@ -24,6 +24,7 @@ RUN chmod +x /app/garde
 # Create init script that writes env vars to /run/secrets
 RUN echo '#!/bin/sh' > /app/init-secrets.sh && \
     echo 'mkdir -p /run/secrets' >> /app/init-secrets.sh && \
+    echo 'echo "${DOCKER_PROFILE:-}" > /run/secrets/docker_profile' >> /app/init-secrets.sh && \
     echo 'echo "${REDIS_HOST:-localhost}" > /run/secrets/redis_host' >> /app/init-secrets.sh && \
     echo 'echo "${REDIS_PORT:-6379}" > /run/secrets/redis_port' >> /app/init-secrets.sh && \
     echo 'echo "${REDIS_PASSWORD:-}" > /run/secrets/redis_password' >> /app/init-secrets.sh && \
