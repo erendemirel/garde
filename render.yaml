@@ -29,4 +29,4 @@ services:
     plan: free
     maxmemoryPolicy: allkeys-lru
     ipAllowList:
-      - 0.0.0.0/0  # Allow all IPs (for internal Render network access)
+      - "0.0.0.0/0"
