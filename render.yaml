@@ -8,7 +8,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-    healthCheckPath: /permissions
     plan: free
     branch: master
 
