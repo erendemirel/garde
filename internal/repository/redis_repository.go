@@ -39,7 +39,7 @@ func NewRedisRepository() (*RedisRepository, error) {
 	dbNum, _ := strconv.Atoi(config.Get("REDIS_DB"))
 
 	var host, port string
-	// Prioritize environment variables if set (for Render, production, etc.)
+	// Prioritize environment variables if set
 	if config.Get("REDIS_HOST") != "" {
 		host = config.Get("REDIS_HOST")
 		port = config.Get("REDIS_PORT")
