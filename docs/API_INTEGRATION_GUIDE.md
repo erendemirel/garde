@@ -2,6 +2,9 @@
 
 This guide explains how to integrate and use garde in your applications.
 
+> [!NOTE]
+> garde includes a built-in web UI (SvelteKit) located in the `web/` directory. The UI provides a complete interface for user management, permissions, and admin operations. This guide focuses on API integration for custom applications.
+
 ## Table of Contents
 
 - [Authentication Methods](#authentication-methods)
