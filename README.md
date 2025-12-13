@@ -24,6 +24,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 - **Permissions**: Easy permission system avoiding traditional role/scope paradoxes and request/approval system<br>
 - **Implementation**: Vault secrets, data encryption, secure error handling, privacy protection<br>
 - **Hot Reload**: All secrets changes without restart<br>
+- **Web UI**: Optional built-in SvelteKit based web interface for user and admin management<br>
 
 > [!TIP]
 > garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes or maintainability issues. Additionally, it enables users to request permissions from admins
@@ -123,6 +124,9 @@ This automatically sets up:
 > The development setup is fully self-contained and includes everything you need to get started immediately
 
 Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password DevAdminTest123! for both.
+
+> [!TIP]
+> A web UI is included in the `web/` directory. To run it, navigate to the `web/` folder and use `bun start` (or `npm start`). The UI connects to the API at `http://localhost:8443`.
 
 ---
 

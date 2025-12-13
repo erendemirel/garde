@@ -34,6 +34,10 @@
    - API: `http://localhost:8443`
    - Swagger docs: `http://localhost:8443/swagger/index.html`
 
+5. **Web UI (Optional)**   
+
+   - Navigate to `web/` directory and run `bun start` (or `npm start`). No configuration needed, everything is set up. It automatically proxies `/api` requests to `http://localhost:8443` via Vite dev server.
+
 #### What happens automatically
 - Vault starts in development mode
 - Secrets from `dev.secrets` are seeded into Vault
@@ -130,6 +134,20 @@
 
 **Other Production Configuration**
 - Logging: `secret/garde/log_level` (DEBUG/INFO/WARN/ERROR), `secret/garde/gin_mode` (debug/release)
+
+#### Web UI (Optional)   
+
+Navigate to `web/` directory and run `bun start` or `npm start` (requires Bun or npm). It requires **no secrets, config files, or backend specific setup**. It only needs the API URL at build time:
+
+   - Set `PUBLIC_API_URL` environment variable at build time:
+       ```bash
+       export PUBLIC_API_URL=https://your-api-domain.com
+       bun run build
+       ```
+       Or create a `.env` file in the `web/` directory:
+       ```
+       PUBLIC_API_URL=https://your-api-domain.com
+       ```
 
 ---
 
