@@ -132,10 +132,8 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 
 ## Endpoint Documentation
 
-See [endpoints](https://erendemirel.github.io/garde)
-
 > [!TIP]
-> This documentation page will also be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443)
+> Swagger documentation is available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443)
 
 ---
 
