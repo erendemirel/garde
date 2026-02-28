@@ -57,6 +57,8 @@ For web applications where users log in through a browser interface.
 2. Receives HTTP-only secure cookie with session ID
 3. Cookie is automatically sent with subsequent requests
 
+**Cookie SameSite:** Configure `COOKIE_SAME_SITE` (secret: `secret/garde/cookie_same_site` or in `dev.secrets`) as `lax` (default), `strict`, or `none`. Use `lax` when the UI and API are on different origins (e.g. dev); use `strict` when same-origin.
+
 Example login request:
 ```json
 POST /login

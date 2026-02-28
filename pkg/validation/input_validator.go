@@ -194,3 +194,17 @@ func ValidateUserID(id string) error {
 
 	return nil
 }
+
+const MaxPermissionOrGroupNameLength = 128
+
+func ValidatePermissionOrGroupName(name string) error {
+	if name == "" || len(name) > MaxPermissionOrGroupNameLength {
+		return fmt.Errorf(errors.ErrInvalidPermissionName)
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			return fmt.Errorf(errors.ErrInvalidPermissionName)
+		}
+	}
+	return nil
+}

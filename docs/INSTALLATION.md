@@ -113,6 +113,7 @@
 | `secret/garde/disable_user_agent_check` | Disable UA validation |
 | `secret/garde/disable_ip_blacklisting` | Disable automatic IP blocking |
 | `secret/garde/disable_multiple_ip_check` | Disable concurrent session IP detection |
+| `secret/garde/cookie_same_site` | Session cookie SameSite: `lax` (default), `strict`, or `none`. Default `lax` so cookie based auth works when UI and API are on different origins(e.g. dev). Use `strict` when UI and API are same-origin. |
 
 **Admin Configuration**:
 | Secret Path | Description |

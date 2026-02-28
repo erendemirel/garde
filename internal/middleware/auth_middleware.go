@@ -52,15 +52,15 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 		validationResult, err := authService.ValidateSession(c.Request.Context(), sessionID, ip, userAgent)
 		if err != nil || validationResult == nil || !validationResult.Response.Valid {
 			// Clear cookie if session is invalid
-			c.SetCookie(
-				"session",
-				"",
-				-1,
-				"/",
-				"", // Empty domain
-				true,
-				true,
-			)
+			http.SetCookie(c.Writer, &http.Cookie{
+				Name:     "session",
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1,
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: config.GetCookieSameSite(),
+			})
 
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
 			return

@@ -138,6 +138,12 @@ template {
   destination = "/run/secrets/disable_multiple_ip_check"
 }
 
+template {
+  contents = "{{ with secret \"secret/data/garde/cookie_same_site\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cookie_same_site"
+  error_on_missing_key = false
+}
+
 # SMTP settings (optional)
 template {
   contents = "{{ with secret \"secret/data/garde/smtp_host\" }}{{ .Data.data.value }}{{ end }}"

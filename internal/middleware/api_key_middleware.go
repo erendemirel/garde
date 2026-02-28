@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"garde/internal/models"
 	"garde/pkg/config"
 	"garde/pkg/errors"
@@ -16,7 +17,8 @@ func APIKeyMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		apiKey := c.GetHeader(APIKeyHeader)
-		if apiKey != config.Get("API_KEY") {
+		expected := config.Get("API_KEY")
+		if subtle.ConstantTimeCompare([]byte(apiKey), []byte(expected)) != 1 {
 			slog.Info("Invalid API key attempt", "path", c.Request.URL.Path, "ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
