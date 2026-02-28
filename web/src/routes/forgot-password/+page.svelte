@@ -50,7 +50,6 @@
 <div class="container-auth">
 	<div class="card space-y-4 w-full">
 		<h1 class="text-xl font-bold text-accent">Reset Password</h1>
-		<p class="section-subtitle">We'll guide you through email verification.</p>
 
 		{#if step === 'email'}
 			<form class="space-y-4" on:submit|preventDefault={handleRequestOtp}>
@@ -66,9 +65,6 @@
 				{/if}
 				<button class="btn-secondary w-full justify-center" type="submit" disabled={loading}>
 					{loading ? 'Sending...' : 'Send OTP'}
-				</button>
-				<button type="button" class="btn-secondary w-full justify-center" on:click={() => (step = 'reset')}>
-					I have an OTP
 				</button>
 			</form>
 		{:else}

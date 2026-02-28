@@ -57,7 +57,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 				Value:    "",
 				Path:     "/",
 				MaxAge:   -1,
-				Secure:   true,
+				Secure:   config.GetCookieSecure(),
 				HttpOnly: true,
 				SameSite: config.GetCookieSameSite(),
 			})

@@ -38,7 +38,6 @@
 <div class="container-auth">
 	<div class="card space-y-4 w-full">
 		<h1 class="text-xl font-bold text-accent">Create Account</h1>
-		<p class="section-subtitle">Start with an email and a strong password.</p>
 		{#if success}
 			<p class="success">{success}</p>
 		{:else}

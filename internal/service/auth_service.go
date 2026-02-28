@@ -771,20 +771,20 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		if !IsPermissionsLoaded() {
 			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
 		}
-		// Validate permissions exist and visibility (superuser exempt)
-		if !isSuperUser {
+		// Validate all permissions exist
+		for perm := range *req.Permissions {
+			if !IsValidPermission(perm) {
+				slog.Info("Invalid permission in update request", "permission", perm)
+				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
+			}
+		}
+		// For non-superuser admins: also check visibility - can only grant permissions they can see
+		if !isSuperUser && isAdmin {
 			adminGroupNames := GetUserGroupNames(admin.Groups)
-			for perm := range *req.Permissions {
-				if !IsValidPermission(perm) {
-					slog.Info("Invalid permission in update request", "permission", perm)
-					return fmt.Errorf(errors.ErrUnauthorized)
-				}
-				// For admins: check visibility - can only grant permissions they can see
-				if isAdmin && len(adminGroupNames) > 0 && (*req.Permissions)[perm] {
-					if !IsPermissionVisibleToGroups(string(perm), adminGroupNames) {
-						slog.Info("Admin attempted to grant permission they cannot see", "admin_id", adminID, "permission", perm, "user_id", targetUserID)
-						return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
-					}
+			for perm, enabled := range *req.Permissions {
+				if enabled && len(adminGroupNames) > 0 && !IsPermissionVisibleToGroups(string(perm), adminGroupNames) {
+					slog.Info("Admin attempted to grant permission they cannot see", "admin_id", adminID, "permission", perm, "user_id", targetUserID)
+					return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
 				}
 			}
 		}
@@ -793,23 +793,17 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	// Add support for direct groups updates
 	if req.Groups != nil {
-		// Validate groups (superusers exempt)
-		if !isSuperUser {
-			for group := range *req.Groups {
-				if !IsGroupsLoaded() {
-					slog.Debug("Groups system not loaded when trying to update user groups", "admin_id", adminID, "target_user_id", targetUserID)
-					return fmt.Errorf(errors.ErrGroupsNotLoaded)
-				}
-				if !IsValidUserGroup(group) {
-					slog.Debug("Invalid group requested in user update", "group", string(group), "admin_id", adminID, "target_user_id", targetUserID)
-					return fmt.Errorf(errors.ErrUnauthorized)
-				}
+		if !IsGroupsLoaded() {
+			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+		}
+		// Validate all groups exist
+		for group := range *req.Groups {
+			if !IsValidUserGroup(group) {
+				slog.Debug("Invalid group requested in user update", "group", string(group), "admin_id", adminID, "target_user_id", targetUserID)
+				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": " + string(group))
 			}
-		} else {
-			slog.Debug("Superuser updating user groups - skipping group validation", "admin_id", adminID, "target_user_id", targetUserID, "groups", req.Groups)
 		}
 
-		// Convert directly without type casting
 		userGroups := models.UserGroups{}
 		for group, enabled := range *req.Groups {
 			userGroups[group] = enabled

@@ -58,7 +58,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Path:     "/",
 		Domain:   cookieDomain,
 		MaxAge:   int(session.SessionDuration.Seconds()),
-		Secure:   true,
+		Secure:   config.GetCookieSecure(),
 		HttpOnly: true,
 		SameSite: config.GetCookieSameSite(),
 	})
@@ -99,7 +99,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		Path:     "/",
 		Domain:   cookieDomain,
 		MaxAge:   0,
-		Secure:   true,
+		Secure:   config.GetCookieSecure(),
 		HttpOnly: true,
 		SameSite: config.GetCookieSameSite(),
 	})
