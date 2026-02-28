@@ -180,6 +180,7 @@ func main() {
 	// Regular protected routes (no mTLS or admin login required)
 	protected := router.Group("")
 	protected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
+	protected.Use(rateLimiter.LimitByUser())
 	{
 		protected.GET("/users/me", authHandler.GetCurrentUser)
 		protected.POST("/logout", authHandler.Logout)
@@ -198,6 +199,7 @@ func main() {
 	adminProtected := router.Group("")
 	adminProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
 	adminProtected.Use(middleware.AdminMiddleware(authService))
+	adminProtected.Use(rateLimiter.LimitByUser())
 	{
 		adminProtected.GET("/users", authHandler.ListUsers)
 		adminProtected.GET("/users/:user_id", authHandler.GetUser)
@@ -212,6 +214,7 @@ func main() {
 	superuserProtected := router.Group("")
 	superuserProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
 	superuserProtected.Use(middleware.SuperuserMiddleware())
+	superuserProtected.Use(rateLimiter.LimitByUser())
 	{
 		// Permission management
 		superuserProtected.POST("/admin/permissions", authHandler.CreatePermission)

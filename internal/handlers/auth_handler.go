@@ -52,19 +52,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	cookieDomain := config.Get("DOMAIN_NAME")
-	// If DOMAIN_NAME is empty, use empty string (cookies will work for current domain)
-	// For dev environments where domain might not be set
-
-	// Set secure cookie with session ID
-	c.SetCookie(
-		"session",
-		resp.SessionID,
-		int(session.SessionDuration.Seconds()),
-		"/",
-		cookieDomain,
-		true,
-		true,
-	)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    resp.SessionID,
+		Path:     "/",
+		Domain:   cookieDomain,
+		MaxAge:   int(session.SessionDuration.Seconds()),
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: config.GetCookieSameSite(),
+	})
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
 }
@@ -96,16 +93,16 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	cookieDomain := config.Get("DOMAIN_NAME")
 
-	// Set cookie with Max-Age=0 (immediate expiration) and expired Expires date as fallback
-	c.SetCookie(
-		"session",
-		"",
-		0, // Max-Age=0 for immediate expiration
-		"/",
-		cookieDomain, // Use environment variable
-		true,
-		true,
-	)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    "",
+		Path:     "/",
+		Domain:   cookieDomain,
+		MaxAge:   0,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: config.GetCookieSameSite(),
+	})
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
 }
@@ -1037,6 +1034,10 @@ func (h *AuthHandler) CreatePermission(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
+	if err := validation.ValidatePermissionOrGroupName(req.Name); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+		return
+	}
 
 	permRepo, err := repository.GetPermissionRepository()
 	if err != nil {
@@ -1195,6 +1196,10 @@ func (h *AuthHandler) CreateGroup(c *gin.Context) {
 	var req models.CreateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+	if err := validation.ValidatePermissionOrGroupName(req.Name); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
 	}
 
@@ -1358,6 +1363,14 @@ func (h *AuthHandler) AddPermissionVisibility(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
+	if err := validation.ValidatePermissionOrGroupName(req.PermissionName); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+		return
+	}
+	if err := validation.ValidatePermissionOrGroupName(req.GroupName); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+		return
+	}
 
 	permRepo, err := repository.GetPermissionRepository()
 	if err != nil {
@@ -1416,6 +1429,14 @@ func (h *AuthHandler) RemovePermissionVisibility(c *gin.Context) {
 	var req models.RemovePermissionVisibilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+	if err := validation.ValidatePermissionOrGroupName(req.PermissionName); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+		return
+	}
+	if err := validation.ValidatePermissionOrGroupName(req.GroupName); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
 	}
 

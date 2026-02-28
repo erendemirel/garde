@@ -31,6 +31,7 @@ const (
 	ErrUserCreationFailed = "user creation failed"
 	ErrRequestTooLarge    = "request body exceeds maximum allowed size"
 	ErrTooManyRequests    = "too many requests"
+	ErrHTTPRequestBodyTooLarge = "http: request body too large"
 )
 
 // Generic error message
@@ -54,11 +55,12 @@ const (
 
 // Input validation errors
 const (
-	ErrEmailLength          = "email is max 254 characters"
-	ErrEmailFormat          = "invalid email format"
-	ErrPasswordLength       = "password must be between 8 and 64 characters"
-	ErrPasswordComplexity   = "password complexity requirements not met"
-	ErrDisallowedCharacters = "disallowed characters"
+	ErrEmailLength            = "email is max 254 characters"
+	ErrEmailFormat            = "invalid email format"
+	ErrPasswordLength         = "password must be between 8 and 64 characters"
+	ErrPasswordComplexity     = "password complexity requirements not met"
+	ErrDisallowedCharacters  = "disallowed characters"
+	ErrInvalidPermissionName  = "permission and group names must be 1-128 characters, alphanumeric and underscore only"
 )
 
 // Mail errors

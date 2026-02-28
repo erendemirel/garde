@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -105,6 +106,10 @@ func handleRequestValidation[T any](c *gin.Context, req *T, validator func(*T) e
 	if err != nil {
 		slog.Warn("Failed to read request body", "error", err, "path", c.Request.URL.Path)
 		c.Set(ContextKeyValidationFailed, true)
+		if strings.Contains(err.Error(), errors.ErrHTTPRequestBodyTooLarge) {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, models.NewErrorResponse(errors.ErrRequestTooLarge))
+			return
+		}
 		c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 		return
 	}
@@ -432,6 +437,11 @@ func validatePathParams(c *gin.Context) error {
 		sanitized, err := validation.Sanitize(param.Value)
 		if err != nil {
 			return fmt.Errorf("%s: %s", errors.ErrInvalidRequest, param.Key)
+		}
+		if param.Key == "permission_name" || param.Key == "group_name" {
+			if err := validation.ValidatePermissionOrGroupName(sanitized); err != nil {
+				return err
+			}
 		}
 		c.Params[i].Value = sanitized
 	}

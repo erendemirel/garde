@@ -57,6 +57,8 @@ For web applications where users log in through a browser interface.
 2. Receives HTTP-only secure cookie with session ID
 3. Cookie is automatically sent with subsequent requests
 
+**Cookie SameSite:** Configure `COOKIE_SAME_SITE` (secret: `secret/garde/cookie_same_site` or in `dev.secrets`) as `lax` (default), `strict`, or `none`. Use `lax` when the UI and API are on different origins (e.g. dev); use `strict` when same-origin.
+
 Example login request:
 ```json
 POST /login
@@ -200,8 +202,8 @@ Error Response:
 Status Code: `409 Conflict`
 
 Important Notes:
-- User status starts as "pending_approval" until approved by admin
-- Admin status is determined by the `ADMIN_USERS_JSON` configuration and admins are automatically craeted. You cannot create admins via API.
+- User status starts as "pending admin approval" until approved by admin
+- Admin status is determined by the `ADMIN_USERS_JSON` configuration and admins are automatically created. You cannot create admins via API.
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
 
 #### View Current User Info
@@ -265,7 +267,7 @@ Important Notes:
   - As HTTP-only cookie for browser-based apps
   - In response body for API clients
 - Rate limited to 5 attempts per minute
-- Users with `locked_by_admin` or `locked_by_security` status cannot log in
+- Users with `locked by admin` or `locked by security` status cannot log in
 
 #### Logout
 ```http
@@ -340,7 +342,7 @@ Important Notes:
 - Process requires OTP
 - MFA code required if enabled
 - Account gets locked after 5 failed attempts
-- Password reset sets status to "pending_approval"
+- Password reset sets status to "pending admin approval"
 - Rate limited to 3 attempts per 5 minutes
 - Cannot reset superuser password through this flow
 
@@ -527,7 +529,15 @@ Response example:
 }
 ```
 
-3. Requesting Permission Changes:
+3. Listing Available Groups:
+```http
+GET /groups
+Authorization: Bearer bccf1b28-fd...
+```
+
+**Response Behavior:** Same as permissions—regular users and admins see groups (filtered by visibility where applicable); superusers see all. Response shape matches permissions (array of objects with `key`, `name`, `description`).
+
+4. Requesting Permission Changes:
 ```http
 POST /users/request-update-from-admin
 Authorization: Bearer 572a399c-6c...
@@ -555,7 +565,7 @@ Authorization: Bearer 572a399c-6c...
 
 **Note:** The system uses explicit add/remove lists to clearly indicate what changes are being requested. This makes it easier for admins to understand what will be added vs removed when reviewing pending update requests.
 
-4. Admin Approving Changes (requires admin access):
+5. Admin Approving Changes (requires admin access):
 ```http
 PUT /users/{user_id}
 Authorization: Bearer 572a399c-6c...
@@ -774,6 +784,12 @@ Content-Type: application/json
 
 This removes visibility of `a_permission` from group `x`.
 
+3. **Get All Permission Visibility:** `GET /admin/permissions/visibility` — Returns a map of permission names to list of group names (which groups can see which permissions). Superuser only.
+
+4. **Get All Group Users:** `GET /admin/groups/users` — Returns a map of group names to list of user identifiers/emails. Superuser only.
+
+5. **Get Admin User Management:** `GET /admin/users/management` — Returns admin-to-managed-users mapping. Superuser only.
+
 **Important Notes:**
 - All these operations require superuser authentication
 - Deleting a permission or group will cascade delete all related visibility mappings
@@ -830,7 +846,7 @@ Important Notes:
 - When enforcing MFA:
   - User must set up MFA before next login
   - User cannot disable MFA afterwards
-- Status changes to "locked" revoke all sessions
+- Status changes to a locked state (e.g. "locked by admin", "locked by security") revoke all sessions
 - **Approval Restrictions:**
   - Admins can only approve adding groups they are members of
   - Admins can only approve adding permissions visible to their groups
@@ -847,7 +863,8 @@ Important Notes:
 POST /sessions/revoke
 Authorization: Bearer 572a399c-6c...
 {
-    "user_id": "usr_xyz..."
+    "user_id": "usr_xyz...",
+    "mfa_code": "123456"   // Optional; required if admin has MFA enabled
 }
 ```
 
@@ -855,6 +872,17 @@ Notes:
 - Immediately invalidates all active sessions
 - Blacklists sessions for security
 - Useful for suspicious activity response
+
+4. Delete user (admin/superuser only):
+```http
+DELETE /users/{user_id}
+Authorization: Bearer 572a399c-6c...
+```
+
+Notes:
+- Permanently removes the user account
+- Admin can only delete users who share at least one group with them
+- Superuser can delete any user; cannot delete the superuser account
 
 #### B. Session Validation
 For internal services to validate sessions of other applications.
@@ -944,7 +972,7 @@ Sessions are immediately terminated when:
    - User status is changed to any locked state
 
 #### B. Account Locking Events
-User accounts are automatically locked (status changes to "locked_by_security") when:
+User accounts are automatically locked (status changes to "locked by security") when:
 1. Password reset attempts exceed maximum (5 attempts)
 2. Multiple failed login attempts (5 attempts per minute)
 3. Multiple suspicious activity patterns are detected
@@ -952,8 +980,8 @@ User accounts are automatically locked (status changes to "locked_by_security") 
 When an account is locked:
 - All active sessions are terminated
 - Login is blocked until admin unlocks the account
-- Password reset flow via OTP still works (but sets status to "pending_approval" after reset)
-- Account status changes to "locked_by_security"
+- Password reset flow via OTP still works (but sets status to "pending admin approval" after reset)
+- Account status changes to "locked by security"
 
 #### C. IP Blocking
 IPs are automatically blocked when:
@@ -985,7 +1013,7 @@ When a session is blacklisted:
 1. For locked accounts:
    - Only administrators can unlock
    - User must complete additional verification
-   - Status changes to "pending_approval" after unlock
+   - Status changes to "pending admin approval" after unlock
 
 2. For blocked IPs:
    - Block expires automatically after 24 hours

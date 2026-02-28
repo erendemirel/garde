@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,6 +197,21 @@ func MustGet(key string) string {
 
 func GetSecretsDir() string {
 	return secretsDir
+}
+
+func GetCookieSameSite() http.SameSite {
+	v := strings.ToLower(strings.TrimSpace(Get("COOKIE_SAME_SITE")))
+	switch v {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	case "lax", "":
+		return http.SameSiteLaxMode
+	default:
+		slog.Warn("Config: Unknown COOKIE_SAME_SITE, using Lax", "value", v)
+		return http.SameSiteLaxMode
+	}
 }
 
 func GetAdminUsersMap() map[string]string {
