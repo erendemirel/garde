@@ -73,8 +73,10 @@ export interface User {
 	pending_updates?: {
 		requested_at: string;
 		fields: {
-			permissions?: Record<string, boolean>;
-			groups?: Record<string, boolean>;
+			permissions_add?: string[];
+			permissions_remove?: string[];
+			groups_add?: string[];
+			groups_remove?: string[];
 		};
 	};
 }
