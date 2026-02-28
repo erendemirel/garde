@@ -214,6 +214,10 @@ func GetCookieSameSite() http.SameSite {
 	}
 }
 
+func GetCookieSecure() bool {
+	return GetBool("USE_TLS")
+}
+
 func GetAdminUsersMap() map[string]string {
 	raw := Get("ADMIN_USERS_JSON")
 	if raw == "" {
