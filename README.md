@@ -104,7 +104,7 @@ Offers configurable rate limiter, switchable behavior detection and MFA.
 
 ## Quick Start
 
-**Get up and running in seconds with the complete development environment:**
+**Run the application in seconds:**
 
 ```bash
 # Clone the repository
@@ -133,7 +133,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 ## Endpoint Documentation
 
 > [!TIP]
-> Swagger documentation is available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443)
+> Swagger documentation will be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443)
 
 ---
 

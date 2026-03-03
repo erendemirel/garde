@@ -62,12 +62,16 @@
 
 ### Deployment paths
 
-1. **Setup Vault cluster** with AppRole authentication. See [Vault Guide](https://github.com/erendemirel/garde/blob/master/vault/README.md).
+**If you run Vault and Redis yourself** (e.g. external or self-managed cluster), use this path:
+
+1. **Setup Vault cluster** with AppRole authentication. See [Vault Guide – Manual setup](https://github.com/erendemirel/garde/blob/master/vault/README.md#setup) (follow steps 1–3 in that doc; step 4 is optional).
 2. **Setup Redis**
 3. **Configure TLS and mTLS** (see [TLS and mTLS](#tls-and-mtls-configuration) below).
 4. **Deploy** using docker-compose or your orchestrator.
 
-**Single VPS with Docker Compose:** A supported production pattern is running everything on one host with Docker Compose (Vault, Agent, Redis, garde, and the web UI in separate containers). The stack is defined in `docker-compose.prod.yml`. Full setup is in [vault/README.md – Single VPS production](https://github.com/erendemirel/garde/blob/master/vault/README.md#single-vps-production-docker-compose--ui-in-separate-container). To deploy that stack on a VPS, follow the steps below.
+**If you use the single-VPS Docker Compose stack** below, you do not perform step 1 manually—the one-time init does Vault setup for you. Go to [Deploying to a VPS](#deploying-to-a-vps).
+
+**Single VPS with Docker Compose:** A supported production pattern is running everything on one host with Docker Compose (Vault, Agent, Redis, garde, and the web UI in separate containers). The stack is defined in `docker-compose.prod.yml`. The steps below are the full flow: prerequisites, secrets, one-time Vault init, starting the stack, then VPS hardening and ongoing ops. For Vault/Agent details (init script, agent config), see [vault/README.md](https://github.com/erendemirel/garde/blob/master/vault/README.md).
 
 ### Deploying to a VPS
 
@@ -79,9 +83,15 @@
 
 2. **Get the project** on the VPS (clone the repo or copy files, e.g. with `rsync` or `scp`).
 
-3. **Create `prod.secrets`** (copy from `dev.secrets`, set production values). For the single-VPS Docker Compose stack, set `REDIS_HOST=redis` (the Compose service name). Set `CORS_ALLOW_ORIGINS` to the URL users will use for the UI (e.g. `https://auth.yourdomain.com` or `http://<VPS_IP>`). Create a `.env` with `VAULT_TOKEN`, `VAULT_DEV_ROOT_TOKEN_ID`, and `REDIS_PASSWORD` (same as in `prod.secrets`). If the API will be at a different URL (e.g. behind a reverse proxy), set `PUBLIC_API_URL` in `.env`.
+3. **Create `prod.secrets`** (copy from `dev.secrets`, set production values). For the single-VPS Docker Compose stack, set `REDIS_HOST=redis` (the Compose service name). Set `CORS_ALLOW_ORIGINS` to the URL users will use for the UI (e.g. `https://auth.yourdomain.com` or `http://<VPS_IP>`). Create a `.env` in the project root with `VAULT_TOKEN` (same as `VAULT_DEV_ROOT_TOKEN_ID` if using the default), `REDIS_PASSWORD` (same as in `prod.secrets`), and optionally `PUBLIC_API_URL` if the API will be at a different URL (e.g. behind a reverse proxy).
 
-4. **Run the stack** (see [Single VPS production in vault/README](https://github.com/erendemirel/garde/blob/master/vault/README.md#single-vps-production-docker-compose--ui-in-separate-container)): start Vault, run `vault-init` once with `--profile init`, then `docker compose -f docker-compose.prod.yml up -d --build`.
+4. **One-time Vault init, then start the stack:**
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d vault
+   docker compose -f docker-compose.prod.yml --profile init run --rm vault-init
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+   The init step enables AppRole, creates the garde policy/role, writes `vault/role-id` and `vault/secret-id`, and seeds secrets from `prod.secrets`. Do not commit those files.
 
 5. **Firewall:** Allow SSH (22), UI (80 or 443), and API (8443) as needed. Do not expose Vault (8200) to the internet.
 
