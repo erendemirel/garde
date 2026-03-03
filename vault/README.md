@@ -1,5 +1,17 @@
 # Vault Configuration
 
+## Table of Contents
+- [Architecture](#architecture)
+- [Setup](#setup)
+  - [1. Configure Vault Server](#1-configure-vault-server)
+  - [2. Configure AppRole Authentication](#2-configure-approle-authentication)
+  - [3. Configure Vault Agent](#3-configure-vault-agent)
+  - [4. Dynamic Redis Credentials (optional)](#4-optional-dynamic-redis-credentials)
+- [Files](#files)
+- [Single VPS production (Docker Compose)](#single-vps-production-docker-compose--ui-in-separate-container)
+- [Security Notes](#security-notes)
+- [Development (dev profile)](#development-profile-notes)
+
 ## Architecture
 
 ```
@@ -19,17 +31,20 @@
 # Enable KV secrets engine
 vault secrets enable -path=secret kv-v2
 
-# Store the application secrets (static config), e.g.:
-vault kv put secret/garde/tls \
-  use_tls=true \
-  tls_cert_path=/vault/certs/server-cert.pem \
-  tls_key_path=/vault/certs/server-key.pem \
-  tls_ca_path=/vault/certs/ca-cert.pem
-# There are four logical secret paths:
-# 1. secret/garde/config - Main app config (redis host/port, domain, superuser email/password, admin_users_json, api_key, etc.)
-# 2. secret/garde/tls - TLS/mTLS settings (use_tls, cert/key/CA entries if stored here)
-# 3. secret/garde/redis – optional static Redis password (only if not using dynamic creds)
-# 4. database/creds/garde-redis – dynamic Redis credentials from the DB secrets engine (used by redis_password.tpl)
+# Store application secrets: one path per key (agent writes one file per secret to /run/secrets).
+# Key names are lowercase; the agent and app expect the same set as in dev.secrets / agent-config.hcl.
+# Example (for the single-VPS Docker Compose stack below, use redis_host=redis to match the Compose service name):
+vault kv put secret/garde/redis_host value=redis
+vault kv put secret/garde/redis_port value=6379
+vault kv put secret/garde/redis_password value=your-redis-password
+vault kv put secret/garde/domain_name value=your-domain.com
+vault kv put secret/garde/superuser_email value=admin@example.com
+vault kv put secret/garde/superuser_password value=YourSecurePassword
+vault kv put secret/garde/api_key value=YourApiKey20CharsMin!
+# ... and other keys (see dev.secrets or Required Mandatory Secrets in docs/INSTALLATION.md).
+
+# Optional: use dynamic Redis credentials from the database secrets engine instead of static redis_password.
+# Then use templates/redis_password.tpl in the agent (see section 4 and agent-config.hcl comments).
 ```
 
 ### 2. Configure AppRole Authentication
@@ -69,7 +84,7 @@ echo "your-role-id" > vault/role-id
 echo "your-secret-id" > vault/secret-id
 ```
 
-### 4. (Optional) Dynamic Redis Credentials
+### 4. (Optional) Dynamic Redis credentials
 
 For automatic Redis credential rotation:
 
@@ -98,12 +113,59 @@ vault write database/roles/garde-redis \
 
 | File | Purpose |
 |------|---------|
-| `agent-config.hcl` | Vault Agent configuration |
+| `agent-config.hcl` | Vault Agent config (production): writes one file per secret to `/run/secrets` |
+| `agent-config-dev.hcl` | Vault Agent config for dev profile |
 | `templates/*.tpl` | Templates for secret files |
 | `role-id` | AppRole role ID (DO NOT COMMIT) |
 | `secret-id` | AppRole secret ID (DO NOT COMMIT) |
-| `templates/redis_password.tpl` | Renders dynamic Redis password from `database/creds/garde-redis` to `/run/secrets/redis_password` |
-| `templates/secrets.tpl` | Renders static app config from `secret/garde/config` to `/run/secrets/static` |
+| `templates/redis_password.tpl` | Optional: dynamic Redis password from `database/creds/garde-redis` |
+| `init-vault-prod.sh` | One-time init for single-VPS prod stack: AppRole, policy, role, seed from `prod.secrets` |
+
+## Single VPS production (Docker Compose + UI in separate container)
+
+Vault (dev mode), Vault Agent, Redis, garde API, and the web UI run in separate containers on one host using `docker-compose.prod.yml`. For VPS deployment steps (firewall, TLS, updates), see [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps) in the installation guide.
+
+### Prerequisites
+
+- Docker and Docker Compose
+- A secrets file for production (e.g. copy `dev.secrets` to `prod.secrets` and set real values)
+
+### One-time setup
+
+1. **Create `prod.secrets`**  
+   Copy `dev.secrets` to `prod.secrets` and set production values. For this stack, set `REDIS_HOST=redis` (the Compose service name). Ensure `CORS_ALLOW_ORIGINS` includes the UI origin (e.g. `http://localhost`, `https://your-ui-domain.com`).
+
+2. **Set environment variables** (e.g. in `.env` next to `docker-compose.prod.yml`):
+   - `VAULT_TOKEN` – root or admin token (for the included Vault in dev mode; use the same as `VAULT_DEV_ROOT_TOKEN_ID` if you keep the default).
+   - `REDIS_PASSWORD` – same value as `REDIS_PASSWORD` in `prod.secrets` (used by the Redis container).
+
+3. **Start Vault and run init once:**
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d vault
+   docker compose -f docker-compose.prod.yml --profile init run --rm vault-init
+   ```
+   This enables AppRole, creates the garde policy/role, writes `vault/role-id` and `vault/secret-id`, and seeds secrets from `prod.secrets`.
+
+4. **Start the full stack:**
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+### Optional configuration
+
+- **API URL for the UI**  
+  If the browser will call the API at a different URL (e.g. behind a reverse proxy), set `PUBLIC_API_URL` when bringing up the stack (or in `.env`), e.g. `PUBLIC_API_URL=https://api.example.com`. The UI image is built with this value.
+
+- **Dynamic Redis credentials**  
+  To use Vault’s database engine for Redis instead of a static password, configure the database engine in Vault, then in `vault/agent-config.hcl` comment out the static `redis_password` template block and uncomment the `redis_password.tpl` block.
+
+### Access
+
+| Service | URL |
+|---------|-----|
+| UI | http://localhost:80 |
+| API | http://localhost:8443 |
+| Vault | http://localhost:8200 (dev mode; for production use an external Vault or harden this instance) |
 
 ## Security Notes
 
@@ -113,8 +175,9 @@ vault write database/roles/garde-redis \
 - Templates rerender when secrets rotate
 - The app hot-reloads secrets (superuser/admin credentials, Redis creds) when files under `/run/secrets` change
 
-## Development Profile Notes
+## Development (dev profile)
 
-- The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `vault/agent-config-dev.hcl`.
-- The agent writes to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials automatically.
+- The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`.
+- The agent writes one file per secret to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials automatically.
+- Start with: `docker compose --profile dev up --build`. See [Development Installation](../docs/INSTALLATION.md#development-installation) in the installation guide.
 
