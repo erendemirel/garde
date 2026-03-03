@@ -125,7 +125,7 @@ Error Response:
 
 Use the session token in subsequent requests:
 ```http
-GET /api/resource
+GET /users/me
 Authorization: Bearer 6cc0595f-f3...
 ```
 
@@ -266,7 +266,7 @@ Important Notes:
 - Session tokens are delivered two ways:
   - As HTTP-only cookie for browser-based apps
   - In response body for API clients
-- Rate limited to 5 attempts per minute
+- Rate limited per IP (configurable via `RATE_LIMIT`, default 60 requests per minute for public endpoints)
 - Users with `locked by admin` or `locked by security` status cannot log in
 
 #### Logout
@@ -343,7 +343,7 @@ Important Notes:
 - MFA code required if enabled
 - Account gets locked after 5 failed attempts
 - Password reset sets status to "pending admin approval"
-- Rate limited to 3 attempts per 5 minutes
+- IP-based rate limiting applies (same as other public endpoints). After 5 failed OTP verification attempts, the account is locked.
 - Cannot reset superuser password through this flow
 
 ### 4. MFA Management
@@ -945,7 +945,7 @@ System Responses:
 - IP blocking
 
 **Rate Limiting Details:**
-- **Public Endpoints** (login, register, password reset): IP-based rate limiting via `RATE_LIMIT` config
+- **Public Endpoints** (login, register, password OTP, password reset): IP-based rate limiting via `RATE_LIMIT` config (`limit,window_seconds[,authenticated_limit[,admin_limit]]`, e.g. `60,60` = 60 req/min for public)
 - **Authenticated Endpoints**: User-based rapid request detection via `RAPID_REQUEST_CONFIG` with role-aware thresholds:
   - Regular users: Base threshold (default: 120 req/min)
   - Admins: 3x threshold (default: 360 req/min)
@@ -985,7 +985,7 @@ When an account is locked:
 
 #### C. IP Blocking
 IPs are automatically blocked when:
-1. Failed login attempts exceed threshold (5 attempts per minute)
+1. Failed login attempts exceed threshold (5 attempts; block duration 30 minutes)
 2. IP-based rate limit is repeatedly exceeded (configured via `RATE_LIMIT`, default: 60 requests per minute for public endpoints)
 
 When an IP is blocked:
@@ -1016,7 +1016,7 @@ When a session is blacklisted:
    - Status changes to "pending admin approval" after unlock
 
 2. For blocked IPs:
-   - Block expires automatically after 24 hours
+   - Block expires automatically after 30 minutes (configurable via `FailedLoginBlockDuration` in code)
    - Earlier unblock requires admin intervention
    - Multiple blocks may trigger permanent restriction
 

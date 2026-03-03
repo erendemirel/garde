@@ -77,6 +77,7 @@ secrets/*
 # Vault secrets (role-id, secret-id, tokens)
 vault/role-id
 vault/secret-id
+prod.secrets
 vault/*.token
 vault/dev-token
 

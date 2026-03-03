@@ -13,7 +13,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 		}
 	});
 
-	const json: ApiResponse<T> = await res.json();
+	let json: ApiResponse<T>;
+	try {
+		json = await res.json();
+	} catch {
+		throw new Error(res.ok ? 'Invalid response from server' : `Request failed (${res.status})`);
+	}
 
 	if ('error' in json) {
 		throw new Error(json.error.message);

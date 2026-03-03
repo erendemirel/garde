@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { getMe, logout, listUsers, listPermissions } from '$lib/api';
+	import { getMe, logout } from '$lib/api';
 	import { user, isAdmin, isSuperuser } from '$lib/stores';
 	import { LogOut } from 'lucide-svelte';
 

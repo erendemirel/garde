@@ -547,19 +547,3 @@ $: hasEnabledPermissions = Object.values(userData?.permissions || {}).some(Boole
 		font-size: 0.9rem;
 	}
 </style>
-
-{#if showToast}
-	<div class="toast" class:toast-success={toastType === 'success'} class:toast-error={toastType === 'error'}>
-		{toastMessage}
-	</div>
-{/if}
-
-<ConfirmModal 
-	bind:open={showDeleteConfirm}
-	title="Delete User"
-	message="Are you sure you want to delete this user? This action cannot be undone. All user data, sessions, and security records will be permanently removed."
-	confirmText="Delete User"
-	confirmClass="btn-danger"
-	on:confirm={handleDelete}
-/>
-

@@ -1,0 +1,126 @@
+# Single VPS production stack (Vault + Agent + Redis + garde API + UI in separate container)
+# Usage:
+#   1. Copy `dev.secrets` to `prod.secrets` and set production values
+#   2. Start Vault, then run init once with root token: see vault/README.md "Single VPS production".
+#   3. docker compose -f docker-compose.prod.yml up --build -d
+
+services:
+  vault:
+    image: hashicorp/vault:1.15
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:-root}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    networks:
+      - prod_network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "VAULT_ADDR=http://127.0.0.1:8200 vault status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Run once to enable AppRole, create garde role, write role-id/secret-id, and seed secrets.
+  # Requires VAULT_TOKEN(e.g. root) and optionally a secrets file at prod.secrets.
+  vault-init:
+    image: hashicorp/vault:1.15
+    entrypoint: /bin/sh
+    command: /vault/init-vault-prod.sh
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_TOKEN}
+    volumes:
+      - ./vault/init-vault-prod.sh:/vault/init-vault-prod.sh:ro
+      - ./vault:/vault
+      - ./prod.secrets:/prod.secrets:ro
+    depends_on:
+      vault:
+        condition: service_healthy
+    networks:
+      - prod_network
+    profiles:
+      - init
+
+  vault-agent:
+    image: hashicorp/vault:1.15
+    command: vault agent -config=/vault/config/agent.hcl
+    environment:
+      VAULT_ADDR: http://vault:8200
+    volumes:
+      - ./vault/agent-config.hcl:/vault/config/agent.hcl:ro
+      - ./vault/role-id:/vault/config/role-id:ro
+      - ./vault/secret-id:/vault/config/secret-id:ro
+      - ./vault/templates:/vault/config/templates:ro
+      - prod-secrets:/run/secrets
+    depends_on:
+      vault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -s /run/secrets/redis_host"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - prod_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD:-}"
+    volumes:
+      - redis_data_prod:/data
+    networks:
+      - prod_network
+    restart: unless-stopped
+    # Password can be set via env; for prod it should come from Vault (seeded in prod.secrets as REDIS_PASSWORD)
+
+  garde:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: service
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./configs:/app/configs:ro
+      - ./data:/app/data
+      - prod-secrets:/run/secrets:ro
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - prod_network
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # URL the browser will use to call the API (same host: 8443, or set PUBLIC_API_URL to your API host)
+        PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8443}
+    ports:
+      - "80:80"
+    depends_on:
+      - garde
+    networks:
+      - prod_network
+    restart: unless-stopped
+
+volumes:
+  redis_data_prod:
+    driver: local
+  prod-secrets:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=2m,mode=0777
+
+networks:
+  prod_network:
+    driver: bridge
