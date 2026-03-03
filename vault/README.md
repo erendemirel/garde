@@ -8,7 +8,7 @@
   - [3. Configure Vault Agent](#3-configure-vault-agent)
   - [4. Dynamic Redis Credentials (optional)](#4-optional-dynamic-redis-credentials)
 - [Files](#files)
-- [Single VPS production (Docker Compose)](#single-vps-production-docker-compose--ui-in-separate-container)
+- [Single-VPS Docker Compose stack](#single-vps-docker-compose-stack)
 - [Security Notes](#security-notes)
 - [Development (dev profile)](#development-profile-notes)
 
@@ -24,6 +24,8 @@
 ```
 
 ## Setup
+
+This section is for **manually** configuring a Vault server (your own cluster or self-managed instance). Follow steps 1–3 in order; step 4 is optional (dynamic Redis). **If you use the [Single-VPS Docker Compose stack](#single-vps-docker-compose-stack), skip this section**—the init script does the equivalent setup. For that flow, follow [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps) in the installation guide.
 
 ### 1. Configure Vault Server
 
@@ -121,51 +123,9 @@ vault write database/roles/garde-redis \
 | `templates/redis_password.tpl` | Optional: dynamic Redis password from `database/creds/garde-redis` |
 | `init-vault-prod.sh` | One-time init for single-VPS prod stack: AppRole, policy, role, seed from `prod.secrets` |
 
-## Single VPS production (Docker Compose + UI in separate container)
+## Single-VPS Docker Compose stack
 
-Vault (dev mode), Vault Agent, Redis, garde API, and the web UI run in separate containers on one host using `docker-compose.prod.yml`. For VPS deployment steps (firewall, TLS, updates), see [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps) in the installation guide.
-
-### Prerequisites
-
-- Docker and Docker Compose
-- A secrets file for production (e.g. copy `dev.secrets` to `prod.secrets` and set real values)
-
-### One-time setup
-
-1. **Create `prod.secrets`**  
-   Copy `dev.secrets` to `prod.secrets` and set production values. For this stack, set `REDIS_HOST=redis` (the Compose service name). Ensure `CORS_ALLOW_ORIGINS` includes the UI origin (e.g. `http://localhost`, `https://your-ui-domain.com`).
-
-2. **Set environment variables** (e.g. in `.env` next to `docker-compose.prod.yml`):
-   - `VAULT_TOKEN` – root or admin token (for the included Vault in dev mode; use the same as `VAULT_DEV_ROOT_TOKEN_ID` if you keep the default).
-   - `REDIS_PASSWORD` – same value as `REDIS_PASSWORD` in `prod.secrets` (used by the Redis container).
-
-3. **Start Vault and run init once:**
-   ```bash
-   docker compose -f docker-compose.prod.yml up -d vault
-   docker compose -f docker-compose.prod.yml --profile init run --rm vault-init
-   ```
-   This enables AppRole, creates the garde policy/role, writes `vault/role-id` and `vault/secret-id`, and seeds secrets from `prod.secrets`.
-
-4. **Start the full stack:**
-   ```bash
-   docker compose -f docker-compose.prod.yml up -d --build
-   ```
-
-### Optional configuration
-
-- **API URL for the UI**  
-  If the browser will call the API at a different URL (e.g. behind a reverse proxy), set `PUBLIC_API_URL` when bringing up the stack (or in `.env`), e.g. `PUBLIC_API_URL=https://api.example.com`. The UI image is built with this value.
-
-- **Dynamic Redis credentials**  
-  To use Vault’s database engine for Redis instead of a static password, configure the database engine in Vault, then in `vault/agent-config.hcl` comment out the static `redis_password` template block and uncomment the `redis_password.tpl` block.
-
-### Access
-
-| Service | URL |
-|---------|-----|
-| UI | http://localhost:80 |
-| API | http://localhost:8443 |
-| Vault | http://localhost:8200 (dev mode; for production use an external Vault or harden this instance) |
+The repo includes a production stack (Vault in dev mode, Vault Agent, Redis, garde, and web UI) in `docker-compose.prod.yml`. **Full step-by-step**—prerequisites, `prod.secrets`, one-time init, starting the stack, firewall, TLS, and ongoing ops—is in [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps) in the installation guide. This directory provides the Vault-side pieces: `init-vault-prod.sh` (one-time AppRole and secret seeding), `agent-config.hcl`, and templates. For dynamic Redis credentials (Vault database engine), see [Optional: Dynamic Redis credentials](#4-optional-dynamic-redis-credentials) above.
 
 ## Security Notes
 
