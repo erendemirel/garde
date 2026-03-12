@@ -294,7 +294,7 @@ Authorization: Bearer 54492786-1c...
 ```
 
 Notes:
-- All active sessions are revoked
+- All other active sessions are revoked (current session remains valid)
 - Requires current password verification
 - MFA verification if enabled
 - New password must meet complexity requirements
@@ -974,7 +974,7 @@ Sessions are immediately terminated when:
 #### B. Account Locking Events
 User accounts are automatically locked (status changes to "locked by security") when:
 1. Password reset attempts exceed maximum (5 attempts)
-2. Multiple failed login attempts (5 attempts per minute)
+2. Multiple failed login attempts (5 attempts within a short time window)
 3. Multiple suspicious activity patterns are detected
 
 When an account is locked:

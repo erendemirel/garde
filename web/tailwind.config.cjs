@@ -25,7 +25,7 @@ module.exports = {
 				button: '0 10px 30px rgba(0,0,0,0.25)'
 			},
 			fontFamily: {
-				sans: ['"Open Sans"', 'sans-serif']
+				sans: ['"Google Sans Variable"', 'Roboto', 'ui-sans-serif', 'system-ui', 'sans-serif']
 			}
 		}
 	},
