@@ -49,15 +49,19 @@ This guide explains how to integrate and use garde in your applications.
 
 ## Authentication Methods
 
+garde supports three authentication styles. Browser/API session auth and mTLS service auth are meant to coexist, but **built-in `USE_TLS` changes the TLS handshake for the whole process** — see [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration) for the recommended production layout.
+
 ### 1. Browser-based Authentication
 For web applications where users log in through a browser interface.
 
 **Flow:**
 1. User submits credentials
-2. Receives HTTP-only secure cookie with session ID
+2. Receives HTTP-only cookie with session ID (`Secure` is set when garde `USE_TLS` is true)
 3. Cookie is automatically sent with subsequent requests
 
-**Cookie SameSite:** Configure `COOKIE_SAME_SITE` (secret: `secret/garde/cookie_same_site` or in `dev.secrets`) as `lax` (default), `strict`, or `none`. Use `lax` when the UI and API are on different origins (e.g. dev); use `strict` when same-origin.
+**Deployment:** Serve browsers over HTTPS via a reverse proxy and keep garde `use_tls=false` on the browser-facing instance. Direct browser access to a `use_tls=true` garde endpoint requires a client certificate at the TLS layer (not practical for normal users).
+
+**Cookie SameSite:** Configure `COOKIE_SAME_SITE` (secret: `secret/garde/cookie_same_site` or in `dev.secrets`) as `lax` (default), `strict`, or `none`. Use `lax` when the UI and API are on different origins (e.g. dev); use `strict` when same-origin; use `none` only for cross-site cookies over HTTPS.
 
 Example login request:
 ```json
@@ -133,9 +137,12 @@ Authorization: Bearer 6cc0595f-f3...
 For internal services communicating within your infrastructure.
 
 **Requirements:**
-- Valid client certificate from your CA
-- API key from configuration
-- Must use the same domain as the auth service
+- Built-in TLS enabled (`use_tls=true`) with server certs and client CA configured
+- Valid client certificate from your CA (presented on every connection to that instance)
+- API key from configuration (`X-API-Key`)
+- Must use the same domain as the auth service (certificate CN/SAN checks on `/validate`)
+
+**Topology:** Call `/validate` only from trusted services (private network and/or a dedicated `use_tls=true` instance). Do not rely on end-user browsers for this path. Details: [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
 
 Example request:
 ```http
@@ -165,7 +172,7 @@ Error Response:
 }
 ```
 
-**Important Note:** The `/validate` endpoint is only accessible via API key + mTLS authentication. Admin authentication is not supported for this endpoint.
+**Important Note:** The `/validate` endpoint is only accessible via API key + mTLS authentication. Admin/cookie authentication is not supported for this endpoint. When `use_tls=true`, the TLS stack also requires a client certificate before any HTTP handler runs.
 
 ## Common Workflows
 
