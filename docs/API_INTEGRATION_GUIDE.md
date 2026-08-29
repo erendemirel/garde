@@ -401,6 +401,7 @@ Authorization: Bearer bccf1b28-fd...
 
 Important Notes:
 - Setup must be completed within 5 minutes (temp secret TTL)
+- Temporary and confirmed MFA secrets are stored **encrypted at rest** in Redis (`temp_mfa:{id}` / `user_mfa:{id}`) using AES-256-GCM (`MFA_ENCRYPTION_KEY`, or a key derived from `API_KEY` if unset)
 - If MFA is enforced but not set up:
   - Login succeeds without MFA code
   - All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, and `/logout` return 403
@@ -419,25 +420,58 @@ Authorization: Bearer bccf1b28-fd...
 Notes:
 - Cannot disable if MFA is enforced (`mfa_enforced=true`)
 - Requires valid MFA code verification
-- MFA secret is cleared from the user record
+- MFA secret is removed from the encrypted Redis key (`user_mfa:{id}`)
 
 ### 5. Permission and Group Management
 
-#### A. Overview
-The API uses a permission and group structure with permission visibility:
-- The permissions and groups systems are stored in SQLite database (`data/permissions.db`)
-- Permissions are individual access rights
-- Groups are for easier organization of admins - the users they are responsible of
-- **Permission Visibility**: Permissions are visible to specific groups via the `permission_visibility` table
-- Admins can ONLY manage users who share at least one group with them (no exceptions)
+#### A. Overview — how the model fits together
+
+garde uses **three layers**. Mixing them up is the usual source of confusion:
+
+| Layer | What it is | Where it lives | Purpose |
+|-------|------------|----------------|---------|
+| **Privilege tier** | Superuser / Admin / User | Email lists in Vault (`SUPERUSER_EMAIL`, `ADMIN_USERS_JSON`) | Bootstrap administration (who can manage users, permissions catalog, etc.) |
+| **Groups** | Named membership sets | SQLite `groups` + per-user `groups` map in Redis | Scope *which users an admin may manage* and *which permissions are visible* |
+| **Permissions** | Named boolean flags on a user | SQLite catalog + per-user `permissions` map in Redis | Application-level access rights your services interpret |
+
+There are **no OAuth-style scopes**. Privilege tier is not an app permission; app permissions are not roles.
+
+**Storage split:**
+- Redis: each user's enabled permissions/groups, sessions, password hash (`user_password:{id}`), encrypted MFA secret (`user_mfa:{id}`)
+- SQLite (`data/permissions.db`): permission/group definitions and `permission_visibility` mappings
+
+**Core rules:**
+- Admins can ONLY manage users who share at least one group with them (no exceptions for regular admins)
 - Only superusers can assign initial groups to users who have no groups yet
 - Superusers have access to all groups and permissions (exempt from visibility checks)
+- **Permission Visibility**: a permission is visible to a group only if `permission_visibility` links them
 
 **Permission Visibility Rules:**
 - Users only see permissions visible to at least one of their groups in GET endpoints
 - Users can only request permissions visible to their groups
 - Admins can only approve/grant permissions visible to their groups
 - Superusers see and can manage all permissions regardless of visibility
+
+**Admin capability matrix** (shared-group gate):
+
+| Admin Groups | Target User Groups | Permissions: Add | Permissions: Remove | Groups: Add | Groups: Remove |
+|--------------|-------------------|------------------|---------------------|-------------|----------------|
+| `[]` | `[A]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+| `[A]` | `[A]` | Permissions visible to A | Any permission | ❌ None | A |
+| `[A]` | `[A, B]` | Permissions visible to A only | Any permission | ❌ None | A, B |
+| `[A, B]` | `[A]` | Permissions visible to A or B | Any permission | B | A |
+| `[A]` | `[B]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+| `[A]` | `[]` (none) | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+
+##### Worked example: request → approve
+
+1. Superuser creates groups `engineering` and `billing`, permissions `read_invoices` and `deploy_app`, and maps:
+   - `read_invoices` → visible to `billing`
+   - `deploy_app` → visible to `engineering`
+2. Superuser puts admin Alice in `engineering`, user Bob in `engineering`.
+3. Bob calls `POST /users/request-update-from-admin` asking to add `deploy_app` (visible to his group). He cannot request `read_invoices` (not visible to `engineering`).
+4. Alice lists Bob via admin APIs (shared group `engineering`), sees the pending request, and approves with `PUT /users/:id`. She cannot grant `read_invoices` because it is not visible to her groups.
+5. Bob's Redis user record now has `permissions.deploy_app = true`. Downstream services call `/validate` (or read `/users/me`) and enforce that flag.
 
 #### B. Permissions
 Permissions are stored in SQLite database with the following structure:

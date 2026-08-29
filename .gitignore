@@ -80,6 +80,9 @@ vault/secret-id
 prod.secrets
 vault/*.token
 vault/dev-token
+vault-credentials.json
+vault-unseal-keys
+vault-unseal-keys.txt
 
 # Database files
 *.db

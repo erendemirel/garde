@@ -20,7 +20,7 @@ services:
     profiles:
       - dev
 
-  # DEV: Vault Init (seeds secrets from dev.secrets)
+  # DEV: Vault Init (seeds secrets from dev.secrets; writes agent token)
   dev-vault-init:
     image: hashicorp/vault:1.15
     entrypoint: /bin/sh
@@ -28,9 +28,11 @@ services:
     environment:
       VAULT_ADDR: http://dev-vault:8200
       VAULT_TOKEN: devtoken
+      VAULT_AGENT_TOKEN_DIR: /vault/agent-token
     volumes:
       - ./vault/init-vault.sh:/vault/init-vault.sh:ro
       - ./dev.secrets:/dev.secrets:ro
+      - vault-agent-token:/vault/agent-token
     depends_on:
       dev-vault:
         condition: service_healthy
@@ -47,7 +49,7 @@ services:
       VAULT_ADDR: http://dev-vault:8200
     volumes:
       - ./vault/agent-config-dev.hcl:/vault/config/agent.hcl:ro
-      - ./vault/dev-token:/vault/config/dev-token:ro
+      - vault-agent-token:/vault/config/token:ro
       - vault-secrets:/run/secrets
     depends_on:
       dev-vault-init:
@@ -104,6 +106,8 @@ services:
 
 volumes:
   redis_data:
+    driver: local
+  vault-agent-token:
     driver: local
   vault-secrets:
     driver_opts:

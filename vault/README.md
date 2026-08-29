@@ -25,7 +25,9 @@
 
 ## Setup
 
-This section is for **manually** configuring a Vault server (your own cluster or self-managed instance). Follow steps 1–3 in order; step 4 is optional (dynamic Redis). **If you use the [Single-VPS Docker Compose stack](#single-vps-docker-compose-stack), skip this section**—the init script does the equivalent setup. For that flow, follow [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps) in the installation guide.
+This section is for **manually** configuring a Vault server (your own cluster or a self-managed instance outside Compose). Follow steps 1–3 in order; step 4 is optional (dynamic Redis).
+
+**If you use the [Single-VPS Docker Compose stack](#single-vps-docker-compose-stack):** Vault still runs as a real server (not `-dev`). Compose provides `vault/server.hcl`, `unseal-prod.sh`, and `init-vault-prod.sh`. Follow [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps) for the operator flow (init → unseal → AppRole → agent). The manual steps below match what those scripts automate.
 
 ### 1. Configure Vault Server
 
@@ -115,29 +117,44 @@ vault write database/roles/garde-redis \
 
 | File | Purpose |
 |------|---------|
-| `agent-config.hcl` | Vault Agent config (production): writes one file per secret to `/run/secrets` |
-| `agent-config-dev.hcl` | Vault Agent config for dev profile |
+| `server.hcl` | Vault **server** config for prod Compose (file storage, non-dev mode) |
+| `agent-config.hcl` | Vault Agent config (production): AppRole auth, writes secrets to `/run/secrets` |
+| `agent-config-dev.hcl` | Vault Agent config for local `dev` profile (static token) |
 | `templates/*.tpl` | Templates for secret files |
-| `role-id` | AppRole role ID (DO NOT COMMIT) |
-| `secret-id` | AppRole secret ID (DO NOT COMMIT) |
+| `role-id` / `secret-id` | AppRole credentials written by init (DO NOT COMMIT) |
 | `templates/redis_password.tpl` | Optional: dynamic Redis password from `database/creds/garde-redis` |
-| `init-vault-prod.sh` | One-time init for single-VPS prod stack: AppRole, policy, role, seed from `prod.secrets` |
+| `init-vault-prod.sh` | One-time AppRole + policy + seed from `prod.secrets` (requires unsealed Vault + root token) |
+| `unseal-prod.sh` | Unseal helper using `vault-unseal-keys` (Compose profile `ops`) |
+| `init-vault.sh` | Dev-profile seed script (Vault `-dev` only) |
 
 ## Single-VPS Docker Compose stack
 
-The repo includes a production stack (Vault in dev mode, Vault Agent, Redis, garde, and web UI) in `docker-compose.prod.yml`. **Full step-by-step**—prerequisites, `prod.secrets`, one-time init, starting the stack, firewall, TLS, and ongoing ops—is in [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps) in the installation guide. This directory provides the Vault-side pieces: `init-vault-prod.sh` (one-time AppRole and secret seeding), `agent-config.hcl`, and templates. For dynamic Redis credentials (Vault database engine), see [Optional: Dynamic Redis credentials](#4-optional-dynamic-redis-credentials) above.
+`docker-compose.prod.yml` runs a **production-mode** Vault server (persistent `vault_data` volume + `server.hcl`), Vault Agent (AppRole), Redis, garde, and the web UI.
 
+**Operator flow (summary):**
+
+1. `up -d vault` → `vault operator init` → save `vault-credentials.json` offline  
+2. Build `vault-unseal-keys` from that JSON → `--profile ops run vault-unseal`  
+3. Set `VAULT_TOKEN` (root) in `.env` → `--profile init run vault-init` (AppRole + seed)  
+4. `up -d --build` — Agent uses `role-id` / `secret-id`, not the root token  
+5. After reboot: unseal again, then start the rest of the stack  
+
+Full step-by-step: [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-vps). For an external Vault cluster instead of the Compose `vault` service, follow [Setup](#setup) above, point Agent/`VAULT_ADDR` at your cluster, and omit the Compose Vault service.
+
+> [!NOTE]
+> Dev mode (`vault server -dev`) is used only by `docker compose --profile dev`. Production Compose does not use it.
 ## Security Notes
 
-- `role-id` and `secret-id` files are in `.gitignore`
-- Secrets are written to tmpfs
-- Vault Agent auto-renews tokens
+- `role-id`, `secret-id`, `vault-credentials.json`, and `vault-unseal-keys` are gitignored — never commit them
+- Secrets are written to tmpfs (`/run/secrets`)
+- Vault Agent authenticates with AppRole and auto-renews tokens
 - Templates rerender when secrets rotate
-- The app hot-reloads secrets (superuser/admin credentials, Redis creds) when files under `/run/secrets` change
-
+- Prod Vault listens on `127.0.0.1:8200` only in Compose; do not expose it publicly
+- The app reloads the in-memory secret map when files under `/run/secrets` change. Live apply covers Redis reconnect and superuser/admin password refresh; rate-limit / rapid-request thresholds and TLS binding still require a restart. See [README – What hot-reloads without restart](../README.md#what-hot-reloads-without-restart).
 ## Development (dev profile)
 
 - The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`.
-- The agent writes one file per secret to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials automatically.
+- `init-vault.sh` writes the Vault Agent token into a shared Docker volume (`vault-agent-token`); you do **not** need a host-side `vault/dev-token` file.
+- The agent writes one file per secret to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials as described above.
 - Start with: `docker compose --profile dev up --build`. See [Development Installation](../docs/INSTALLATION.md#development-installation) in the installation guide.
 

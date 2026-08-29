@@ -19,15 +19,15 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ## Features
 
-- **Security**: Rate limiting (IP-based for public endpoints, user-based with role-aware thresholds for authenticated endpoints), behavior detection, session security, input sanitization, request size limiting, key rotation, mTLS, MFA<br>
+- **Security**: Rate limiting (IP-based for public endpoints, user-based with role-aware thresholds for authenticated endpoints), behavior detection, session security, input sanitization, request size limiting, Vault-managed secret rotation, mTLS, MFA<br>
 - **Authentication**: Three modes (browser, API, API key) with server side session management<br>
-- **Permissions**: Easy permission system avoiding traditional role/scope paradoxes and request/approval system<br>
-- **Implementation**: Vault secrets, data encryption, secure error handling, privacy protection<br>
-- **Hot Reload**: All secrets changes without restart<br>
+- **Permissions**: Named permissions + groups with visibility controls (not OAuth scopes), plus a request/approval workflow. Superuser/Admin/User are bootstrap privilege tiers, separate from app permissions<br>
+- **Implementation**: Vault secrets, Argon2 password hashing, MFA secrets encrypted at rest, secure error handling, privacy protection<br>
+- **Hot Reload**: Selected secrets and credentials reload without restart (see below)<br>
 - **Web UI**: Optional built-in SvelteKit based web interface for user and admin management<br>
 
 > [!TIP]
-> garde avoids traditional "roles" or "scopes" as they often lead to insecure permission paradoxes or maintainability issues. Additionally, it enables users to request permissions from admins
+> garde avoids OAuth-style "scopes" that often lead to insecure permission paradoxes. Application access is expressed as named permissions visible to groups. Users can request permission changes from admins. A fixed Superuser / Admin / User privilege tier still exists for bootstrap administration.
 
 ---
 
@@ -43,8 +43,10 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 - **Admins**: Multiple users with administrative privileges (defined by email list)
 - **Users**: Regular users who can request permission changes from admins
 
-#### Security Without Role Paradoxes:
-garde avoids traditional "roles" and "scopes" that often create security paradoxes:
+These tiers are **not** application permissions. App-level access uses named permissions and groups (see below).
+
+#### Security Without Scope Paradoxes:
+garde separates bootstrap privilege (Superuser/Admin) from application permissions:
 - **Permission Requests**: Users request changes, admins approve or modify
 - **Permission Visibility**: Permissions are visible to specific groups - users only see and can request permissions visible to their groups. Similarly, admins can only approve/reject permissions visible to their groups.
 
@@ -65,6 +67,7 @@ Initial group assignments can only be done by Superuser.
 > [!NOTE]
 > Superuser is exempt from all permissions and groups logic, maintaining full access regardless of configuration
 
+For a worked example of request → approve, see [Permission and Group Management](docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management).
 
 #### Built-in TLS & mTLS Security:
 - **Built-in TLS**: garde includes native TLS support
@@ -83,13 +86,25 @@ garde uses HashiCorp Vault for secrets management:
 └─────────────┘                  └─────────────┘                  └─────────────┘               └─────────────┘
 ```
 
-- **Vault Agent Sidecar**: Automatically fetches and rotates secrets
+- **Vault Agent Sidecar**: Automatically fetches and rotates secret files under `/run/secrets`
 - **tmpfs Storage**: Secrets never touch persistent disk
-- **Hot Reload**: All configuration changes applied without application restart
-- **File Watching**: Monitors `/run/secrets` directory for changes
+- **File Watching**: garde monitors `/run/secrets` and reloads the in-memory secret map when files change
+
+##### What hot-reloads without restart
+| Reloads live | Requires restart |
+|--------------|------------------|
+| Values read via `config.Get` / `config.GetBool` on each use (API key, CORS, cookie SameSite, SMTP, `ENFORCE_MFA`, feature flags such as `DISABLE_*`) | `RATE_LIMIT` thresholds (parsed when the rate limiter is constructed) |
+| Redis host/password (reconnect on reload hook) | `RAPID_REQUEST_CONFIG` (parsed once at startup) |
+| Superuser / admin emails and passwords (re-initialized on reload hook) | TLS certs, `USE_TLS`, listen port (HTTP server already bound) |
+
+Vault-managed secret file rotation is supported; cryptographic key-rotation of every in-memory subsystem is not implied.
 
 #### Configurable Security Features:
 Offers configurable rate limiter, switchable behavior detection and MFA.
+
+#### Data storage notes:
+- **Redis**: users, sessions, rate limits, OTPs, and encrypted MFA secrets (`user_mfa:{id}`); password hashes live in a dedicated key (`user_password:{id}`), not in the user JSON blob
+- **SQLite** (`data/permissions.db`): permission catalog, groups, and `permission_visibility` mappings
 
 ---
 
@@ -125,6 +140,9 @@ This automatically sets up:
 
 Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password DevAdminTest123! for both.
 
+> [!NOTE]
+> The `dev` profile auto-creates the Vault Agent token during `init-vault.sh` (no host `vault/dev-token` file needed). Secrets are seeded from `dev.secrets`.
+
 > [!TIP]
 > A web UI is included in the `web/` directory. To run it, navigate to the `web/` folder and use `bun start` (or `npm start`). The UI connects to the API at `http://localhost:8443`.
 
@@ -133,7 +151,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 ## Endpoint Documentation
 
 > [!TIP]
-> Swagger documentation will be available at https://localhost:8443/swagger/index.html on your own API instance once the server starts (if you've set a different port and domain, use those instead of localhost and 8443)
+> Swagger documentation will be available at http://localhost:8443/swagger/index.html on your own API instance once the server starts (use `https://` only when built-in TLS is enabled).
 
 ---
 

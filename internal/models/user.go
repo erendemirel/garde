@@ -8,17 +8,17 @@ import (
 type User struct {
 	ID             string             `json:"id"`
 	Email          string             `json:"email"`
-	PasswordHash   string             `json:"-"`
+	PasswordHash   string             `json:"-"` // Stored in Redis key user_password:{id}, never in user JSON
 	LastLogin      time.Time          `json:"last_login"`
 	CreatedAt      time.Time          `json:"created_at"`
 	UpdatedAt      time.Time          `json:"updated_at"`
 	MFAEnabled     bool               `json:"mfa_enabled"`
 	MFAEnforced    bool               `json:"mfa_enforced"`
-	MFASecret      string             `json:"-"`
+	MFASecret      string             `json:"-"` // Stored encrypted in Redis key user_mfa:{id}
 	Status         UserStatus         `json:"status"`
 	Permissions    UserPermissions    `json:"permissions"`
 	Groups         UserGroups         `json:"groups"`
-	PendingUpdates *UserUpdateRequest `json:"pending_updates,omitempty"`
+	PendingUpdates *UserUpdateRequest `json:"pending_updates"`
 }
 
 type UserStatus string
@@ -90,45 +90,18 @@ type UserUpdateFields struct {
 	GroupsRemove      []UserGroup  `json:"groups_remove,omitempty"`
 }
 
-// MarshalJSON implements custom JSON marshaling
-func (u *User) MarshalJSON() ([]byte, error) {
-	type Alias User // Create alias to avoid recursion
-	return json.Marshal(&struct {
-		*Alias
-		PasswordHash string `json:"password_hash,omitempty"`
-		// Always include pending_updates field in JSON output, even if it's null
-		PendingUpdates *UserUpdateRequest `json:"pending_updates"`
-	}{
-		Alias:          (*Alias)(u),
-		PasswordHash:   u.PasswordHash,
-		PendingUpdates: u.PendingUpdates,
-	})
+// legacyUserCredentials extracts sensitive fields that may still exist in older
+// Redis user JSON blobs (pre separate-key storage). Used only for one-time migration.
+type legacyUserCredentials struct {
+	PasswordHash string `json:"password_hash"`
+	MFASecret    string `json:"mfa_secret"`
 }
 
-func (u *User) UnmarshalJSON(data []byte) error { // Implements custom JSON unmarshaling
-	type Alias User // Create alias to avoid recursion
-	aux := &struct {
-		*Alias
-		PasswordHash string `json:"password_hash,omitempty"`
-	}{
-		Alias: (*Alias)(u),
+// ParseLegacyCredentials reads password_hash / mfa_secret from raw user JSON if present.
+func ParseLegacyCredentials(data []byte) (passwordHash, mfaSecret string) {
+	var legacy legacyUserCredentials
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return "", ""
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	u.PasswordHash = aux.PasswordHash
-	return nil
+	return legacy.PasswordHash, legacy.MFASecret
 }
-
-// Wrapper functions that delegate to service package
-// These maintain backward compatibility while using SQLite-based system
-// Note: These create a dependency on service package, but service already imports models for types,
-// so we need to be careful not to create cycles. Service functions should not call these wrappers.
-
-// The actual implementations are in internal/service/permission_service.go
-// These are just forward declarations - the real functions will be added via build tags or
-// we'll update all call sites to use service package directly
-
-// For now, let's add stub functions that will cause compile errors if service isn't properly initialized
-// The proper solution is to update all call sites, but that's a large change.
-// Let's add the wrappers that import service (this is safe since service already imports models)

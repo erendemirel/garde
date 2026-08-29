@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"garde/internal/models"
 	"garde/pkg/config"
+	"garde/pkg/crypto"
 	"garde/pkg/session"
 	"log/slog"
 	"strconv"
@@ -21,6 +22,10 @@ const (
 	maxSuspiciousRecords = 50
 	redisOpTimeout       = 3 * time.Second
 )
+
+func userPasswordKey(userID string) string { return "user_password:" + userID }
+func userMFAKey(userID string) string      { return "user_mfa:" + userID }
+func tempMFAKey(userID string) string      { return "temp_mfa:" + userID }
 
 type RedisRepository struct {
 	client *redis.Client
@@ -148,7 +153,90 @@ func (r *RedisRepository) getUserByIDWithClient(ctx context.Context, client *red
 		return nil, err
 	}
 
+	if err := r.attachUserCredentials(ctx, client, &user, userData); err != nil {
+		return nil, err
+	}
+
 	return &user, nil
+}
+
+// attachUserCredentials loads password hash and MFA secret from dedicated Redis keys.
+// Legacy fields embedded in user JSON are migrated once into those keys.
+func (r *RedisRepository) attachUserCredentials(ctx context.Context, client *redis.Client, user *models.User, rawUserJSON []byte) error {
+	password, err := client.Get(ctx, userPasswordKey(user.ID)).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	if err == redis.Nil {
+		password = ""
+	}
+
+	encMFA, err := client.Get(ctx, userMFAKey(user.ID)).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	if err == redis.Nil {
+		encMFA = ""
+	}
+
+	legacyPassword, legacyMFA := models.ParseLegacyCredentials(rawUserJSON)
+
+	if password == "" && legacyPassword != "" {
+		password = legacyPassword
+		if setErr := client.Set(ctx, userPasswordKey(user.ID), password, 0).Err(); setErr != nil {
+			slog.Warn("Failed to migrate legacy password hash to separate key", "user_id", user.ID, "error", setErr)
+		} else {
+			slog.Info("Migrated legacy password hash to separate Redis key", "user_id", user.ID)
+		}
+	}
+
+	user.PasswordHash = password
+
+	if encMFA != "" {
+		plain, decErr := crypto.DecryptString(encMFA)
+		if decErr != nil {
+			return fmt.Errorf("decrypt MFA secret: %w", decErr)
+		}
+		user.MFASecret = plain
+		return nil
+	}
+
+	if legacyMFA != "" {
+		// Prefer treating legacy value as already-encrypted; fall back to plaintext migration.
+		if plain, decErr := crypto.DecryptString(legacyMFA); decErr == nil {
+			user.MFASecret = plain
+			return nil
+		}
+		user.MFASecret = legacyMFA
+		if enc, encErr := crypto.EncryptString(legacyMFA); encErr != nil {
+			slog.Warn("Failed to encrypt legacy MFA secret during migration", "user_id", user.ID, "error", encErr)
+		} else if setErr := client.Set(ctx, userMFAKey(user.ID), enc, 0).Err(); setErr != nil {
+			slog.Warn("Failed to migrate legacy MFA secret to separate key", "user_id", user.ID, "error", setErr)
+		} else {
+			slog.Info("Migrated legacy MFA secret to encrypted Redis key", "user_id", user.ID)
+		}
+	}
+
+	return nil
+}
+
+func (r *RedisRepository) writeUserCredentials(ctx context.Context, pipe redis.Pipeliner, user *models.User) error {
+	if user.PasswordHash != "" {
+		pipe.Set(ctx, userPasswordKey(user.ID), user.PasswordHash, 0)
+	}
+
+	if user.MFASecret != "" {
+		enc, err := crypto.EncryptString(user.MFASecret)
+		if err != nil {
+			return fmt.Errorf("encrypt MFA secret: %w", err)
+		}
+		pipe.Set(ctx, userMFAKey(user.ID), enc, 0)
+		return nil
+	}
+
+	// Clear stored MFA material when the secret is empty (disabled / never set).
+	pipe.Del(ctx, userMFAKey(user.ID))
+	return nil
 }
 
 func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) error {
@@ -191,17 +279,15 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 		// Update timestamp
 		user.UpdatedAt = time.Now()
 
-		// Perform update
+		// Perform update — password hash and MFA secret stay out of the user JSON blob
 		userData, err := json.Marshal(user)
 		if err != nil {
 			return err
 		}
 		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-			// Store user data with ID as key
 			pipe.Set(ctx, userKey, userData, 0)
-			// Store email to ID mapping
 			pipe.Set(ctx, emailIndexKey, user.ID, 0)
-			return nil
+			return r.writeUserCredentials(ctx, pipe, user)
 		})
 		return err
 	}
@@ -601,17 +687,20 @@ func (r *RedisRepository) DeleteUser(ctx context.Context, userID string) error {
 		return err
 	}
 
-	// Delete user data and email index in a pipeline
+	// Delete user data, credentials, and email index in a pipeline
 	pipe := client.Pipeline()
 	pipe.Del(ctx, "user:"+userID)
 	pipe.Del(ctx, "email_to_id:"+user.Email)
+	pipe.Del(ctx, userPasswordKey(userID))
+	pipe.Del(ctx, userMFAKey(userID))
+	pipe.Del(ctx, tempMFAKey(userID))
 
 	// Also delete related keys
 	pipe.Del(ctx, fmt.Sprintf("audit_log:%s", userID))
 	pipe.Del(ctx, fmt.Sprintf("otp:%s", userID))
 	pipe.Del(ctx, fmt.Sprintf("reset_attempts:%s", userID))
 	pipe.Del(ctx, fmt.Sprintf("security_code:%s", userID))
-	pipe.Del(ctx, fmt.Sprintf("mfa_secret:%s", userID))
+	pipe.Del(ctx, fmt.Sprintf("mfa_secret:%s", userID)) // legacy key name
 
 	_, err = pipe.Exec(ctx)
 	return err
@@ -688,6 +777,11 @@ func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, e
 				continue // Skip invalid data
 			}
 
+			if err := r.attachUserCredentials(ctx, client, &user, userData); err != nil {
+				slog.Warn("Failed to load credentials for locked user", "user_id", user.ID, "error", err)
+				continue
+			}
+
 			// Only include locked users
 			if user.Status != models.UserStatusOk {
 				users = append(users, &user)
@@ -711,8 +805,11 @@ func (r *RedisRepository) StoreTempMFASecret(ctx context.Context, userID, secret
 		return errRedisClientUnavailable
 	}
 
-	key := fmt.Sprintf("temp_mfa:%s", userID)
-	return client.Set(ctx, key, secret, 5*time.Minute).Err() // 5 minute TTL
+	enc, err := crypto.EncryptString(secret)
+	if err != nil {
+		return fmt.Errorf("encrypt temporary MFA secret: %w", err)
+	}
+	return client.Set(ctx, tempMFAKey(userID), enc, 5*time.Minute).Err()
 }
 
 func (r *RedisRepository) GetTempMFASecret(ctx context.Context, userID string) (string, error) {
@@ -723,12 +820,18 @@ func (r *RedisRepository) GetTempMFASecret(ctx context.Context, userID string) (
 		return "", errRedisClientUnavailable
 	}
 
-	key := fmt.Sprintf("temp_mfa:%s", userID)
-	secret, err := client.Get(ctx, key).Result()
+	enc, err := client.Get(ctx, tempMFAKey(userID)).Result()
 	if err == redis.Nil {
 		return "", fmt.Errorf("temporary MFA secret not found or expired")
 	}
-	return secret, err
+	if err != nil {
+		return "", err
+	}
+	plain, err := crypto.DecryptString(enc)
+	if err != nil {
+		return "", fmt.Errorf("decrypt temporary MFA secret: %w", err)
+	}
+	return plain, nil
 }
 
 func (r *RedisRepository) DeleteTempMFASecret(ctx context.Context, userID string) error {
@@ -739,8 +842,7 @@ func (r *RedisRepository) DeleteTempMFASecret(ctx context.Context, userID string
 		return errRedisClientUnavailable
 	}
 
-	key := fmt.Sprintf("temp_mfa:%s", userID)
-	return client.Del(ctx, key).Err()
+	return client.Del(ctx, tempMFAKey(userID)).Err()
 }
 
 func (r *RedisRepository) StoreOTP(ctx context.Context, userID string, hashedOTP string) error {
@@ -909,6 +1011,11 @@ func (r *RedisRepository) GetAllUsers(ctx context.Context) ([]*models.User, erro
 
 			var user models.User
 			if err := json.Unmarshal(userData, &user); err != nil {
+				continue
+			}
+
+			if err := r.attachUserCredentials(ctx, client, &user, userData); err != nil {
+				slog.Warn("Failed to load credentials for user", "user_id", user.ID, "error", err)
 				continue
 			}
 

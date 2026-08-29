@@ -15,6 +15,14 @@ until vault status > /dev/null 2>&1; do
 done
 echo "Vault is ready!"
 
+# Auto-create the Vault Agent token file on a shared volume so fresh clones
+# do not need a host-side vault/dev-token file (which is gitignored).
+TOKEN_DIR="${VAULT_AGENT_TOKEN_DIR:-/vault/agent-token}"
+mkdir -p "$TOKEN_DIR"
+printf '%s\n' "${VAULT_TOKEN:-devtoken}" > "$TOKEN_DIR/dev-token"
+chmod 600 "$TOKEN_DIR/dev-token"
+echo "Wrote Vault Agent token to $TOKEN_DIR/dev-token"
+
 # Enable KV secrets engine if not already enabled
 vault secrets enable -path=secret kv-v2 2>/dev/null || true
 
