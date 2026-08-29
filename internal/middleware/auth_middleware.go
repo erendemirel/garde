@@ -88,6 +88,12 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			return
 		}
 
+		if user.Status != models.UserStatusOk {
+			slog.Info("AuthMiddleware: Rejecting non-ok user status", "user_id", user.ID, "status", user.Status)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrAccessRestricted))
+			return
+		}
+
 		superUserEmail := config.Get("SUPERUSER_EMAIL")
 		isSuperUser := user.Email == superUserEmail
 		isAdmin := user.IsUserAdmin()
@@ -124,12 +130,10 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 }
 
 func CORSMiddleware() gin.HandlerFunc {
-	allowedOrigins := strings.Split(config.Get("CORS_ALLOW_ORIGINS"), ",")
-
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		// Check if the request origin is in the allowed list
-		for _, allowedOrigin := range allowedOrigins {
+		// Read on each request so CORS_ALLOW_ORIGINS hot-reloads with secrets.
+		for _, allowedOrigin := range strings.Split(config.Get("CORS_ALLOW_ORIGINS"), ",") {
 			if strings.TrimSpace(allowedOrigin) == origin {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 				break

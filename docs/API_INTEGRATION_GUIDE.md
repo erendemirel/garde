@@ -49,17 +49,17 @@ This guide explains how to integrate and use garde in your applications.
 
 ## Authentication Methods
 
-garde supports three authentication styles. Browser/API session auth and mTLS service auth are meant to coexist, but **built-in `USE_TLS` changes the TLS handshake for the whole process** — see [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration) for the recommended production layout.
+garde supports three authentication styles. Browser/API session auth and mTLS service auth are meant to coexist. With built-in `USE_TLS`, HTTPS is enabled and client certs are optional at the handshake; `/validate` still requires mTLS when a client CA is configured — see [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
 
 ### 1. Browser-based Authentication
 For web applications where users log in through a browser interface.
 
 **Flow:**
 1. User submits credentials
-2. Receives HTTP-only cookie with session ID (`Secure` is set when garde `USE_TLS` is true)
+2. Receives HTTP-only cookie with session ID (`Secure` follows `COOKIE_SECURE` / `USE_TLS` / SameSite=None rules)
 3. Cookie is automatically sent with subsequent requests
 
-**Deployment:** Serve browsers over HTTPS via a reverse proxy and keep garde `use_tls=false` on the browser-facing instance. Direct browser access to a `use_tls=true` garde endpoint requires a client certificate at the TLS layer (not practical for normal users).
+**Deployment:** Serve browsers over HTTPS via a reverse proxy; set `cookie_secure=true` and `trusted_proxies` to the proxy CIDR when garde `use_tls=false`. With built-in `use_tls=true`, browsers do not need client certificates for cookie login.
 
 **Cookie SameSite:** Configure `COOKIE_SAME_SITE` (secret: `secret/garde/cookie_same_site` or in `dev.secrets`) as `lax` (default), `strict`, or `none`. Use `lax` when the UI and API are on different origins (e.g. dev); use `strict` when same-origin; use `none` only for cross-site cookies over HTTPS.
 
@@ -137,18 +137,17 @@ Authorization: Bearer 6cc0595f-f3...
 For internal services communicating within your infrastructure.
 
 **Requirements:**
-- Built-in TLS enabled (`use_tls=true`) with server certs and client CA configured
-- Valid client certificate from your CA (presented on every connection to that instance)
 - API key from configuration (`X-API-Key`)
-- Must use the same domain as the auth service (certificate CN/SAN checks on `/validate`)
+- When `use_tls=true` and `tls_ca_path` is set: valid client certificate from your CA
+- Must use the same domain as the auth service (certificate CN/SAN checks on `/validate` when mTLS applies)
 
-**Topology:** Call `/validate` only from trusted services (private network and/or a dedicated `use_tls=true` instance). Do not rely on end-user browsers for this path. Details: [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
+**Topology:** Call `/validate` only from trusted services (private network). Pass the end-user `session_id` as a query parameter — IP/User-Agent binding is not applied on this path. Details: [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
 
 Example request:
 ```http
 GET /validate?session_id=8e8217f1-4f...
 X-API-Key: your_api_key
-// TLS client certificate included in request
+// TLS client certificate included when mTLS is enabled
 ```
 
 Success Response:
@@ -172,7 +171,7 @@ Error Response:
 }
 ```
 
-**Important Note:** The `/validate` endpoint is only accessible via API key + mTLS authentication. Admin/cookie authentication is not supported for this endpoint. When `use_tls=true`, the TLS stack also requires a client certificate before any HTTP handler runs.
+**Important Note:** The `/validate` endpoint is only accessible via API key (and mTLS when built-in TLS + client CA are configured). Cookie/Bearer admin authentication is not supported for this endpoint.
 
 ## Common Workflows
 
@@ -316,7 +315,7 @@ POST /users/password/otp
 }
 ```
 
-2. Receive 5-letter OTP via email (expires in 5 minutes)
+2. Receive 8-character OTP via email (expires in 5 minutes)
 
 3. Reset password:
 ```http
@@ -349,7 +348,7 @@ Important Notes:
 - Process requires OTP
 - MFA code required if enabled
 - Account gets locked after 5 failed attempts
-- Password reset sets status to "pending admin approval"
+- Password reset does not change account status (pending users still need admin approval before login)
 - IP-based rate limiting applies (same as other public endpoints). After 5 failed OTP verification attempts, the account is locked.
 - Cannot reset superuser password through this flow
 
@@ -1021,7 +1020,7 @@ User accounts are automatically locked (status changes to "locked by security") 
 When an account is locked:
 - All active sessions are terminated
 - Login is blocked until admin unlocks the account
-- Password reset flow via OTP still works (but sets status to "pending admin approval" after reset)
+- Password reset flow via OTP still works (account status is unchanged after a successful reset; pending users still need admin approval before login)
 - Account status changes to "locked by security"
 
 #### C. IP Blocking

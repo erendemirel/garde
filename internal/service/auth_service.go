@@ -2,20 +2,20 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
 	"garde/internal/models"
 	"garde/internal/repository"
 	"garde/pkg/config"
 	"garde/pkg/crypto"
-	"garde/pkg/mfa"
-	"garde/pkg/session"
-	"log/slog"
-	"math/rand"
-	"strings"
-	"time"
-
 	"garde/pkg/errors"
 	"garde/pkg/mail"
+	"garde/pkg/mfa"
+	"garde/pkg/session"
 	"garde/pkg/validation"
 
 	"github.com/gin-gonic/gin"
@@ -174,9 +174,16 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
-	// Check if user is locked
+	// Check if user is locked or not yet approved
 	if user.Status == models.UserStatusLockedByAdmin || user.Status == models.UserStatusLockedBySecurity {
 		slog.Info("Login attempt by locked user", "email", req.Email, "status", user.Status)
+		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+	}
+	if user.Status == models.UserStatusPendingApproval || user.Status == models.UserStatusApprovalRejected {
+		slog.Info("Login attempt by unapproved user", "email", req.Email, "status", user.Status)
+		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+	}
+	if user.Status != models.UserStatusOk {
 		return nil, fmt.Errorf(errors.ErrAccessRestricted)
 	}
 
@@ -211,19 +218,8 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 	if !valid {
-		// Record failed attempt
-		failedAttempts, err := s.repo.RecordFailedLogin(ctx, req.Email, ip)
-		if err != nil {
-			slog.Debug("Failed to record failed login", "error", err)
-		}
-
-		// Block if threshold exceeded
-		if !config.GetBool("DISABLE_IP_BLACKLISTING") && failedAttempts >= session.FailedLoginThreshold {
-			slog.Warn("IP blocked due to too many failed login attempts", "ip", ip, "attempts", failedAttempts)
-			s.repo.BlockIP(ctx, ip, session.FailedLoginBlockDuration)
-			user.Status = models.UserStatusLockedBySecurity
-			s.repo.StoreUser(ctx, user)
-			return nil, fmt.Errorf(errors.ErrAccessRestricted)
+		if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
+			return nil, err
 		}
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
@@ -235,6 +231,9 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 			return nil, fmt.Errorf(errors.ErrMFARequired)
 		}
 		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
+			if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
+				return nil, err
+			}
 			return nil, fmt.Errorf(errors.ErrInvalidMFACode)
 		}
 	}
@@ -383,6 +382,58 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		},
 		UserID: sessionData.UserID,
 	}, nil
+}
+
+// ValidateSessionForService checks that a session exists, is not blacklisted, and is unexpired.
+// It does not bind IP/User-Agent — internal services call /validate on behalf of end users.
+func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID string) (*ValidationResult, error) {
+	isBlacklisted, err := s.repo.IsSessionBlacklisted(ctx, sessionID)
+	if err != nil {
+		slog.Debug("Error checking blacklist", "error", err)
+		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+	if isBlacklisted {
+		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+
+	sessionData, err := s.repo.GetSessionData(ctx, sessionID)
+	if err != nil {
+		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+
+	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
+		s.repo.DeleteSession(ctx, sessionID)
+		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+
+	user, err := s.repo.GetUserByID(ctx, sessionData.UserID)
+	if err != nil || user.Status != models.UserStatusOk {
+		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+
+	return &ValidationResult{
+		Response: &models.SessionValidationResponse{Valid: true},
+		UserID:   sessionData.UserID,
+	}, nil
+}
+
+func (s *AuthService) recordFailedAuth(ctx context.Context, user *models.User, email, ip string) error {
+	failedAttempts, err := s.repo.RecordFailedLogin(ctx, email, ip)
+	if err != nil {
+		slog.Debug("Failed to record failed login", "error", err)
+		return nil
+	}
+
+	if !config.GetBool("DISABLE_IP_BLACKLISTING") && failedAttempts >= session.FailedLoginThreshold {
+		slog.Warn("IP blocked due to too many failed auth attempts", "ip", ip, "attempts", failedAttempts)
+		s.repo.BlockIP(ctx, ip, session.FailedLoginBlockDuration)
+		user.Status = models.UserStatusLockedBySecurity
+		if storeErr := s.repo.StoreUser(ctx, user); storeErr != nil {
+			slog.Warn("Failed to lock user after failed auth threshold", "error", storeErr, "email", email)
+		}
+		return fmt.Errorf(errors.ErrAccessRestricted)
+	}
+	return nil
 }
 
 func (s *AuthService) NeedsMFASetup(ctx context.Context, userIDOrEmail string) (bool, error) {
@@ -1047,9 +1098,9 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	// Update user
+	// Update password; keep existing status so a verified OTP reset does not force re-approval
+	// (pending users stay pending until an admin approves; ok users can log in immediately).
 	user.PasswordHash = hashedPassword
-	user.Status = models.UserStatusPendingApproval
 	user.UpdatedAt = time.Now()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
@@ -1202,10 +1253,19 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 		return nil
 	}
 
-	// Generate 5-letter OTP
-	otp := make([]byte, 5)
-	for i := range otp {
-		otp[i] = byte('A' + rand.Intn(26))
+	// Generate 8-character cryptographically random OTP (A-Z0-9), rejection-sampled to avoid modulo bias
+	const otpAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	otp := make([]byte, 8)
+	for i := 0; i < len(otp); {
+		var b [1]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return fmt.Errorf(errors.ErrOperationFailed)
+		}
+		if int(b[0]) >= 256-(256%len(otpAlphabet)) {
+			continue
+		}
+		otp[i] = otpAlphabet[int(b[0])%len(otpAlphabet)]
+		i++
 	}
 	otpStr := string(otp)
 

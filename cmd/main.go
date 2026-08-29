@@ -141,6 +141,26 @@ func main() {
 	rateLimiter := middleware.NewRateLimiter(repo)
 
 	router := gin.New()
+	// Do not trust X-Forwarded-For unless TRUSTED_PROXIES is set (comma-separated CIDRs/IPs).
+	// Gin's default trusts all proxies, which allows ClientIP spoofing.
+	if trusted := strings.TrimSpace(config.Get("TRUSTED_PROXIES")); trusted != "" {
+		proxies := make([]string, 0)
+		for _, p := range strings.Split(trusted, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				proxies = append(proxies, p)
+			}
+		}
+		if err := router.SetTrustedProxies(proxies); err != nil {
+			slog.Error("Invalid TRUSTED_PROXIES", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("Trusted proxies configured", "count", len(proxies))
+	} else if err := router.SetTrustedProxies(nil); err != nil {
+		slog.Error("Failed to disable trusted proxies", "error", err)
+		os.Exit(1)
+	}
+
 	router.Use(middleware.Recovery()) // Recovery middleware (to not to expose error details during panic)
 	router.Use(gin.Logger())
 
@@ -236,34 +256,26 @@ func main() {
 		superuserProtected.GET("/admin/users/management", authHandler.GetAdminUserManagement)
 	}
 
-	// Special case for /validate endpoint (API key + mTLS authentication only)
+	// /validate: API key (+ mTLS when built-in TLS and a client CA are configured).
+	// No cookie/Bearer AuthMiddleware — services pass session_id as a query param.
 	validateEndpoint := router.Group("/validate")
 	validateEndpoint.Use(func(c *gin.Context) {
-		// First check for mTLS - this must happen before anything else
-		if config.GetBool("USE_TLS") {
-			// Apply mTLS middleware first
+		useTLS := config.GetBool("USE_TLS")
+		caPath := strings.TrimSpace(config.Get("TLS_CA_PATH"))
+		if useTLS && caPath != "" {
 			middleware.MTLSMiddleware()(c)
 			if c.IsAborted() {
 				return
 			}
 		}
 
-		// Then check for API key
 		apiKey := c.GetHeader(middleware.APIKeyHeader)
 		if apiKey == "" {
-			// Reject requests without API key
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}
 		middleware.APIKeyMiddleware()(c)
-
-		// After mTLS and API key are verified, validate the session
-		if c.IsAborted() {
-			return
-		}
 	})
-	// Apply the auth middleware last after mTLS and API key checks
-	validateEndpoint.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
 	validateEndpoint.GET("", authHandler.ValidateSession)
 
 	// Swagger
@@ -273,12 +285,13 @@ func main() {
 	port := config.GetWithDefault("PORT", "8443")
 	useTLS := config.GetBool("USE_TLS")
 
-	// TLS - mTLS
+	// Built-in server TLS. Client certs are optional at the handshake so browsers
+	// can use cookie auth; /validate enforces mTLS in middleware when a CA is set.
 	if useTLS {
 
 		tlsConfig := &tls.Config{
 			MinVersion: tls.VersionTLS12,
-			ClientAuth: tls.RequireAndVerifyClientCert, // Require client certificates
+			ClientAuth: tls.NoClientCert,
 		}
 
 		cert, err := tls.LoadX509KeyPair(config.Get("TLS_CERT_PATH"), config.Get("TLS_KEY_PATH"))
@@ -302,16 +315,18 @@ func main() {
 
 			block, _ := pem.Decode(caCert)
 			if block != nil {
-				cert, err := x509.ParseCertificate(block.Bytes)
+				parsed, err := x509.ParseCertificate(block.Bytes)
 				if err == nil {
-					slog.Info("Server loaded CA cert", "subject", cert.Subject, "issuer", cert.Issuer)
+					slog.Info("Server loaded CA cert", "subject", parsed.Subject, "issuer", parsed.Issuer)
 				}
 			}
 
 			tlsConfig.ClientCAs = caCertPool
-			slog.Info("Loaded CA certificates for client verification - mTLS is enabled")
+			// Verify client certs when presented; do not require them on every connection.
+			tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+			slog.Info("Loaded CA certificates — client certs verified when presented (required on /validate)")
 		} else {
-			slog.Warn("No CA certificates provided for client verification")
+			slog.Warn("No TLS_CA_PATH — /validate will not require mTLS")
 		}
 
 		if len(cert.Certificate) > 0 {

@@ -150,6 +150,18 @@ template {
   error_on_missing_key = false
 }
 
+template {
+  contents = "{{ with secret \"secret/data/garde/cookie_secure\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cookie_secure"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/trusted_proxies\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/trusted_proxies"
+  error_on_missing_key = false
+}
+
 # SMTP settings (optional)
 template {
   contents = "{{ with secret \"secret/data/garde/smtp_host\" }}{{ .Data.data.value }}{{ end }}"

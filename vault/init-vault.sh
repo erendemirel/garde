@@ -47,9 +47,9 @@ while IFS='=' read -r key value || [ -n "$key" ]; do
   # Remove any leading/trailing whitespace
   key=$(echo "$key" | xargs)
   value=$(echo "$value" | xargs)
-  
-  if [ -n "$key" ] && [ -n "$value" ]; then
-    # Convert to lowercase for secret path
+
+  # Allow empty values so optional keys (e.g. TRUSTED_PROXIES=) still exist for Vault Agent templates
+  if [ -n "$key" ]; then
     lower_key=$(echo "$key" | tr '[:upper:]' '[:lower:]')
     echo "  Setting secret: $lower_key"
     vault kv put "secret/garde/$lower_key" value="$value"

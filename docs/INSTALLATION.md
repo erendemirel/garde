@@ -7,6 +7,7 @@
   - [Required mandatory secrets](#required-mandatory-secrets-in-vault)
   - [TLS and mTLS](#tls-and-mtls-configuration)
   - [Additional configuration (optional)](#additional-production-configuration-optional)
+  - [Configuration hot reload](#configuration-hot-reload)
   - [Web UI](#web-ui-production)
 - [Verifying Installation](#verifying-installation)
 - [Vault Guide](#vault-guide)
@@ -49,7 +50,7 @@
 - Secrets from `dev.secrets` are seeded into Vault
 - Vault Agent writes secrets to tmpfs (`/run/secrets`)
 - Application reads secrets and connects to Redis
-- Secret file watching is enabled; see [Hot reload](../README.md#what-hot-reloads-without-restart) for what applies live vs what needs a restart
+- Secret file watching is enabled; see [Configuration hot reload](#configuration-hot-reload) for what applies live vs what needs a restart
 
 ---
 
@@ -117,7 +118,7 @@
 
 6. **Firewall:** Allow SSH (22), UI (80 or 443), and API (8443) as needed. Vault is bound to `127.0.0.1:8200` only—do not publish it publicly.
 
-7. **TLS (recommended for browser/UI):** Put a reverse proxy (e.g. Caddy or nginx) in front; terminate HTTPS there and proxy to the UI and API containers. Keep garde’s `use_tls` **false** for this path so cookie-based browser login works. Set `PUBLIC_API_URL` and `CORS_ALLOW_ORIGINS` to your public URLs and rebuild the UI container. See [TLS and mTLS](#tls-and-mtls-configuration) for how this relates to built-in mTLS.
+7. **TLS (recommended for browser/UI):** Put a reverse proxy (e.g. Caddy or nginx) in front; terminate HTTPS there and proxy to the UI and API containers. Keep garde’s `use_tls` **false** (or enable built-in TLS if preferred — browsers no longer need client certs for login). Set `cookie_secure=true` and `trusted_proxies` to the proxy when TLS is terminated at the edge. Set `PUBLIC_API_URL` and `CORS_ALLOW_ORIGINS` to your public URLs and rebuild the UI container. See [TLS and mTLS](#tls-and-mtls-configuration).
 
 **After reboot:** Vault comes back sealed. Unseal before (or while) bringing dependents up:
 ```bash
@@ -153,47 +154,47 @@ garde supports two different TLS concerns. They are easy to confuse:
 
 | Concern | Purpose | Typical setup |
 |---------|---------|---------------|
-| **Public HTTPS (browser / UI)** | Encrypt traffic for users and cookie-based login | Reverse proxy terminates TLS; garde `use_tls` stays **false** |
-| **Built-in TLS + mTLS** | Service-to-service auth (API key + client certs), especially `/validate` | Set `use_tls` **true** with server certs + client CA |
+| **Public HTTPS (browser / UI)** | Encrypt traffic for users and cookie-based login | Reverse proxy terminates TLS; garde `use_tls` **false**, `cookie_secure` **true**, `trusted_proxies` set to the proxy |
+| **Built-in TLS + mTLS on `/validate`** | HTTPS on garde; service calls present client certs | `use_tls` **true** with server certs + client CA |
 
 #### Recommended production layout (browser + services)
 
 1. **Browsers and the web UI** talk HTTPS only to a reverse proxy (Caddy, nginx, etc.). The proxy forwards to garde over the private network (Compose network / localhost). Do **not** expose Redis or Vault publicly.
-2. Leave **`secret/garde/use_tls` = `false`** on that browser-facing garde instance so login and session cookies work without client certificates.
-3. Set **`cookie_same_site`** for your topology: `strict` when UI and API share a site; `lax` (default) when they are different origins (common in dev); `none` when you need cross-site cookies (requires Secure cookies over HTTPS at the proxy).
-4. **Internal services** that call `/validate` need API key + mTLS. Prefer one of:
-   - a **private** network path to a garde instance with `use_tls=true` (only trusted services can reach it), or
-   - a **dedicated** garde instance / listener with `use_tls=true` used only by those services (client certs installed on the service, not in end-user browsers).
+2. Leave **`secret/garde/use_tls` = `false`** on the browser-facing instance (or enable built-in TLS if you prefer HTTPS on garde itself — browsers no longer need client certs for login). Set **`cookie_secure=true`** and **`trusted_proxies`** to the proxy CIDR when TLS is terminated at the proxy.
+3. Set **`cookie_same_site`** for your topology: `strict` when UI and API share a site; `lax` (default) when they are different origins (common in dev); `none` when you need cross-site cookies (requires Secure cookies over HTTPS).
+4. **Internal services** that call `/validate` need an API key, and a client certificate when built-in TLS + `tls_ca_path` are enabled. Prefer a **private** network path to garde.
 
 #### Built-in `USE_TLS` behavior (important)
 
-When `use_tls` is **true**, garde listens with HTTPS and sets `ClientAuth = RequireAndVerifyClientCert`. **Every** TLS connection must present a client certificate trusted by `tls_ca_path` — including browsers.
+When `use_tls` is **true**, garde serves HTTPS with **optional** client certificates at the handshake (`VerifyClientCertIfGiven` when `tls_ca_path` is set). Browsers can use cookie login without a client cert.
 
-That means:
+`/validate` still **requires** a verified client certificate (via middleware) when both `use_tls` and `tls_ca_path` are set, plus `X-API-Key`.
 
-- Normal browser cookie login **does not work** against a `use_tls=true` endpoint unless each browser has a valid client cert (unusual for end users).
-- `/login` and other user routes still have no *application-layer* mTLS check, but the **TLS handshake** already requires a client cert.
-- Session cookies get the `Secure` flag when `use_tls` is true (`GetCookieSecure` follows `USE_TLS`).
+When `use_tls` is **false** (recommended behind a reverse proxy), `/validate` is API-key-only — keep that path on a private network.
+
+**Cookies:** `Secure` follows `COOKIE_SECURE` when set; otherwise it is true if `USE_TLS` is true, or if `COOKIE_SAME_SITE=none`. Behind an HTTPS reverse proxy with `use_tls=false`, set `cookie_secure=true`.
+
+**Client IP:** Set `TRUSTED_PROXIES` to your reverse-proxy CIDR(s) so `X-Forwarded-For` is honored. When unset, forwarded headers are ignored (prevents ClientIP spoofing).
 
 > [!IMPORTANT]
-> For a public UI, prefer reverse-proxy TLS and `use_tls=false`. Enable built-in `use_tls` only for clients that can present mTLS client certificates (internal services), or put a proxy in front that presents a service client cert to garde while browsers use normal HTTPS to the proxy.
+> For a public UI, prefer reverse-proxy TLS and `use_tls=false` with `cookie_secure=true` and `trusted_proxies` set to the proxy. Enable built-in `use_tls` when you want HTTPS (and optional mTLS on `/validate`) directly on garde.
 
 **Server TLS materials (required when `use_tls=true`):**
 - Valid TLS certificate from a trusted CA
 - Certificate chain with intermediate certificates
 - SAN including all domain variants
-- Client CA used to verify service client certificates
+- Client CA used to verify service client certificates on `/validate`
 
 **Required Vault secrets (built-in TLS / mTLS):**
 | Secret Path | Description |
 |-------------|-------------|
-| `secret/garde/use_tls` | `true` to enable built-in HTTPS + mandatory client certificates |
+| `secret/garde/use_tls` | `true` to enable built-in HTTPS |
 | `secret/garde/tls_cert_path` | Path to server certificate |
 | `secret/garde/tls_key_path` | Path to server private key |
-| `secret/garde/tls_ca_path` | Path to client CA certificate |
+| `secret/garde/tls_ca_path` | Path to client CA (enables mTLS checks on `/validate`) |
 
 > [!NOTE]
-> Without built-in `use_tls`, cookie/session (“basic”) authentication still works. Put HTTPS at your reverse proxy for production browser traffic. Built-in `use_tls` is what enables garde-native mTLS for API-key service calls such as `/validate`.
+> Without built-in `use_tls`, cookie/session authentication still works. Put HTTPS at your reverse proxy for production browser traffic. With `use_tls` + `tls_ca_path`, `/validate` requires API key + client certificate.
 
 ### Additional production configuration (optional)
 
@@ -220,6 +221,8 @@ That means:
 | `secret/garde/disable_ip_blacklisting` | Disable automatic IP blocking |
 | `secret/garde/disable_multiple_ip_check` | Disable concurrent session IP detection |
 | `secret/garde/cookie_same_site` | Session cookie SameSite: `lax` (default), `strict`, or `none`. Use `strict` when UI and API are same-site; `lax` when different origins (e.g. dev); `none` for cross-site cookies (needs HTTPS so the cookie can be Secure). See [TLS and mTLS](#tls-and-mtls-configuration). |
+| `secret/garde/cookie_secure` | Optional. `true`/`false` to force the cookie `Secure` flag. When unset: follows `use_tls`, or forced true if `cookie_same_site=none`. Set `true` behind HTTPS reverse proxies with `use_tls=false`. |
+| `secret/garde/trusted_proxies` | Optional. Comma-separated proxy CIDRs/IPs trusted for `X-Forwarded-For`. When unset, forwarded headers are ignored. |
 | `secret/garde/testing_mode` | Set to `true` to relax mTLS checks (e.g. for testing). Do not use in production. |
 
 **Admin Configuration**:
@@ -241,6 +244,41 @@ That means:
 > The built-in SQLite database doesn't require any configuration or infrastructure.
 
 **Logging:** `secret/garde/log_level` (DEBUG/INFO/WARN/ERROR), `secret/garde/gin_mode` (debug/release)
+
+### Configuration hot reload
+
+Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde reloads the **in-memory map** automatically. That does **not** mean every setting rebinds at runtime.
+
+#### Applies live (no restart)
+
+| Secret / key | Behavior |
+|--------------|----------|
+| `api_key` | Checked on each `/validate` (and other API-key uses) |
+| `cors_allow_origins` | Read on each request |
+| `cookie_same_site`, `cookie_secure` | Applied when setting/clearing session cookies |
+| `domain_name` | Cookie domain + mTLS CN/SAN checks |
+| `enforce_mfa`, `testing_mode` | Read on relevant auth/mTLS paths |
+| `disable_user_agent_check`, `disable_ip_blacklisting`, `disable_multiple_ip_check` | Read when those checks run |
+| `smtp_*` | Read when sending mail |
+| `mfa_encryption_key` | Used for new encrypt/decrypt calls (**does not** re-encrypt existing MFA secrets) |
+| `redis_*` | Reload hook reconnects the Redis client |
+| `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply) |
+
+#### Requires process restart
+
+| Secret / key | Why |
+|--------------|-----|
+| `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
+| `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
+| `rate_limit` | Numeric thresholds are parsed into the rate-limiter struct at startup |
+| `rapid_request_config` | Parsed once into package-level thresholds at startup |
+| `log_level` | Logger level is configured at startup |
+| `gin_mode` | Not re-applied after process start |
+
+**Ops tip:** After rotating TLS material, trusted proxies, rate limits, rapid-request thresholds, or log level, restart the `garde` container/process. After rotating only API keys, CORS, cookies, SMTP, feature flags, or admin passwords, a Vault Agent rewrite of `/run/secrets` is enough.
+
+> [!NOTE]
+> `RATE_LIMIT=0` / `0,0` is inspected in some middleware paths live, but changing from e.g. `100,60` to `200,60` still needs a restart.
 
 ### Web UI (production)
 

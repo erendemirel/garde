@@ -90,16 +90,13 @@ garde uses HashiCorp Vault for secrets management:
 
 - **Vault Agent Sidecar**: Automatically fetches and rotates secret files under `/run/secrets`
 - **tmpfs Storage**: Secrets never touch persistent disk
-- **File Watching**: garde monitors `/run/secrets` and reloads the in-memory secret map when files change
+- **File Watching**: garde reloads the in-memory secret map when `/run/secrets` changes; **not every secret applies live** (see below)
 
 ##### What hot-reloads without restart
-| Reloads live | Requires restart |
-|--------------|------------------|
-| Values read via `config.Get` / `config.GetBool` on each use (API key, CORS, cookie SameSite, SMTP, `ENFORCE_MFA`, feature flags such as `DISABLE_*`) | `RATE_LIMIT` thresholds (parsed when the rate limiter is constructed) |
-| Redis host/password (reconnect on reload hook) | `RAPID_REQUEST_CONFIG` (parsed once at startup) |
-| Superuser / admin emails and passwords (re-initialized on reload hook) | TLS certs, `USE_TLS`, listen port (HTTP server already bound) |
 
-Vault-managed secret file rotation is supported; cryptographic key-rotation of every in-memory subsystem is not implied.
+Secret files under `/run/secrets` refresh the in-memory map automatically, but **TLS, trusted proxies, rate-limit thresholds, rapid-request config, and log level need a process restart**. API key, CORS, cookies, feature flags, SMTP, Redis reconnect, and superuser/admin bootstrap apply live.
+
+See the full table: [Configuration hot reload](docs/INSTALLATION.md#configuration-hot-reload).
 
 #### Configurable Security Features:
 Offers configurable rate limiter, switchable behavior detection and MFA.
@@ -140,7 +137,7 @@ This automatically sets up:
 > [!TIP]
 > The development setup is fully self-contained and includes everything you need to get started immediately
 
-Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password DevAdminTest123! for both.
+Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password ` DevAdminTest123!`  for both.
 
 > [!NOTE]
 > The `dev` profile auto-creates the Vault Agent token during `init-vault.sh` (no host `vault/dev-token` file needed). Secrets are seeded from `dev.secrets`.

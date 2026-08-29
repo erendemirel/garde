@@ -148,13 +148,14 @@ func ValidateSessionID(sessionID string) error {
 		return fmt.Errorf(errors.ErrInvalidSessionID)
 	}
 
-	if len(sanitized) != 86 { // base64 encoded 64-byte session ID
+	// RawURLEncoding of 64 bytes = 86 chars; legacy padded URLEncoding = 88.
+	if len(sanitized) != 86 && len(sanitized) != 88 {
 		return fmt.Errorf(errors.ErrInvalidSessionID)
 	}
 
-	// Check if it's a valid base64 string
+	// Check if it's a valid base64url string (padding '=' allowed for legacy IDs)
 	for _, r := range sanitized {
-		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '-' && r != '_' {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '-' && r != '_' && r != '=' {
 			return fmt.Errorf(errors.ErrInvalidSessionID)
 		}
 	}

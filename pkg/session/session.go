@@ -95,5 +95,6 @@ func GenerateSessionID() (string, error) {
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
-	return base64.URLEncoding.EncodeToString(bytes), nil
+	// Raw URL-safe base64 (no padding) → 86 characters for 64 bytes.
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
