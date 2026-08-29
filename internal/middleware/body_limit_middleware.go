@@ -20,9 +20,8 @@ func LimitBodySize(maxSize int64) gin.HandlerFunc {
 			return
 		}
 
-		if c.Request.ContentLength > 0 {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSize)
-		}
+		// Always wrap — including chunked / unknown Content-Length (-1) — so MaxBytesReader enforces the cap.
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSize)
 
 		c.Next()
 

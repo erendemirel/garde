@@ -128,57 +128,19 @@ type ValidateResponse struct {
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /validate [get]
 func (h *AuthHandler) ValidateSession(c *gin.Context) {
-	isAPIRequest, exists := c.Get("is_api_request")
-
-	isAPI := exists && isAPIRequest != nil
-	if isAPI {
-		// API requests can validate any session
-		sessionID := c.Query("session_id")
-		sessionID, err := validation.Sanitize(sessionID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
-			return
-		}
-
-		if err := validation.ValidateSessionID(sessionID); err != nil {
-			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
-			return
-		}
-
-		resp, err := h.authService.ValidateSession(
-			c.Request.Context(),
-			sessionID,
-			c.ClientIP(),
-			c.Request.UserAgent(),
-		)
-		if err != nil || resp == nil || !resp.Response.Valid {
-			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionInvalid))
-			return
-		}
-
-		c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
+	sessionID := c.Query("session_id")
+	sessionID, err := validation.Sanitize(sessionID)
+	if err != nil || sessionID == "" {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
-	// Regular validation flow(for admin, without API key)
-	sessionID, exists := c.Get("session_id")
-	if !exists || sessionID == nil {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionInvalid))
+	if err := validation.ValidateSessionID(sessionID); err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
 
-	sessionIDStr, ok := sessionID.(string)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
-		return
-	}
-
-	resp, err := h.authService.ValidateSession(
-		c.Request.Context(),
-		sessionIDStr,
-		c.ClientIP(),
-		c.Request.UserAgent(),
-	)
+	resp, err := h.authService.ValidateSessionForService(c.Request.Context(), sessionID)
 	if err != nil || resp == nil || !resp.Response.Valid {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionInvalid))
 		return

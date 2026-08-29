@@ -75,7 +75,7 @@
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					OTP Code
-					<input class="input" type="text" bind:value={otp} required placeholder="5-letter code from email" />
+					<input class="input" type="text" bind:value={otp} required placeholder="8-character code from email" />
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					New Password

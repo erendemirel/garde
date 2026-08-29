@@ -51,7 +51,7 @@ type RequestOTPRequest struct {
 type PasswordResetRequest struct {
 	Email       string `json:"email" binding:"required,email"`
 	NewPassword string `json:"new_password" binding:"required,min=8"`
-	OTP         string `json:"otp" binding:"required,len=5"`
+	OTP         string `json:"otp" binding:"required,len=8"`
 	MFACode     string `json:"mfa_code,omitempty"`
 }
 

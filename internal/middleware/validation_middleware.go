@@ -214,6 +214,9 @@ func validatePasswordResetRequest(req *models.PasswordResetRequest) error {
 	if err != nil {
 		return err
 	}
+	if len(sanitized) != 8 {
+		return fmt.Errorf(errors.ErrInvalidOTP)
+	}
 	req.OTP = sanitized
 	return nil
 }

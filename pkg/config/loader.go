@@ -215,6 +215,14 @@ func GetCookieSameSite() http.SameSite {
 }
 
 func GetCookieSecure() bool {
+	// Explicit override for reverse-proxy HTTPS with USE_TLS=false.
+	if v := strings.TrimSpace(Get("COOKIE_SECURE")); v != "" {
+		return GetBool("COOKIE_SECURE")
+	}
+	// Browsers require Secure when SameSite=None.
+	if strings.EqualFold(strings.TrimSpace(Get("COOKIE_SAME_SITE")), "none") {
+		return true
+	}
 	return GetBool("USE_TLS")
 }
 

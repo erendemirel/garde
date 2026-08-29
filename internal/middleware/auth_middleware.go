@@ -88,6 +88,12 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			return
 		}
 
+		if user.Status != models.UserStatusOk {
+			slog.Info("AuthMiddleware: Rejecting non-ok user status", "user_id", user.ID, "status", user.Status)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrAccessRestricted))
+			return
+		}
+
 		superUserEmail := config.Get("SUPERUSER_EMAIL")
 		isSuperUser := user.Email == superUserEmail
 		isAdmin := user.IsUserAdmin()
