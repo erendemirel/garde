@@ -20,7 +20,13 @@ echo "Vault is ready!"
 TOKEN_DIR="${VAULT_AGENT_TOKEN_DIR:-/vault/agent-token}"
 mkdir -p "$TOKEN_DIR"
 printf '%s\n' "${VAULT_TOKEN:-devtoken}" > "$TOKEN_DIR/dev-token"
-chmod 600 "$TOKEN_DIR/dev-token"
+# Vault Agent drops to the non-root `vault` user and must be able to read this.
+if id vault >/dev/null 2>&1; then
+  chown vault:vault "$TOKEN_DIR/dev-token"
+  chmod 600 "$TOKEN_DIR/dev-token"
+else
+  chmod 644 "$TOKEN_DIR/dev-token"
+fi
 echo "Wrote Vault Agent token to $TOKEN_DIR/dev-token"
 
 # Enable KV secrets engine if not already enabled
