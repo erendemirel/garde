@@ -117,7 +117,7 @@
 
 6. **Firewall:** Allow SSH (22), UI (80 or 443), and API (8443) as needed. Vault is bound to `127.0.0.1:8200` only—do not publish it publicly.
 
-7. **TLS (recommended):** Put a reverse proxy (e.g. Caddy or nginx) in front; terminate TLS and proxy to the UI and API containers. Set `PUBLIC_API_URL` and `CORS_ALLOW_ORIGINS` to your public URLs and rebuild the UI container.
+7. **TLS (recommended for browser/UI):** Put a reverse proxy (e.g. Caddy or nginx) in front; terminate HTTPS there and proxy to the UI and API containers. Keep garde’s `use_tls` **false** for this path so cookie-based browser login works. Set `PUBLIC_API_URL` and `CORS_ALLOW_ORIGINS` to your public URLs and rebuild the UI container. See [TLS and mTLS](#tls-and-mtls-configuration) for how this relates to built-in mTLS.
 
 **After reboot:** Vault comes back sealed. Unseal before (or while) bringing dependents up:
 ```bash
@@ -149,21 +149,51 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### TLS and mTLS configuration
 
-**Server TLS (required for mTLS):**
-- Valid TLS certificate from trusted CA
+garde supports two different TLS concerns. They are easy to confuse:
+
+| Concern | Purpose | Typical setup |
+|---------|---------|---------------|
+| **Public HTTPS (browser / UI)** | Encrypt traffic for users and cookie-based login | Reverse proxy terminates TLS; garde `use_tls` stays **false** |
+| **Built-in TLS + mTLS** | Service-to-service auth (API key + client certs), especially `/validate` | Set `use_tls` **true** with server certs + client CA |
+
+#### Recommended production layout (browser + services)
+
+1. **Browsers and the web UI** talk HTTPS only to a reverse proxy (Caddy, nginx, etc.). The proxy forwards to garde over the private network (Compose network / localhost). Do **not** expose Redis or Vault publicly.
+2. Leave **`secret/garde/use_tls` = `false`** on that browser-facing garde instance so login and session cookies work without client certificates.
+3. Set **`cookie_same_site`** for your topology: `strict` when UI and API share a site; `lax` (default) when they are different origins (common in dev); `none` when you need cross-site cookies (requires Secure cookies over HTTPS at the proxy).
+4. **Internal services** that call `/validate` need API key + mTLS. Prefer one of:
+   - a **private** network path to a garde instance with `use_tls=true` (only trusted services can reach it), or
+   - a **dedicated** garde instance / listener with `use_tls=true` used only by those services (client certs installed on the service, not in end-user browsers).
+
+#### Built-in `USE_TLS` behavior (important)
+
+When `use_tls` is **true**, garde listens with HTTPS and sets `ClientAuth = RequireAndVerifyClientCert`. **Every** TLS connection must present a client certificate trusted by `tls_ca_path` — including browsers.
+
+That means:
+
+- Normal browser cookie login **does not work** against a `use_tls=true` endpoint unless each browser has a valid client cert (unusual for end users).
+- `/login` and other user routes still have no *application-layer* mTLS check, but the **TLS handshake** already requires a client cert.
+- Session cookies get the `Secure` flag when `use_tls` is true (`GetCookieSecure` follows `USE_TLS`).
+
+> [!IMPORTANT]
+> For a public UI, prefer reverse-proxy TLS and `use_tls=false`. Enable built-in `use_tls` only for clients that can present mTLS client certificates (internal services), or put a proxy in front that presents a service client cert to garde while browsers use normal HTTPS to the proxy.
+
+**Server TLS materials (required when `use_tls=true`):**
+- Valid TLS certificate from a trusted CA
 - Certificate chain with intermediate certificates
 - SAN including all domain variants
+- Client CA used to verify service client certificates
 
-**Required Vault secrets:**
+**Required Vault secrets (built-in TLS / mTLS):**
 | Secret Path | Description |
 |-------------|-------------|
-| `secret/garde/use_tls` | Set to `true` |
+| `secret/garde/use_tls` | `true` to enable built-in HTTPS + mandatory client certificates |
 | `secret/garde/tls_cert_path` | Path to server certificate |
 | `secret/garde/tls_key_path` | Path to server private key |
 | `secret/garde/tls_ca_path` | Path to client CA certificate |
 
-> [!IMPORTANT]
-> Built-in TLS must be enabled for mTLS and API-key authentication to work. Without TLS, or your own TLS, only basic authentication is available.
+> [!NOTE]
+> Without built-in `use_tls`, cookie/session (“basic”) authentication still works. Put HTTPS at your reverse proxy for production browser traffic. Built-in `use_tls` is what enables garde-native mTLS for API-key service calls such as `/validate`.
 
 ### Additional production configuration (optional)
 
@@ -189,7 +219,7 @@ docker compose -f docker-compose.prod.yml up -d
 | `secret/garde/disable_user_agent_check` | Disable UA validation |
 | `secret/garde/disable_ip_blacklisting` | Disable automatic IP blocking |
 | `secret/garde/disable_multiple_ip_check` | Disable concurrent session IP detection |
-| `secret/garde/cookie_same_site` | Session cookie SameSite: `lax` (default), `strict`, or `none`. Default `lax` so cookie based auth works when UI and API are on different origins(e.g. dev). Use `strict` when UI and API are same-origin. |
+| `secret/garde/cookie_same_site` | Session cookie SameSite: `lax` (default), `strict`, or `none`. Use `strict` when UI and API are same-site; `lax` when different origins (e.g. dev); `none` for cross-site cookies (needs HTTPS so the cookie can be Secure). See [TLS and mTLS](#tls-and-mtls-configuration). |
 | `secret/garde/testing_mode` | Set to `true` to relax mTLS checks (e.g. for testing). Do not use in production. |
 
 **Admin Configuration**:

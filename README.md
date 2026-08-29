@@ -74,6 +74,8 @@ For a worked example of request → approve, see [Permission and Group Managemen
 - **mTLS for Services**: Mutual TLS authentication enables secure service-to-service communication
 - **API Key + mTLS**: API keys can be combined with mTLS for even more secure communication between services
 
+For production layout (reverse proxy vs built-in `USE_TLS`), see [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration).
+
 #### Secrets Architecture:
 garde uses HashiCorp Vault for secrets management:
 
