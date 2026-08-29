@@ -7,6 +7,7 @@
   - [Required mandatory secrets](#required-mandatory-secrets-in-vault)
   - [TLS and mTLS](#tls-and-mtls-configuration)
   - [Additional configuration (optional)](#additional-production-configuration-optional)
+  - [Configuration hot reload](#configuration-hot-reload)
   - [Web UI](#web-ui-production)
 - [Verifying Installation](#verifying-installation)
 - [Vault Guide](#vault-guide)
@@ -49,7 +50,7 @@
 - Secrets from `dev.secrets` are seeded into Vault
 - Vault Agent writes secrets to tmpfs (`/run/secrets`)
 - Application reads secrets and connects to Redis
-- Secret file watching is enabled; see [Hot reload](../README.md#what-hot-reloads-without-restart) for what applies live vs what needs a restart
+- Secret file watching is enabled; see [Configuration hot reload](#configuration-hot-reload) for what applies live vs what needs a restart
 
 ---
 
@@ -243,6 +244,41 @@ When `use_tls` is **false** (recommended behind a reverse proxy), `/validate` is
 > The built-in SQLite database doesn't require any configuration or infrastructure.
 
 **Logging:** `secret/garde/log_level` (DEBUG/INFO/WARN/ERROR), `secret/garde/gin_mode` (debug/release)
+
+### Configuration hot reload
+
+Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde reloads the **in-memory map** automatically. That does **not** mean every setting rebinds at runtime.
+
+#### Applies live (no restart)
+
+| Secret / key | Behavior |
+|--------------|----------|
+| `api_key` | Checked on each `/validate` (and other API-key uses) |
+| `cors_allow_origins` | Read on each request |
+| `cookie_same_site`, `cookie_secure` | Applied when setting/clearing session cookies |
+| `domain_name` | Cookie domain + mTLS CN/SAN checks |
+| `enforce_mfa`, `testing_mode` | Read on relevant auth/mTLS paths |
+| `disable_user_agent_check`, `disable_ip_blacklisting`, `disable_multiple_ip_check` | Read when those checks run |
+| `smtp_*` | Read when sending mail |
+| `mfa_encryption_key` | Used for new encrypt/decrypt calls (**does not** re-encrypt existing MFA secrets) |
+| `redis_*` | Reload hook reconnects the Redis client |
+| `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply) |
+
+#### Requires process restart
+
+| Secret / key | Why |
+|--------------|-----|
+| `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
+| `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
+| `rate_limit` | Numeric thresholds are parsed into the rate-limiter struct at startup |
+| `rapid_request_config` | Parsed once into package-level thresholds at startup |
+| `log_level` | Logger level is configured at startup |
+| `gin_mode` | Not re-applied after process start |
+
+**Ops tip:** After rotating TLS material, trusted proxies, rate limits, rapid-request thresholds, or log level, restart the `garde` container/process. After rotating only API keys, CORS, cookies, SMTP, feature flags, or admin passwords, a Vault Agent rewrite of `/run/secrets` is enough.
+
+> [!NOTE]
+> `RATE_LIMIT=0` / `0,0` is inspected in some middleware paths live, but changing from e.g. `100,60` to `200,60` still needs a restart.
 
 ### Web UI (production)
 

@@ -150,7 +150,7 @@ Full step-by-step: [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-v
 - Vault Agent authenticates with AppRole and auto-renews tokens
 - Templates rerender when secrets rotate
 - Prod Vault listens on `127.0.0.1:8200` only in Compose; do not expose it publicly
-- The app reloads the in-memory secret map when files under `/run/secrets` change. Live apply covers Redis reconnect and superuser/admin password refresh; rate-limit / rapid-request thresholds and TLS binding still require a restart. See [README – What hot-reloads without restart](../README.md#what-hot-reloads-without-restart).
+- The app reloads the in-memory secret map when files under `/run/secrets` change. Only some keys apply live (API key, CORS, cookies, feature flags, SMTP, Redis reconnect, superuser/admin bootstrap). **TLS binding, trusted proxies, rate-limit / rapid-request thresholds, and log level require a restart.** See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
 ## Development (dev profile)
 
 - The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`.
