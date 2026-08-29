@@ -160,8 +160,8 @@ volumes:
     driver_opts:
       type: tmpfs
       device: tmpfs
-      # Readable/executable by all for Vault Agent → garde handoff; not world-writable
-      o: size=2m,mode=0755
+      # Owned by Vault image user (uid 100) so the agent can write; world-readable for garde; not world-writable
+      o: size=2m,uid=100,gid=1000,mode=0755
 
 networks:
   prod_network:

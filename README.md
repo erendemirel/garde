@@ -137,7 +137,7 @@ This automatically sets up:
 > [!TIP]
 > The development setup is fully self-contained and includes everything you need to get started immediately
 
-Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password DevAdminTest123! for both.
+Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password ` DevAdminTest123!`  for both.
 
 > [!NOTE]
 > The `dev` profile auto-creates the Vault Agent token during `init-vault.sh` (no host `vault/dev-token` file needed). Secrets are seeded from `dev.secrets`.

@@ -72,7 +72,8 @@ if [ -f /prod.secrets ]; then
     case "$key" in ''|\#*) continue ;; esac
     key=$(echo "$key" | xargs)
     value=$(echo "$value" | xargs)
-    if [ -n "$key" ] && [ -n "$value" ]; then
+    # Allow empty values so optional keys (e.g. TRUSTED_PROXIES=) still exist for Vault Agent templates
+    if [ -n "$key" ]; then
       lower_key=$(echo "$key" | tr '[:upper:]' '[:lower:]')
       echo "  Setting secret: $lower_key"
       vault kv put "secret/garde/$lower_key" value="$value"
