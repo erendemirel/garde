@@ -70,40 +70,71 @@
 3. **Configure TLS and mTLS** (see [TLS and mTLS](#tls-and-mtls-configuration) below).
 4. **Deploy** using docker-compose or your orchestrator.
 
-**If you use the single-VPS Docker Compose stack** below, you do not perform step 1 manually—the one-time init does Vault setup for you. Go to [Deploying to a VPS](#deploying-to-a-vps).
+**If you use the single-VPS Docker Compose stack** below, Vault runs in **production server mode** (persistent file storage). You still initialize, unseal, and configure AppRole once—then Vault Agent uses AppRole for day-to-day secret delivery. Go to [Deploying to a VPS](#deploying-to-a-vps).
 
-**Single VPS with Docker Compose:** A supported production pattern is running everything on one host with Docker Compose (Vault, Agent, Redis, garde, and the web UI in separate containers). The stack is defined in `docker-compose.prod.yml`. The steps below are the full flow: prerequisites, secrets, one-time Vault init, starting the stack, then VPS hardening and ongoing ops. For Vault/Agent details (init script, agent config), see [vault/README.md](https://github.com/erendemirel/garde/blob/master/vault/README.md).
+**Single VPS with Docker Compose:** A supported production pattern is running everything on one host with Docker Compose (Vault server, Vault Agent, Redis, garde, and the web UI). The stack is defined in `docker-compose.prod.yml`. It does **not** use `vault server -dev`. For Vault/Agent details, see [vault/README.md](https://github.com/erendemirel/garde/blob/master/vault/README.md).
 
 ### Deploying to a VPS
 
 1. **Provision the VPS** (Ubuntu 24.04 or similar). Install Docker and Docker Compose:
    ```bash
-   apt update && apt install -y docker.io docker-compose-v2
+   apt update && apt install -y docker.io docker-compose-v2 jq
    systemctl enable --now docker
    ```
 
 2. **Get the project** on the VPS (clone the repo or copy files, e.g. with `rsync` or `scp`).
 
-3. **Create `prod.secrets`** (copy from `dev.secrets`, set production values). For the single-VPS Docker Compose stack, set `REDIS_HOST=redis` (the Compose service name). Set `CORS_ALLOW_ORIGINS` to the URL users will use for the UI (e.g. `https://auth.yourdomain.com` or `http://<VPS_IP>`). Create a `.env` in the project root with `VAULT_TOKEN` (same as `VAULT_DEV_ROOT_TOKEN_ID` if using the default), `REDIS_PASSWORD` (same as in `prod.secrets`), and optionally `PUBLIC_API_URL` if the API will be at a different URL (e.g. behind a reverse proxy).
+3. **Create `prod.secrets`** (copy from `dev.secrets`, set production values). For the single-VPS stack, set `REDIS_HOST=redis` (the Compose service name). Set `CORS_ALLOW_ORIGINS` to the URL users will use for the UI. Create a `.env` in the project root with `REDIS_PASSWORD` (same as in `prod.secrets`) and optionally `PUBLIC_API_URL`. You will add `VAULT_TOKEN` after the next step.
 
-4. **One-time Vault init, then start the stack:**
+4. **Start Vault (server mode) and initialize once:**
    ```bash
    docker compose -f docker-compose.prod.yml up -d vault
+
+   # First boot only — creates root token + unseal keys. Store offline; never commit.
+   docker compose -f docker-compose.prod.yml exec vault \
+     vault operator init -key-shares=5 -key-threshold=3 -format=json > vault-credentials.json
+   chmod 600 vault-credentials.json
+
+   jq -r '.unseal_keys_b64[]' vault-credentials.json > vault-unseal-keys
+   chmod 600 vault-unseal-keys
+
+   # Put root token in .env for the one-time AppRole init (and future reseeds)
+   echo "VAULT_TOKEN=$(jq -r .root_token vault-credentials.json)" >> .env
+   chmod 600 .env
+   ```
+
+5. **Unseal Vault, configure AppRole, then start the stack:**
+   ```bash
+   # Unseal (also required after every host reboot — Vault seals on restart)
+   docker compose -f docker-compose.prod.yml --profile ops run --rm vault-unseal
+
+   # One-time: enable AppRole, write vault/role-id + vault/secret-id, seed prod.secrets
    docker compose -f docker-compose.prod.yml --profile init run --rm vault-init
+
    docker compose -f docker-compose.prod.yml up -d --build
    ```
-   The init step enables AppRole, creates the garde policy/role, writes `vault/role-id` and `vault/secret-id`, and seeds secrets from `prod.secrets`. Do not commit those files.
+   Vault Agent authenticates with **AppRole** (`vault/role-id`, `vault/secret-id`), not with the root token. Do not commit those files or `vault-credentials.json` / `vault-unseal-keys`.
 
-5. **Firewall:** Allow SSH (22), UI (80 or 443), and API (8443) as needed. Do not expose Vault (8200) to the internet.
+6. **Firewall:** Allow SSH (22), UI (80 or 443), and API (8443) as needed. Vault is bound to `127.0.0.1:8200` only—do not publish it publicly.
 
-6. **TLS (recommended):** Put a reverse proxy (e.g. Caddy or nginx) in front; terminate TLS and proxy to the UI and API containers. Set `PUBLIC_API_URL` and `CORS_ALLOW_ORIGINS` to your public URLs and rebuild the UI container.
+7. **TLS (recommended):** Put a reverse proxy (e.g. Caddy or nginx) in front; terminate TLS and proxy to the UI and API containers. Set `PUBLIC_API_URL` and `CORS_ALLOW_ORIGINS` to your public URLs and rebuild the UI container.
+
+**After reboot:** Vault comes back sealed. Unseal before (or while) bringing dependents up:
+```bash
+docker compose -f docker-compose.prod.yml up -d vault
+docker compose -f docker-compose.prod.yml --profile ops run --rm vault-unseal
+docker compose -f docker-compose.prod.yml up -d
+```
 
 **Ongoing operations** (single-VPS stack):
 
-- **Updates:** Pull (or rsync) the latest code, then run `docker compose -f docker-compose.prod.yml up -d --build`.
-- **Logs:** `docker compose -f docker-compose.prod.yml logs -f garde` (or `ui`, `vault-agent`, etc.).
+- **Updates:** Pull (or rsync) the latest code, then run `docker compose -f docker-compose.prod.yml up -d --build` (unseal first if Vault was restarted).
+- **Logs:** `docker compose -f docker-compose.prod.yml logs -f garde` (or `ui`, `vault-agent`, `vault`, etc.).
 - **Restarts:** `docker compose -f docker-compose.prod.yml restart garde` (or another service name).
+- **Reseed secrets:** edit `prod.secrets`, ensure Vault is unsealed and `VAULT_TOKEN` is set, then `docker compose -f docker-compose.prod.yml --profile init run --rm vault-init`.
 
+> [!IMPORTANT]
+> Production Vault requires operator unseal keys. Losing `vault-credentials.json` without a backup means permanent loss of access to the Vault data volume. Back up the credentials offline (or use auto-unseal / a proper Vault cluster for multi-node HA).
 ### Required mandatory secrets in Vault
 | Secret Path | Description |
 |-------------|-------------|

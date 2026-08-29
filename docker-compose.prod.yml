@@ -1,29 +1,70 @@
-# Single VPS production stack (Vault + Agent + Redis + garde API + UI in separate container)
-# Usage:
-#   1. Copy `dev.secrets` to `prod.secrets` and set production values
-#   2. Start Vault, then run init once with root token: see vault/README.md "Single VPS production".
-#   3. docker compose -f docker-compose.prod.yml up --build -d
+# Single-VPS production stack (Vault server + Agent + Redis + garde API + UI)
+#
+# Vault runs in production mode (file storage), NOT `vault server -dev`.
+# You must initialize and unseal Vault once, then configure AppRole.
+#
+# First-time bootstrap (see docs/INSTALLATION.md "Deploying to a VPS"):
+#   1. Copy dev.secrets → prod.secrets and set production values
+#   2. docker compose -f docker-compose.prod.yml up -d vault
+#   3. docker compose -f docker-compose.prod.yml exec vault \
+#        vault operator init -key-shares=5 -key-threshold=3 -format=json > vault-credentials.json
+#      chmod 600 vault-credentials.json   # keep offline / never commit
+#      jq -r '.unseal_keys_b64[]' vault-credentials.json > vault-unseal-keys
+#      chmod 600 vault-unseal-keys
+#   4. Put root_token from that JSON into .env as VAULT_TOKEN=...
+#   5. docker compose -f docker-compose.prod.yml --profile ops run --rm vault-unseal
+#   6. docker compose -f docker-compose.prod.yml --profile init run --rm vault-init
+#   7. docker compose -f docker-compose.prod.yml up -d --build
+#
+# After every host reboot, Vault seals again — re-run step 5 (vault-unseal) before
+# starting vault-agent / garde, or unseal then `up -d`.
 
 services:
   vault:
     image: hashicorp/vault:1.15
     cap_add:
       - IPC_LOCK
+    command: server -config=/vault/config/server.hcl
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:-root}
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://127.0.0.1:8200
+    volumes:
+      - ./vault/server.hcl:/vault/config/server.hcl:ro
+      - vault_data:/vault/data
+    # Bind to localhost only — never expose Vault to the public internet
     ports:
-      - "8200:8200"
+      - "127.0.0.1:8200:8200"
     networks:
       - prod_network
     healthcheck:
-      test: ["CMD", "sh", "-c", "VAULT_ADDR=http://127.0.0.1:8200 vault status"]
+      # Exit 0 = unsealed; exit 2 = sealed. Fail healthcheck while sealed so
+      # dependents wait until the operator has unsealed.
+      test: ["CMD", "vault", "status"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
 
-  # Run once to enable AppRole, create garde role, write role-id/secret-id, and seed secrets.
-  # Requires VAULT_TOKEN(e.g. root) and optionally a secrets file at prod.secrets.
+  # One-shot: unseal using vault-unseal-keys (one key per line; see INSTALLATION.md)
+  vault-unseal:
+    image: hashicorp/vault:1.15
+    entrypoint: /bin/sh
+    command: /vault/unseal-prod.sh
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_UNSEAL_KEYS_FILE: /vault-unseal-keys
+    volumes:
+      - ./vault/unseal-prod.sh:/vault/unseal-prod.sh:ro
+      - ./vault-unseal-keys:/vault-unseal-keys:ro
+    depends_on:
+      - vault
+    networks:
+      - prod_network
+    profiles:
+      - ops
+
+  # One-shot: enable AppRole, write role-id/secret-id, seed secrets from prod.secrets.
+  # Requires an unsealed Vault and VAULT_TOKEN (root or equivalent policy token).
   vault-init:
     image: hashicorp/vault:1.15
     entrypoint: /bin/sh
@@ -74,7 +115,6 @@ services:
     networks:
       - prod_network
     restart: unless-stopped
-    # Password can be set via env; for prod it should come from Vault (seeded in prod.secrets as REDIS_PASSWORD)
 
   garde:
     build:
@@ -102,7 +142,6 @@ services:
       context: ./web
       dockerfile: Dockerfile
       args:
-        # URL the browser will use to call the API (same host: 8443, or set PUBLIC_API_URL to your API host)
         PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8443}
     ports:
       - "80:80"
@@ -113,6 +152,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  vault_data:
+    driver: local
   redis_data_prod:
     driver: local
   prod-secrets:
