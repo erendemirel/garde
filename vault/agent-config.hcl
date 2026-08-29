@@ -98,6 +98,12 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/mfa_encryption_key\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/mfa_encryption_key"
+  error_on_missing_key = false
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/admin_users_json\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/admin_users_json"
 }

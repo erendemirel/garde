@@ -28,7 +28,7 @@
    - There are two types of things to configure: secrets, permissions, and groups. On dev, secrets are managed via `dev.secrets` (already populated with defaults); permissions and groups use a built-in SQLite database and require no configuration.
    - Modify as needed for your environment. The easiest way to learn about secrets and permission system is:
        - **For secrets:** Following the comments inside `dev.secrets` file,  
-       - **For permission and group system:** Following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) section in integration guide to understand how they work. You can also have a look at this section in [Key Concepts](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#security-without-role-paradoxes) to have the bigger picture.
+       - **For permission and group system:** Following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) section in integration guide to understand how they work. You can also have a look at this section in [Key Concepts](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#security-without-scope-paradoxes) to have the bigger picture.
 
 3. **Start the development stack**
    ```bash
@@ -45,10 +45,11 @@
 
 ### What happens automatically
 - Vault starts in development mode
+- `init-vault.sh` writes the Vault Agent token into a shared Docker volume (no host `vault/dev-token` file required)
 - Secrets from `dev.secrets` are seeded into Vault
 - Vault Agent writes secrets to tmpfs (`/run/secrets`)
 - Application reads secrets and connects to Redis
-- Configuration hot-reload is automatically enabled
+- Secret file watching is enabled; see [Hot reload](../README.md#what-hot-reloads-without-restart) for what applies live vs what needs a restart
 
 ---
 
@@ -113,6 +114,7 @@
 | `secret/garde/superuser_email` | Superuser account email (The user is auto-created) |
 | `secret/garde/superuser_password` | Superuser password (The user is auto-created) |
 | `secret/garde/api_key` | API key (20+ chars, mixed case/symbols) |
+| `secret/garde/mfa_encryption_key` | (Recommended) Key used to encrypt MFA TOTP secrets at rest. Any string (SHA-256'd to 32 bytes) or base64-encoded 32-byte key. If omitted, a key is derived from `api_key`. |
 
 ### TLS and mTLS configuration
 
@@ -165,14 +167,14 @@
 | `secret/garde/admin_users_json` | JSON object: `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`. Admins are auto-created/updated at startup and on secret reload. Public/admin-created signup cannot create these accounts. |
 
 **Permissions & Groups**:
-- Permissions and groups are managed via SQLite database.
+- Permissions and groups are managed via SQLite database (separate from Redis user/session storage).
 - The database is stored at `data/permissions.db` and is automatically created on first run.
+- **Privilege tiers vs permissions:** Superuser/Admin/User (from Vault email lists) are bootstrap privilege tiers. Named permissions + groups are application access rights. See [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for the full model, admin matrix, and a request→approve walkthrough.
 - **Database Schema:**
   - `permissions` table: `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `name` (TEXT NOT NULL UNIQUE), `definition` (TEXT NOT NULL)
   - `groups` table: `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `name` (TEXT NOT NULL UNIQUE), `definition` (TEXT NOT NULL)
   - `permission_visibility` table: `permission_id` (INTEGER NOT NULL), `group_id` (INTEGER NOT NULL), PRIMARY KEY (permission_id, group_id) with FOREIGN KEY constraints
 - Superusers can manage permissions, groups, and visibility mappings via API endpoints (see [Superuser-Only Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#f-superuser-only-permission-and-group-management) in the integration guide).
-- See [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for detailed information.
 
 > [!TIP]
 > The built-in SQLite database doesn't require any configuration or infrastructure.

@@ -133,11 +133,12 @@ The repo includes a production stack (Vault in dev mode, Vault Agent, Redis, gar
 - Secrets are written to tmpfs
 - Vault Agent auto-renews tokens
 - Templates rerender when secrets rotate
-- The app hot-reloads secrets (superuser/admin credentials, Redis creds) when files under `/run/secrets` change
+- The app reloads the in-memory secret map when files under `/run/secrets` change. Live apply covers Redis reconnect and superuser/admin password refresh; rate-limit / rapid-request thresholds and TLS binding still require a restart. See [README – What hot-reloads without restart](../README.md#what-hot-reloads-without-restart).
 
 ## Development (dev profile)
 
 - The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`.
-- The agent writes one file per secret to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials automatically.
+- `init-vault.sh` writes the Vault Agent token into a shared Docker volume (`vault-agent-token`); you do **not** need a host-side `vault/dev-token` file.
+- The agent writes one file per secret to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials as described above.
 - Start with: `docker compose --profile dev up --build`. See [Development Installation](../docs/INSTALLATION.md#development-installation) in the installation guide.
 

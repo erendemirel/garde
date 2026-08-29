@@ -7,11 +7,11 @@ vault {
   address = "http://dev-vault:8200"
 }
 
-# Use static token for dev(the dev server token)
+# Use static token for dev (written by init-vault.sh into the shared volume)
 auto_auth {
   method "token_file" {
     config = {
-      token_file_path = "/vault/config/dev-token"
+      token_file_path = "/vault/config/token/dev-token"
     }
   }
 
@@ -86,6 +86,12 @@ template {
 template {
   contents = "{{ with secret \"secret/data/garde/api_key\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/api_key"
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/mfa_encryption_key\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/mfa_encryption_key"
+  error_on_missing_key = false
 }
 
 template {
