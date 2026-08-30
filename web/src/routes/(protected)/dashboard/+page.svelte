@@ -51,8 +51,15 @@ const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 				<div class="info-card">
 					<p class="info-label">MFA</p>
 					<p class="info-value">
-						{$user.mfa_enabled ? 'Enabled' : 'Disabled'}
-						{$user.mfa_enforced ? '(Enforced)' : ''}
+						{#if $user.mfa_enabled && $user.mfa_enforced}
+							<span class="text-blue-600">Enforced and set up</span>
+						{:else if $user.mfa_enabled}
+							<span class="text-green-700">Set up although not enforced</span>
+						{:else if $user.mfa_enforced}
+							<span class="text-red-600">Enforced but not set up</span>
+						{:else}
+							<span class="text-orange-500">Not enforced and not set up</span>
+						{/if}
 					</p>
 				</div>
 				<div class="info-card">

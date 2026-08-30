@@ -18,7 +18,6 @@
 	} from '$lib/api';
 	import { isSuperuser } from '$lib/stores';
 	import { 
-		Shield, 
 		Users, 
 		Eye, 
 		Plus, 
@@ -26,32 +25,38 @@
 		Trash2, 
 		X, 
 		Check,
-		ArrowLeft,
-		XCircle,
 		Grid3x3,
 		List
 	} from 'lucide-svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import UserKey from '$lib/components/UserKey.svelte';
 
 	let activeTab = 'permissions';
 	let loading = true;
 	let accessDenied = false;
 	let error = '';
+	let showToast = false;
+	let toastMessage = '';
+	let toastType = 'success';
 
 	// Permissions
 	let permissions = [];
 	let permissionName = '';
 	let permissionDefinition = '';
+	let originalPermissionDefinition = '';
 	let editingPermission = null;
 	let showPermissionModal = false;
+	let showDeletePermissionConfirm = false;
 	let deletingPermission = null;
 
 	// Groups
 	let groups = [];
 	let groupName = '';
 	let groupDefinition = '';
+	let originalGroupDefinition = '';
 	let editingGroup = null;
 	let showGroupModal = false;
+	let showDeleteGroupConfirm = false;
 	let deletingGroup = null;
 
 	// Visibility - track which groups each permission is visible to
@@ -123,15 +128,33 @@
 		}
 	}
 
+	$: permissionDirty = editingPermission
+		? permissionDefinition.trim() !== originalPermissionDefinition.trim()
+		: permissionName.trim().length > 0 && permissionDefinition.trim().length > 0;
+	$: groupDirty = editingGroup
+		? groupDefinition.trim() !== originalGroupDefinition.trim()
+		: groupName.trim().length > 0 && groupDefinition.trim().length > 0;
+
+	function showToastMessage(message, type = 'success') {
+		toastMessage = message;
+		toastType = type;
+		showToast = true;
+		setTimeout(() => {
+			showToast = false;
+		}, 3000);
+	}
+
 	// Permission functions
 	function openPermissionModal(perm = null) {
 		editingPermission = perm;
 		if (perm) {
 			permissionName = perm.key;
-			permissionDefinition = perm.description;
+			permissionDefinition = perm.description || '';
+			originalPermissionDefinition = perm.description || '';
 		} else {
 			permissionName = '';
 			permissionDefinition = '';
+			originalPermissionDefinition = '';
 		}
 		showPermissionModal = true;
 	}
@@ -141,6 +164,7 @@
 		editingPermission = null;
 		permissionName = '';
 		permissionDefinition = '';
+		originalPermissionDefinition = '';
 	}
 
 	async function savePermission() {
@@ -148,11 +172,17 @@
 			error = 'Name and definition are required';
 			return;
 		}
+		if (editingPermission && !permissionDirty) {
+			showToastMessage('No changes to save', 'error');
+			return;
+		}
 		try {
 			if (editingPermission) {
 				await updatePermission(editingPermission.key, permissionDefinition);
+				showToastMessage(`Updated permission "${editingPermission.name}"`, 'success');
 			} else {
 				await createPermission(permissionName.trim(), permissionDefinition.trim());
+				showToastMessage(`Created permission "${permissionName.trim()}"`, 'success');
 			}
 			await loadData();
 			closePermissionModal();
@@ -162,13 +192,21 @@
 		}
 	}
 
+	function requestDeletePermission(perm) {
+		deletingPermission = perm;
+		showDeletePermissionConfirm = true;
+	}
+
 	async function handleDeletePermission() {
 		if (!deletingPermission) return;
 		try {
+			const name = deletingPermission.name;
 			await deletePermission(deletingPermission.key);
 			await loadData();
 			deletingPermission = null;
+			showDeletePermissionConfirm = false;
 			error = '';
+			showToastMessage(`Deleted permission "${name}"`, 'success');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete permission';
 		}
@@ -179,10 +217,12 @@
 		editingGroup = grp;
 		if (grp) {
 			groupName = grp.key;
-			groupDefinition = grp.description;
+			groupDefinition = grp.description || '';
+			originalGroupDefinition = grp.description || '';
 		} else {
 			groupName = '';
 			groupDefinition = '';
+			originalGroupDefinition = '';
 		}
 		showGroupModal = true;
 	}
@@ -192,6 +232,7 @@
 		editingGroup = null;
 		groupName = '';
 		groupDefinition = '';
+		originalGroupDefinition = '';
 	}
 
 	async function saveGroup() {
@@ -199,11 +240,17 @@
 			error = 'Name and definition are required';
 			return;
 		}
+		if (editingGroup && !groupDirty) {
+			showToastMessage('No changes to save', 'error');
+			return;
+		}
 		try {
 			if (editingGroup) {
 				await updateGroup(editingGroup.key, groupDefinition.trim());
+				showToastMessage(`Updated group "${editingGroup.name}"`, 'success');
 			} else {
 				await createGroup(groupName.trim(), groupDefinition.trim());
+				showToastMessage(`Created group "${groupName.trim()}"`, 'success');
 			}
 			await loadData();
 			closeGroupModal();
@@ -213,13 +260,21 @@
 		}
 	}
 
+	function requestDeleteGroup(grp) {
+		deletingGroup = grp;
+		showDeleteGroupConfirm = true;
+	}
+
 	async function handleDeleteGroup() {
 		if (!deletingGroup) return;
 		try {
+			const name = deletingGroup.name;
 			await deleteGroup(deletingGroup.key);
 			await loadData();
 			deletingGroup = null;
+			showDeleteGroupConfirm = false;
 			error = '';
+			showToastMessage(`Deleted group "${name}"`, 'success');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete group';
 		}
@@ -243,29 +298,33 @@
 			error = 'Please select a group';
 			return;
 		}
+		const permKey = addingVisibilityForPermission;
+		const groupKey = selectedGroupForAdd;
+		const permName = permissions.find((p) => p.key === permKey)?.name || permKey;
+		const groupNameLabel = groups.find((g) => g.key === groupKey)?.name || groupKey;
 		try {
-			await addPermissionVisibility(addingVisibilityForPermission, selectedGroupForAdd);
-			// Update local state
-			if (!permissionVisibility[addingVisibilityForPermission]) {
-				permissionVisibility[addingVisibilityForPermission] = [];
+			await addPermissionVisibility(permKey, groupKey);
+			if (!permissionVisibility[permKey]) {
+				permissionVisibility[permKey] = [];
 			}
-			if (!permissionVisibility[addingVisibilityForPermission].includes(selectedGroupForAdd)) {
-				permissionVisibility[addingVisibilityForPermission] = [...permissionVisibility[addingVisibilityForPermission], selectedGroupForAdd];
+			if (!permissionVisibility[permKey].includes(groupKey)) {
+				permissionVisibility[permKey] = [...permissionVisibility[permKey], groupKey];
 			}
 			closeAddGroupModal();
 			error = '';
+			showToastMessage(`Visibility: "${permName}" → "${groupNameLabel}" added`, 'success');
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Failed to add visibility mapping';
-			// If it's a duplicate, update local state anyway
 			if (msg.includes('already exists') || msg.includes('duplicate')) {
-				if (!permissionVisibility[addingVisibilityForPermission]) {
-					permissionVisibility[addingVisibilityForPermission] = [];
+				if (!permissionVisibility[permKey]) {
+					permissionVisibility[permKey] = [];
 				}
-				if (!permissionVisibility[addingVisibilityForPermission].includes(selectedGroupForAdd)) {
-					permissionVisibility[addingVisibilityForPermission] = [...permissionVisibility[addingVisibilityForPermission], selectedGroupForAdd];
+				if (!permissionVisibility[permKey].includes(groupKey)) {
+					permissionVisibility[permKey] = [...permissionVisibility[permKey], groupKey];
 				}
 				closeAddGroupModal();
 				error = '';
+				showToastMessage(`Visibility: "${permName}" → "${groupNameLabel}" added`, 'success');
 			} else {
 				error = msg;
 			}
@@ -273,13 +332,17 @@
 	}
 
 	async function removeVisibility(permissionKey, groupKey) {
+		const permName = permissions.find((p) => p.key === permissionKey)?.name || permissionKey;
+		const groupNameLabel = groups.find((g) => g.key === groupKey)?.name || groupKey;
 		try {
 			await removePermissionVisibility(permissionKey, groupKey);
-			// Update local state
 			if (permissionVisibility[permissionKey]) {
-				permissionVisibility[permissionKey] = permissionVisibility[permissionKey].filter(g => g !== groupKey);
+				permissionVisibility[permissionKey] = permissionVisibility[permissionKey].filter(
+					(g) => g !== groupKey
+				);
 			}
 			error = '';
+			showToastMessage(`Visibility: "${permName}" → "${groupNameLabel}" removed`, 'success');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to remove visibility mapping';
 		}
@@ -295,9 +358,10 @@
 	}
 
 	async function addVisibilityForGroup(permissionKey, groupKey) {
+		const permName = permissions.find((p) => p.key === permissionKey)?.name || permissionKey;
+		const groupNameLabel = groups.find((g) => g.key === groupKey)?.name || groupKey;
 		try {
 			await addPermissionVisibility(permissionKey, groupKey);
-			// Update local state
 			if (!permissionVisibility[permissionKey]) {
 				permissionVisibility[permissionKey] = [];
 			}
@@ -305,10 +369,13 @@
 				permissionVisibility[permissionKey] = [...permissionVisibility[permissionKey], groupKey];
 			}
 			error = '';
+			showToastMessage(`Visibility: "${permName}" → "${groupNameLabel}" added`, 'success');
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Failed to add visibility mapping';
 			if (!msg.includes('already exists') && !msg.includes('duplicate')) {
 				error = msg;
+			} else {
+				showToastMessage(`Visibility: "${permName}" → "${groupNameLabel}" added`, 'success');
 			}
 		}
 	}
@@ -369,7 +436,7 @@
 						class="px-4 py-2 font-medium transition-colors {activeTab === 'permissions' ? 'text-accent border-b-2 border-accent' : 'text-muted hover:text-accent'}"
 						on:click={() => activeTab = 'permissions'}
 					>
-						<Shield size={18} class="inline mr-2" />
+						<UserKey size={18} class="inline mr-2" />
 						Permissions
 					</button>
 					<button
@@ -393,8 +460,8 @@
 					<div class="space-y-4">
 						<div class="flex justify-between items-center">
 							<h2 class="section-title">Permissions</h2>
-							<button class="btn-light px-3 py-1.5 text-xs" on:click={() => openPermissionModal()}>
-								<Plus size={16} />
+							<button class="btn-light py-1.5 text-xs" on:click={() => openPermissionModal()}>
+								<Plus size={16} class="-ml-0.5" />
 								Create Permission
 							</button>
 						</div>
@@ -419,7 +486,7 @@
 											</button>
 											<button 
 												class="btn-small text-error"
-												on:click={() => deletingPermission = perm}
+												on:click={() => requestDeletePermission(perm)}
 											>
 												<Trash2 size={16} />
 												Delete
@@ -442,8 +509,8 @@
 									Manage groups and see which users belong to each group.
 								</p>
 							</div>
-							<button class="btn-light px-3 py-1.5 text-xs" on:click={() => openGroupModal()}>
-								<Plus size={16} />
+							<button class="btn-light py-1.5 text-xs" on:click={() => openGroupModal()}>
+								<Plus size={16} class="-ml-0.5" />
 								Create Group
 							</button>
 						</div>
@@ -470,7 +537,7 @@
 												</button>
 												<button 
 													class="btn-small text-error"
-													on:click={() => deletingGroup = grp}
+													on:click={() => requestDeleteGroup(grp)}
 												>
 													<Trash2 size={16} />
 													Delete
@@ -687,11 +754,14 @@
 						rows="4"
 					></textarea>
 				</label>
+				{#if editingPermission && permissionDirty}
+					<p class="text-sm text-muted">Definition changed — save to apply.</p>
+				{/if}
 				<div class="form-actions">
 					<button class="btn-secondary" on:click={closePermissionModal}>Cancel</button>
-					<button class="btn-primary" on:click={savePermission}>
-						<Check size={18} />
-						Save
+					<button class="btn-primary" on:click={savePermission} disabled={!permissionDirty}>
+						<Check size={18} class="-ml-0.5" />
+						{editingPermission ? (permissionDirty ? 'Save Changes' : 'No changes') : 'Create'}
 					</button>
 				</div>
 			</div>
@@ -734,11 +804,14 @@
 						rows="4"
 					></textarea>
 				</label>
+				{#if editingGroup && groupDirty}
+					<p class="text-sm text-muted">Definition changed — save to apply.</p>
+				{/if}
 				<div class="form-actions">
 					<button class="btn-secondary" on:click={closeGroupModal}>Cancel</button>
-					<button class="btn-primary" on:click={saveGroup}>
-						<Check size={18} />
-						Save
+					<button class="btn-primary" on:click={saveGroup} disabled={!groupDirty}>
+						<Check size={18} class="-ml-0.5" />
+						{editingGroup ? (groupDirty ? 'Save Changes' : 'No changes') : 'Create'}
 					</button>
 				</div>
 			</div>
@@ -774,7 +847,7 @@
 				<div class="form-actions">
 					<button class="btn-secondary" on:click={closeAddGroupModal}>Cancel</button>
 					<button class="btn-primary" on:click={addVisibility} disabled={!selectedGroupForAdd}>
-						<Check size={18} />
+						<Check size={18} class="-ml-0.5" />
 						Add Visibility
 					</button>
 				</div>
@@ -784,26 +857,40 @@
 {/if}
 
 <!-- Delete Permission Confirmation -->
-{#if deletingPermission}
-	<ConfirmModal
-		title="Delete Permission"
-		message="Are you sure you want to delete the permission '{deletingPermission.name}'? This will also remove all visibility mappings for this permission."
-		confirmText="Delete"
-		cancelText="Cancel"
-		on:confirm={handleDeletePermission}
-		on:cancel={() => deletingPermission = null}
-	/>
-{/if}
+<ConfirmModal
+	bind:open={showDeletePermissionConfirm}
+	title="Delete Permission"
+	message={deletingPermission
+		? `Delete permission "${deletingPermission.name}"? This also removes all visibility mappings for it.`
+		: 'Delete this permission?'}
+	confirmText="Delete"
+	cancelText="Cancel"
+	confirmClass="btn-danger"
+	on:confirm={handleDeletePermission}
+	on:cancel={() => {
+		deletingPermission = null;
+	}}
+/>
 
 <!-- Delete Group Confirmation -->
-{#if deletingGroup}
-	<ConfirmModal
-		title="Delete Group"
-		message="Are you sure you want to delete the group '{deletingGroup.name}'? This will also remove all visibility mappings for this group."
-		confirmText="Delete"
-		cancelText="Cancel"
-		on:confirm={handleDeleteGroup}
-		on:cancel={() => deletingGroup = null}
-	/>
+<ConfirmModal
+	bind:open={showDeleteGroupConfirm}
+	title="Delete Group"
+	message={deletingGroup
+		? `Delete group "${deletingGroup.name}"? This also removes all visibility mappings for it.`
+		: 'Delete this group?'}
+	confirmText="Delete"
+	cancelText="Cancel"
+	confirmClass="btn-danger"
+	on:confirm={handleDeleteGroup}
+	on:cancel={() => {
+		deletingGroup = null;
+	}}
+/>
+
+{#if showToast}
+	<div class="toast" class:toast-success={toastType === 'success'} class:toast-error={toastType === 'error'}>
+		{toastMessage}
+	</div>
 {/if}
 

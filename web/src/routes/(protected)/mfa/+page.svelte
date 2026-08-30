@@ -146,7 +146,7 @@
 <ConfirmModal 
 	bind:open={showConfirmModal}
 	title="Disable MFA"
-	message="Are you sure you want to disable MFA? This will reduce your account security."
+	message="Disable MFA now? Your next sign-in will only require email and password until you set MFA up again."
 	confirmText="Disable MFA"
 	confirmClass="btn-danger"
 	on:confirm={handleDisable}

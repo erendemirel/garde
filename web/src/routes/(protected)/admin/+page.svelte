@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { listUsers } from '$lib/api';
 	import { isAdmin } from '$lib/stores';
-	import { CircleCheck, CircleX, CircleAlert, ArrowLeft } from 'lucide-svelte';
+	import { CircleCheck, CircleX, CircleAlert } from 'lucide-svelte';
 
 	let users = [];
 	let error = '';
@@ -36,9 +36,19 @@
 	function getStatusClass(status) {
 		const s = status.toLowerCase();
 		if (s === 'ok') return 'ok';
-		if (s.includes('locked') || s.includes('disabled')) return 'locked';
+		if (s.includes('locked') || s.includes('disabled') || s.includes('rejected')) return 'locked';
 		if (s.includes('pending')) return 'pending';
 		return 'pending';
+	}
+
+	function formatStatus(status) {
+		const s = (status || '').toLowerCase();
+		if (s === 'ok') return 'OK';
+		if (s === 'pending admin approval') return 'Pending approval by an admin';
+		if (s === 'admin approval rejected') return 'Approval rejected by an admin';
+		if (s === 'locked by admin') return 'Locked by an admin';
+		if (s === 'locked by security') return 'Locked by security';
+		return status || 'Unknown';
 	}
 
 	function handleSort(field) {
@@ -231,10 +241,20 @@
 											<CircleAlert size={18} />
 										{/if}
 									</span>
-									<span class="status-text">{u.status}</span>
+									<span class="status-text">{formatStatus(u.status)}</span>
 								</span>
 							</td>
-							<td>{u.mfa_enabled ? '' : '—'}{u.mfa_enforced ? ' (enforced)' : ''}</td>
+							<td>
+								{#if u.mfa_enabled && u.mfa_enforced}
+									<span class="text-blue-600">Enforced and set up</span>
+								{:else if u.mfa_enabled}
+									<span class="text-green-700">Set up although not enforced</span>
+								{:else if u.mfa_enforced}
+									<span class="text-red-600">Enforced but not set up</span>
+								{:else}
+									<span class="text-orange-500">Not enforced and not set up</span>
+								{/if}
+							</td>
 							<td>
 								{#if u.pending_updates}
 									<span class="badge badge-pending">Update requested</span>

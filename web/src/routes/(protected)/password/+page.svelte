@@ -97,7 +97,7 @@
 <ConfirmModal 
 	bind:open={showConfirmModal}
 	title="Confirm Password Change"
-	message="Are you sure you want to change your password? You will be logged out after the change."
+	message="Change your password now? You will be signed out immediately and must sign in with the new password."
 	confirmText="Change Password"
 	on:confirm={handleChange}
 />

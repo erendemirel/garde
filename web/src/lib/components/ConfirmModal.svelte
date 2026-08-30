@@ -29,7 +29,7 @@
 
 {#if open}
 	<div 
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" 
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/35" 
 		on:click={handleCancel}
 		on:keydown={handleKeydown}
 		role="dialog" 
@@ -39,7 +39,7 @@
 	>
 		<div class="card max-w-md w-full mx-4 border-2 border-borderc shadow-xl" on:click|stopPropagation role="document">
 			<h2 id="modal-title" class="text-xl font-bold text-accent mb-2">{title}</h2>
-			<p class="text-text mb-6">{message}</p>
+			<p class="text-text mb-6 whitespace-pre-line">{message}</p>
 			<div class="flex gap-3 justify-end">
 				<button class="btn-secondary" on:click={handleCancel}>
 					{cancelText}

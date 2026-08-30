@@ -51,12 +51,12 @@
 	<nav class="navbar">
 		<a href="/dashboard" class="text-lg font-semibold text-accent">garde</a>
 		<div class="nav-links">
-			<a href="/dashboard" class="hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Dashboard</a>
+			<a href="/dashboard" class="font-bold hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Dashboard</a>
 			{#if $isSuperuser}
-				<a href="/superuser" class="hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Superuser</a>
-				<a href="/admin" class="hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Admin</a>
+				<a href="/superuser" class="font-bold hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Superuser</a>
+				<a href="/admin" class="font-bold hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Admin</a>
 			{:else if $isAdmin}
-				<a href="/admin" class="hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Admin</a>
+				<a href="/admin" class="font-bold hover:text-accent transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md">Admin</a>
 			{/if}
 			<button class="btn-secondary" on:click={handleLogout}>
 				<LogOut size={18} />
