@@ -75,7 +75,7 @@ const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 			<div class="pill-card space-y-3">
 				<h2 class="section-title">Permissions</h2>
 				{#if hasEnabled($user.permissions)}
-					<div class="chip-group">
+					<div class="chip-row">
 						{#each Object.entries($user.permissions) as [perm, enabled]}
 							{#if enabled}
 								<span class="badge badge-permission">
@@ -92,7 +92,7 @@ const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 			<div class="pill-card space-y-3">
 				<h2 class="section-title">Groups</h2>
 				{#if hasEnabled($user.groups)}
-					<div class="chip-group">
+					<div class="chip-row">
 						{#each Object.entries($user.groups) as [group, member]}
 							{#if member}
 								<span class="badge badge-group">{group}</span>

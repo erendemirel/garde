@@ -109,14 +109,6 @@ a {
 		@apply text-orange-400;
 	}
 
-	.badge-permission {
-		@apply border-blue-100 bg-indigo-100 text-[#7AB9E5];
-	}
-
-	.badge-group {
-		@apply border-[#F9D9F1] bg-[#F3E1F6] text-[#C58FCA];
-	}
-
 	.info-grid {
 		@apply grid gap-3 md:grid-cols-2 lg:grid-cols-3;
 	}
@@ -141,47 +133,24 @@ a {
 		@apply rounded-lg border border-borderc bg-input p-4;
 	}
 
-	.chip-group {
-		@apply flex flex-wrap gap-2;
+	.chip-row {
+		@apply flex flex-wrap items-center gap-2;
 	}
 
-	.chip-selection {
-		@apply flex flex-wrap gap-2;
+	.badge-permission {
+		@apply rounded-full border-2 border-blue-100 bg-indigo-100 text-[#6A9DCE];
 	}
 
-	.chip-selectable {
-		@apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-none transition-all duration-150 ease-out cursor-pointer hover:-translate-y-0.5 hover:shadow-md;
+	.badge-group {
+		@apply rounded-full border-2 border-[#DED5DF] bg-[#DED5DF] text-[#857788];
 	}
 
-	.chip-unselected {
-		@apply border-borderc bg-input text-gray-600 hover:border-accent/50 hover:bg-accent/5;
+	/* Pending add/remove (multiselect tray + change summary) */
+	.chip-pending {
+		@apply border-[#fff6cc] bg-[#ffe570] text-[#2d1e2f];
 	}
 
-	.chip-selected {
-		@apply border-2;
-	}
-
-	.chip-selected.chip-permission {
-		@apply border-blue-100 bg-indigo-100 text-[#6A9DCE];
-	}
-
-	.chip-selected.chip-group {
-		@apply border-[#F9D9F1] bg-[#F3E1F6] text-[#C58FCA];
-	}
-
-	.chip-check {
-		@apply inline-flex items-center mr-1;
-		font-size: 0.875rem;
-		font-weight: 700;
-	}
-
-	/* Pending add/remove only: light grey highlight + larger chip */
-	.chip-selectable.chip-added,
-	.chip-selectable.chip-removed {
-		@apply border-2 border-borderc bg-[#e8e6eb] text-[#4a4458] text-sm px-3.5 py-1.5;
-	}
-
-	.chip-selectable.chip-removed {
+	.chip-pending-removed {
 		text-decoration-line: line-through;
 		text-decoration-color: transparent;
 		animation: chip-strike 0.28s ease-out forwards;
@@ -191,6 +160,63 @@ a {
 		to {
 			text-decoration-color: currentColor;
 		}
+	}
+
+	/* Multiselect search-chips field */
+	.ms-root {
+		@apply relative;
+	}
+
+	.ms-field {
+		@apply flex w-full flex-col gap-2 rounded-md border border-borderc bg-input px-2.5 py-2 outline-none transition focus-within:border-accent focus-within:ring-4 focus-within:ring-accent/15;
+	}
+
+	.ms-field-open {
+		@apply border-accent ring-4 ring-accent/15;
+	}
+
+	.ms-tray {
+		@apply flex flex-wrap items-center gap-2 border-t border-borderc/70 pt-2;
+	}
+
+	.ms-chip {
+		@apply relative inline-flex items-center justify-center gap-1 rounded-full border-2 px-2 py-0.5 text-xs font-semibold shadow-none cursor-pointer transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md;
+	}
+
+	.ms-chip-mark {
+		@apply font-bold leading-none;
+	}
+
+	.ms-chip-x {
+		@apply inline-flex opacity-70;
+	}
+
+	.ms-input {
+		@apply w-full border-0 bg-transparent px-1 py-1 text-sm text-text outline-none placeholder:text-muted;
+	}
+
+	.ms-dropdown {
+		@apply absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-borderc bg-card py-1 shadow-card;
+	}
+
+	.ms-option {
+		@apply flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-text transition hover:bg-accent/10;
+	}
+
+	.ms-option-active {
+		@apply bg-accent/10;
+	}
+
+	.ms-option-name {
+		@apply font-semibold;
+	}
+
+	.ms-option-desc {
+		@apply text-xs text-muted;
+	}
+
+	.ms-empty {
+		@apply px-3 py-2 text-sm text-muted;
 	}
 
 	.change-summary {
@@ -214,7 +240,7 @@ a {
 	}
 
 	.change-summary-item {
-		@apply inline-flex items-center gap-1 rounded-full border-2 border-borderc bg-[#e8e6eb] px-3 py-1 text-xs font-semibold text-[#4a4458] appearance-none cursor-pointer shadow-none transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md;
+		@apply inline-flex items-center gap-1 rounded-full border-2 px-3 py-1 text-xs font-semibold appearance-none cursor-pointer shadow-none transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md;
 	}
 
 	.links {
