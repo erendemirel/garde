@@ -17,7 +17,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	_ "garde/endpoint_documentation" // Swagger docs
 
@@ -171,7 +174,9 @@ func main() {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-XSS-Protection", "1; mode=block")
-		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		if config.GetBool("USE_TLS") {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 
 		// Relaxed CSP only for Swagger UI
 		if strings.HasPrefix(c.Request.URL.Path, "/swagger/") {
@@ -185,6 +190,16 @@ func main() {
 	router.Use(middleware.LimitBodySize(validation.MaxBodySize))
 
 	router.Use(middleware.ValidateRequestParameters())
+
+	// Liveness/readiness — before rate limiting so probes are not throttled
+	router.GET("/health", func(c *gin.Context) {
+		if err := repo.Ping(c.Request.Context()); err != nil {
+			slog.Warn("Health check failed", "error", err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 
 	router.Use(rateLimiter.Limit())
 
@@ -278,8 +293,11 @@ func main() {
 	})
 	validateEndpoint.GET("", authHandler.ValidateSession)
 
-	// Swagger
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// Swagger — opt-in via ENABLE_SWAGGER (off by default)
+	if config.GetBool("ENABLE_SWAGGER") {
+		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		slog.Info("Swagger UI enabled at /swagger/index.html")
+	}
 
 	var srv *http.Server
 	port := config.GetWithDefault("PORT", "8443")
@@ -343,10 +361,12 @@ func main() {
 		}
 
 		slog.Info("Starting server with TLS", "port", port)
-		if err := srv.ListenAndServeTLS("", ""); err != nil {
-			slog.Error("Failed to start server", "error", err)
-			os.Exit(1)
-		}
+		go func() {
+			if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				slog.Error("Failed to start server", "error", err)
+				os.Exit(1)
+			}
+		}()
 	} else {
 		srv = &http.Server{
 			Addr:    ":" + port,
@@ -354,9 +374,24 @@ func main() {
 		}
 
 		slog.Warn("Starting server without TLS", "port", port)
-		if err := srv.ListenAndServe(); err != nil {
-			slog.Error("Failed to start server", "error", err)
-			os.Exit(1)
-		}
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("Failed to start server", "error", err)
+				os.Exit(1)
+			}
+		}()
 	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	slog.Info("Shutting down server", "signal", sig.String())
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Server forced to shutdown", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Server stopped")
 }

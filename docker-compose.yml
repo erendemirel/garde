@@ -96,6 +96,12 @@ services:
         condition: service_healthy
       dev-redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
     networks:
       - auth_network

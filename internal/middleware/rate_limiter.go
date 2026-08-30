@@ -33,8 +33,9 @@ type RateLimiter struct {
 }
 
 // Format: "limit" or "limit,window_seconds" or "limit,window_seconds,auth_limit,admin_limit"
-// e.g. "100,60" means 100 requests per 60 seconds for unauthenticated
+// e.g. "100,60" means 100 requests per rolling 60-second window for unauthenticated IPs
 // e.g. "100,60,300,1000" means 100 for unauthenticated (IP), 300 for regular users, 1000 for admins and superusers
+// Window is a true sliding window (Redis sorted set), independent of RAPID_REQUEST_CONFIG.
 // Use "0" or "0,0" to disable rate limiting
 func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
 	maxReqs := defaultRequestsPerWindow

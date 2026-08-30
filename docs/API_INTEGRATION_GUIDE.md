@@ -998,7 +998,7 @@ Sessions are immediately terminated when:
 1. Suspicious activity is detected:
    - Multiple concurrent sessions from different IPs
    - Automated/bot-like behavior detected (when requests are < session.AutomatedRequestTimeout apart)
-   - Unusual User-Agent patterns (containing bot/crawler identifiers or missing common browser strings)
+   - Unusual User-Agent patterns (known bot/crawler/headless/automation identifiers; empty and typical API client UAs such as curl are allowed)
    - Rapid requests exceeding role-aware threshold:
      - Regular users: Base threshold (default: 120 requests/minute)
      - Admins: 3x threshold (default: 360 requests/minute)

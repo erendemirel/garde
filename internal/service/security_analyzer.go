@@ -21,8 +21,7 @@ func NewSecurityAnalyzer(repo *repository.RedisRepository) *SecurityAnalyzer {
 
 const (
 	multipleIPPattern = "multiple_ip_sessions"
-	// TTLs for security records
-	requestCountTTL       = 24 * time.Hour
+	// TTLs for security records unrelated to the rapid-request sliding window
 	lastRequestTimeTTL    = 24 * time.Hour
 	suspiciousActivityTTL = 48 * time.Hour
 
@@ -49,11 +48,12 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatternsWithRole(ctx context.Context,
 		threshold = session.RapidRequestThreshold * 3
 	}
 
-	// 1. Check for rapid requests (potential automated attack)
+	// 1. Check for rapid requests within the sliding RapidRequestWindow (potential automated attack)
+	// This is separate from RATE_LIMIT (IP/user quotas with a configurable window).
 	if !session.IsRapidRequestCheckDisabled() {
-		requestCount, err := d.repo.GetRequestCount(ctx, userID, time.Minute)
+		requestCount, err := d.repo.GetRequestCount(ctx, userID, session.RapidRequestWindow)
 		if err == nil && requestCount > threshold {
-			slog.Warn("SecurityAnalyzer: Rapid request pattern detected", "user_id", userID, "count", requestCount, "threshold", threshold, "is_admin", isAdmin, "is_superuser", isSuperuser)
+			slog.Warn("SecurityAnalyzer: Rapid request pattern detected", "user_id", userID, "count", requestCount, "threshold", threshold, "window", session.RapidRequestWindow, "is_admin", isAdmin, "is_superuser", isSuperuser)
 			patterns = append(patterns, session.ActivityRapidRequests)
 		}
 	}
@@ -70,7 +70,7 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatternsWithRole(ctx context.Context,
 		}
 	}
 
-	// 3. Check for unusual User-Agent patterns
+	// 3. Check for unusual User-Agent patterns (known bots/automation only)
 	isUnusual := d.isUnusualUserAgent(userAgent)
 	if isUnusual {
 		slog.Warn("SecurityAnalyzer: Unusual user agent detected", "user_id", userID, "user_agent", userAgent)
@@ -96,18 +96,24 @@ func (d *SecurityAnalyzer) DetectSuspiciousPatternsWithRole(ctx context.Context,
 	return patterns
 }
 
+// isUnusualUserAgent flags known bot/automation agents. Legitimate API clients
+// (curl, empty UA, custom service agents) are allowed — use DISABLE_USER_AGENT_CHECK
+// to turn this off entirely.
 func (d *SecurityAnalyzer) isUnusualUserAgent(userAgent string) bool {
 	if config.GetBool("DISABLE_USER_AGENT_CHECK") {
 		return false
 	}
 
-	userAgent = strings.ToLower(userAgent)
+	userAgent = strings.ToLower(strings.TrimSpace(userAgent))
+	if userAgent == "" {
+		return false
+	}
 
-	// Check for common bot/script identifiers
+	// Known scrapers / browser automation — not typical HTTP API clients
 	suspiciousTerms := []string{
 		"bot", "crawler", "spider", "headless",
-		"phantomjs", "selenium", "puppet",
-		"curl", "wget", "python-requests",
+		"phantomjs", "selenium", "puppeteer", "puppet",
+		"playwright",
 	}
 
 	for _, term := range suspiciousTerms {
@@ -116,20 +122,7 @@ func (d *SecurityAnalyzer) isUnusualUserAgent(userAgent string) bool {
 		}
 	}
 
-	// Check for missing common browser identifiers
-	commonBrowsers := []string{
-		"mozilla", "chrome", "safari", "firefox", "edge",
-	}
-
-	hasCommonBrowser := false
-	for _, browser := range commonBrowsers {
-		if strings.Contains(userAgent, browser) {
-			hasCommonBrowser = true
-			break
-		}
-	}
-
-	return !hasCommonBrowser
+	return false
 }
 
 func (d *SecurityAnalyzer) TrackRequest(ctx context.Context, userID string) error {
@@ -137,7 +130,7 @@ func (d *SecurityAnalyzer) TrackRequest(ctx context.Context, userID string) erro
 		return nil
 	}
 
-	if err := d.repo.IncrementRequestCount(ctx, userID, requestCountTTL); err != nil {
+	if err := d.repo.IncrementRequestCount(ctx, userID, session.RapidRequestWindow); err != nil {
 		return fmt.Errorf("failed to increment request count")
 	}
 	if err := d.repo.UpdateLastRequestTime(ctx, userID, lastRequestTimeTTL); err != nil {
@@ -178,7 +171,7 @@ func (d *SecurityAnalyzer) CleanupSecurityRecords(ctx context.Context, userID, e
 
 	// Clean up analyzer specific records
 	analyzerKeys := []string{
-		fmt.Sprintf("request_count:%s", userID),
+		fmt.Sprintf("req_window:%s", userID),
 		fmt.Sprintf("last_request:%s", userID),
 		fmt.Sprintf("suspicious_activity:%s", userID),
 	}
