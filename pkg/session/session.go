@@ -31,8 +31,11 @@ const (
 
 // Default thresholds
 const (
-	DefaultRapidRequestThreshold   = 120                   // requests per minute
+	DefaultRapidRequestThreshold   = 120                   // requests per RapidRequestWindow
 	DefaultAutomatedRequestTimeout = 10 * time.Millisecond // too fast for human
+	// RapidRequestWindow is the sliding window for rapid-request detection.
+	// Distinct from RATE_LIMIT, which uses a configurable window via RATE_LIMIT secrets.
+	RapidRequestWindow = time.Minute
 )
 
 var (

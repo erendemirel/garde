@@ -38,7 +38,8 @@
 
 4. **Access the application**
    - API: `http://localhost:8443`
-   - Swagger docs: `http://localhost:8443/swagger/index.html`
+   - Health: `http://localhost:8443/health`
+   - Swagger docs (when `ENABLE_SWAGGER=true`): `http://localhost:8443/swagger/index.html`
 
 5. **Web UI (Optional)**   
 
@@ -215,9 +216,10 @@ When `use_tls` is **false** (recommended behind a reverse proxy), `/validate` is
 |-------------------|-------------|
 | `secret/garde/cors_allow_origins` | Allowed CORS origins (comma-separated) |
 | `secret/garde/enforce_mfa` | Enforce MFA for all users |
-| `secret/garde/rate_limit` | IP-based rate limiting: `public_limit,window_seconds[,authenticated_limit[,admin_limit]]` (e.g., `100,60,200,500` = 100 req/60s public, 200 authenticated, 500 admin). Use `0,0` to disable. |
-| `secret/garde/rapid_request_config` | User-based rapid request detection for authenticated endpoints with role-aware thresholds: `max_per_min,min_interval_ms` (e.g., `120,10` means 120 requests per minute with 10ms minimum interval). Admins get 3x threshold, superusers get 5x threshold. Use `0,0` to disable. |
-| `secret/garde/disable_user_agent_check` | Disable UA validation |
+| `secret/garde/rate_limit` | IP/user rate limiting with a configurable sliding window: `public_limit,window_seconds[,authenticated_limit[,admin_limit]]` (e.g., `100,60,200,500` = 100 req/60s public, 200 authenticated, 500 admin). Use `0,0` to disable. Separate from rapid-request detection. |
+| `secret/garde/rapid_request_config` | User-based rapid request detection (fixed 1-minute sliding window) with role-aware thresholds: `max_per_min,min_interval_ms` (e.g., `120,10` means 120 requests per minute with 10ms minimum interval). Admins get 3x threshold, superusers get 5x threshold. Use `0,0` to disable. |
+| `secret/garde/enable_swagger` | Expose Swagger UI at `/swagger/index.html`. Default `false`. Enable for local exploration only. |
+| `secret/garde/disable_user_agent_check` | Disable UA validation (known bot/automation agents). Legitimate API clients such as curl are allowed when this check is on. |
 | `secret/garde/disable_ip_blacklisting` | Disable automatic IP blocking |
 | `secret/garde/disable_multiple_ip_check` | Disable concurrent session IP detection |
 | `secret/garde/cookie_same_site` | Session cookie SameSite: `lax` (default), `strict`, or `none`. Use `strict` when UI and API are same-site; `lax` when different origins (e.g. dev); `none` for cross-site cookies (needs HTTPS so the cookie can be Secure). See [TLS and mTLS](#tls-and-mtls-configuration). |
@@ -272,6 +274,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
 | `rate_limit` | Numeric thresholds are parsed into the rate-limiter struct at startup |
 | `rapid_request_config` | Parsed once into package-level thresholds at startup |
+| `enable_swagger` | Swagger routes are registered only at startup |
 | `log_level` | Logger level is configured at startup |
 | `gin_mode` | Not re-applied after process start |
 

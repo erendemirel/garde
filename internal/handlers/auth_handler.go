@@ -79,13 +79,32 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Internal server error"
 // @Router /logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
-	sessionID, err := c.Cookie("session")
-	if err != nil {
+	var sessionID string
+
+	if cookie, err := c.Cookie("session"); err == nil && cookie != "" {
+		sessionID = cookie
+	} else {
+		header := c.GetHeader(middleware.AuthHeaderKey)
+		if strings.HasPrefix(header, middleware.SessionPrefix) {
+			sessionID = strings.TrimPrefix(header, middleware.SessionPrefix)
+		}
+	}
+
+	if sessionID == "" {
+		// Fall back to context set by AuthMiddleware (cookie or Bearer already validated)
+		if sid, exists := c.Get("session_id"); exists {
+			if s, ok := sid.(string); ok {
+				sessionID = s
+			}
+		}
+	}
+
+	if sessionID == "" {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrNoActiveSession))
 		return
 	}
 
-	err = h.authService.Logout(c.Request.Context(), sessionID)
+	err := h.authService.Logout(c.Request.Context(), sessionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.NewErrorResponse("Internal server error"))
 		return

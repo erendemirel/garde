@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +28,8 @@ const (
 func userPasswordKey(userID string) string { return "user_password:" + userID }
 func userMFAKey(userID string) string      { return "user_mfa:" + userID }
 func tempMFAKey(userID string) string      { return "temp_mfa:" + userID }
+func requestWindowKey(id string) string    { return "req_window:" + id }
+func userSessionsKey(userID string) string { return "user_sessions:" + userID }
 
 type RedisRepository struct {
 	client *redis.Client
@@ -71,6 +75,11 @@ func NewRedisRepository() (*RedisRepository, error) {
 	}
 
 	return repo, nil
+}
+
+// NewRedisRepositoryFromClient wraps an existing Redis client (used by unit tests).
+func NewRedisRepositoryFromClient(client *redis.Client) *RedisRepository {
+	return &RedisRepository{client: client}
 }
 
 func (r *RedisRepository) connect() error {
@@ -339,8 +348,16 @@ func (r *RedisRepository) StoreSessionData(ctx context.Context, sessionID string
 		return fmt.Errorf("failed to marshal session data: %v", err)
 	}
 
-	key := "session:" + sessionID
-	return client.Set(ctx, key, jsonData, duration).Err()
+	pipe := client.Pipeline()
+	pipe.Set(ctx, "session:"+sessionID, jsonData, duration)
+	if data != nil && data.UserID != "" {
+		idx := userSessionsKey(data.UserID)
+		pipe.SAdd(ctx, idx, sessionID)
+		// Keep the index at least as long as the session; refreshed on each store.
+		pipe.Expire(ctx, idx, duration)
+	}
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 func (r *RedisRepository) GetSessionData(ctx context.Context, sessionID string) (*session.SessionData, error) {
@@ -362,10 +379,17 @@ func (r *RedisRepository) DeleteSession(ctx context.Context, sessionID string) e
 		return errRedisClientUnavailable
 	}
 
-	// Try to delete both session and any blacklist entry
+	var userID string
+	if data, err := r.getSessionDataWithClient(ctx, client, sessionID); err == nil && data != nil {
+		userID = data.UserID
+	}
+
 	pipe := client.Pipeline()
 	pipe.Del(ctx, "session:"+sessionID)
 	pipe.Del(ctx, session.BlacklistPrefix+sessionID)
+	if userID != "" {
+		pipe.SRem(ctx, userSessionsKey(userID), sessionID)
+	}
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -517,34 +541,57 @@ func (r *RedisRepository) RecordSuspiciousActivity(ctx context.Context, userID, 
 	return err
 }
 
-func (r *RedisRepository) GetRequestCount(ctx context.Context, userID string, duration time.Duration) (int64, error) {
+// GetRequestCount returns how many requests were recorded for id within the sliding window.
+// Used by both RATE_LIMIT (configurable window) and rapid-request detection (1 minute).
+func (r *RedisRepository) GetRequestCount(ctx context.Context, id string, window time.Duration) (int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
 		return 0, errRedisClientUnavailable
 	}
-
-	key := fmt.Sprintf("request_count:%s", userID)
-	count, err := client.Get(ctx, key).Int64()
-	if err == redis.Nil {
+	if window <= 0 {
 		return 0, nil
 	}
-	return count, err
+
+	key := requestWindowKey(id)
+	cutoff := strconv.FormatInt(time.Now().Add(-window).UnixNano(), 10)
+	pipe := client.Pipeline()
+	pipe.ZRemRangeByScore(ctx, key, "-inf", cutoff)
+	countCmd := pipe.ZCard(ctx, key)
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return countCmd.Val(), nil
 }
 
-func (r *RedisRepository) IncrementRequestCount(ctx context.Context, userID string, ttl time.Duration) error {
+// IncrementRequestCount records a request in a Redis sorted-set sliding window of length window.
+// Member scores are Unix nanoseconds. Shared by IP/user rate limiting and rapid-request tracking.
+func (r *RedisRepository) IncrementRequestCount(ctx context.Context, id string, window time.Duration) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	client := r.client
 	if client == nil {
 		return errRedisClientUnavailable
 	}
+	if window <= 0 {
+		return nil
+	}
 
-	key := fmt.Sprintf("request_count:%s", userID)
+	key := requestWindowKey(id)
+	now := time.Now()
+	var nonce [8]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return err
+	}
+	member := fmt.Sprintf("%d-%s", now.UnixNano(), hex.EncodeToString(nonce[:]))
+	cutoff := strconv.FormatInt(now.Add(-window).UnixNano(), 10)
+
 	pipe := client.Pipeline()
-	pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, ttl)
+	pipe.ZAdd(ctx, key, &redis.Z{Score: float64(now.UnixNano()), Member: member})
+	pipe.ZRemRangeByScore(ctx, key, "-inf", cutoff)
+	pipe.Expire(ctx, key, window)
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -588,39 +635,19 @@ func (r *RedisRepository) GetActiveSessionInfo(ctx context.Context, userID strin
 		return false, "", errRedisClientUnavailable
 	}
 
-	// Scan for active sessions for this user
-	pattern := "session:*"
-	var cursor uint64
+	sessionIDs, err := client.SMembers(ctx, userSessionsKey(userID)).Result()
+	if err != nil {
+		return false, "", err
+	}
 
-	for {
-		var keys []string
-		var err error
-		keys, cursor, err = client.Scan(ctx, cursor, pattern, 10).Result()
+	for _, sessionID := range sessionIDs {
+		sessionData, err := r.getSessionDataWithClient(ctx, client, sessionID)
 		if err != nil {
-			return false, "", err
+			// Session expired or missing — drop stale index entry
+			_ = client.SRem(ctx, userSessionsKey(userID), sessionID).Err()
+			continue
 		}
-
-		// Check each session
-		for _, key := range keys {
-			var sessionData session.SessionData
-			data, err := client.Get(ctx, key).Bytes()
-			if err != nil {
-				continue
-			}
-
-			if err := json.Unmarshal(data, &sessionData); err != nil {
-				continue
-			}
-
-			// If session belongs to user, return true and the IP
-			if sessionData.UserID == userID {
-				return true, sessionData.IP, nil
-			}
-		}
-
-		if cursor == 0 {
-			break
-		}
+		return true, sessionData.IP, nil
 	}
 
 	return false, "", nil
@@ -650,10 +677,11 @@ func (r *RedisRepository) ClearUserSecurityData(ctx context.Context, userID, ema
 		fmt.Sprintf("failed_login_ip:%s", ip),
 		fmt.Sprintf("account_lock:%s", userID),
 		fmt.Sprintf("ip_block:%s", ip),
-		fmt.Sprintf("request_count:%s", userID),
+		requestWindowKey(userID),
 		fmt.Sprintf("last_request:%s", userID),
 		fmt.Sprintf("suspicious_activity:%s", userID),
 		fmt.Sprintf("active_session:%s", userID),
+		userSessionsKey(userID),
 		fmt.Sprintf("email_to_id:%s", email),
 	}
 
@@ -714,35 +742,32 @@ func (r *RedisRepository) GetUserActiveSessions(ctx context.Context, userID stri
 		return nil, errRedisClientUnavailable
 	}
 
+	sessionIDs, err := client.SMembers(ctx, userSessionsKey(userID)).Result()
+	if err != nil {
+		return nil, err
+	}
+
 	var sessions []string
-	pattern := "session:*"
-	var cursor uint64
-
-	for {
-		var keys []string
-		var err error
-		keys, cursor, err = client.Scan(ctx, cursor, pattern, 10).Result()
-		if err != nil {
-			return nil, err
+	for _, sessionID := range sessionIDs {
+		if _, err := r.getSessionDataWithClient(ctx, client, sessionID); err != nil {
+			_ = client.SRem(ctx, userSessionsKey(userID), sessionID).Err()
+			continue
 		}
-
-		for _, key := range keys {
-			sessionData, err := r.getSessionDataWithClient(ctx, client, strings.TrimPrefix(key, "session:"))
-			if err != nil {
-				continue
-			}
-
-			if sessionData.UserID == userID {
-				sessions = append(sessions, strings.TrimPrefix(key, "session:"))
-			}
-		}
-
-		if cursor == 0 {
-			break
-		}
+		sessions = append(sessions, sessionID)
 	}
 
 	return sessions, nil
+}
+
+// Ping checks Redis connectivity for health probes.
+func (r *RedisRepository) Ping(ctx context.Context) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	client := r.client
+	if client == nil {
+		return errRedisClientUnavailable
+	}
+	return client.Ping(ctx).Err()
 }
 
 func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, error) {

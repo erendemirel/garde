@@ -130,6 +130,12 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/enable_swagger\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/enable_swagger"
+  error_on_missing_key = false
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/disable_user_agent_check\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/disable_user_agent_check"
 }

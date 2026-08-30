@@ -149,7 +149,9 @@ func CORSMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("X-Frame-Options", "DENY")
 		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
 		c.Writer.Header().Set("X-XSS-Protection", "1; mode=block")
-		c.Writer.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		if config.GetBool("USE_TLS") {
+			c.Writer.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		c.Writer.Header().Set("Content-Security-Policy", "default-src 'self'")
 
 		if c.Request.Method == "OPTIONS" {

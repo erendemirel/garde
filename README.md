@@ -150,7 +150,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 ## Endpoint Documentation
 
 > [!TIP]
-> Swagger documentation will be available at http://localhost:8443/swagger/index.html on your own API instance once the server starts (use `https://` only when built-in TLS is enabled).
+> Swagger documentation is available at http://localhost:8443/swagger/index.html when `ENABLE_SWAGGER=true` (enabled in `dev.secrets` for local setups; use `https://` only when built-in TLS is enabled). Health check: `GET /health`.
 
 ---
 

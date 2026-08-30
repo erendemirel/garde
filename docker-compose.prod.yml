@@ -114,6 +114,11 @@ services:
       - redis_data_prod:/data
     networks:
       - prod_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   garde:
@@ -132,7 +137,14 @@ services:
       vault-agent:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      # Uses HTTP; if USE_TLS=true on the app itself, change this probe to https:// with -no-check-certificate
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
     networks:
       - prod_network
     restart: unless-stopped

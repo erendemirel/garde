@@ -328,8 +328,14 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 
 	slog.Debug("Session found", "user_id", sessionData.UserID)
 
-	// Use pattern detector for sophisticated validation
-	patterns := s.securityAnalyzer.DetectSuspiciousPatterns(ctx, sessionData.UserID, ip, userAgent)
+	// Resolve role so rapid-request thresholds match AuthMiddleware (admins/superusers get higher limits)
+	isAdmin, isSuperuser := false, false
+	if user, err := s.repo.GetUserByID(ctx, sessionData.UserID); err == nil && user != nil {
+		isSuperuser = user.Email == config.Get("SUPERUSER_EMAIL")
+		isAdmin = isAdminEmail(user.Email)
+	}
+
+	patterns := s.securityAnalyzer.DetectSuspiciousPatternsWithRole(ctx, sessionData.UserID, ip, userAgent, isAdmin, isSuperuser)
 	if len(patterns) > 0 {
 		// Record all detected patterns
 		for _, pattern := range patterns {
@@ -1658,9 +1664,23 @@ func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups
 		Fields:      models.UserUpdateFields{},
 	}
 
-	// Keep all permission requests (admins can approve any permission changes)
-	filtered.Fields.PermissionsAdd = pending.Fields.PermissionsAdd
+	adminGroupNames := GetUserGroupNames(adminGroups)
+
+	// Permission adds: only those visible to the admin's groups (matches approve-time checks)
+	filteredPermissionsAdd := []models.Permission{}
+	for _, perm := range pending.Fields.PermissionsAdd {
+		if len(adminGroupNames) == 0 {
+			continue
+		}
+		if IsPermissionVisibleToGroups(string(perm), adminGroupNames) {
+			filteredPermissionsAdd = append(filteredPermissionsAdd, perm)
+		}
+	}
+	// Permission removes: any permission once shared-group gate has passed (matches README / approve path)
 	filtered.Fields.PermissionsRemove = pending.Fields.PermissionsRemove
+	if len(filteredPermissionsAdd) > 0 {
+		filtered.Fields.PermissionsAdd = filteredPermissionsAdd
+	}
 
 	// Filter group requests:
 	// - Add: Admin can only add groups they're in (to prevent adding to groups they don't have access to)
