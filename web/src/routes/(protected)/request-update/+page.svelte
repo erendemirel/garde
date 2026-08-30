@@ -5,6 +5,7 @@
 	import { user } from '$lib/stores';
 	import { ArrowLeft, Send } from 'lucide-svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
+	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 
 	let loading = false;
 	let showToast = false;
@@ -17,9 +18,6 @@
 	let selectedGroups = new Set();
 	let initialPermissions = new Set();
 	let initialGroups = new Set();
-
-	let permissionSearch = '';
-	let groupSearch = '';
 
 	$: permissionsAdd = [...selectedPermissions].filter((p) => !initialPermissions.has(p));
 	$: permissionsRemove = [...initialPermissions].filter((p) => !selectedPermissions.has(p));
@@ -52,20 +50,6 @@
 		}))
 	];
 	$: hasChanges = changeItems.length > 0;
-
-	function chipClass(selected, initial) {
-		if (selected && !initial) return 'chip-selectable chip-added';
-		if (!selected && initial) return 'chip-selectable chip-removed';
-		if (selected) return 'chip-selectable chip-selected chip-permission';
-		return 'chip-selectable chip-unselected';
-	}
-
-	function groupChipClass(selected, initial) {
-		if (selected && !initial) return 'chip-selectable chip-added';
-		if (!selected && initial) return 'chip-selectable chip-removed';
-		if (selected) return 'chip-selectable chip-selected chip-group';
-		return 'chip-selectable chip-unselected';
-	}
 
 	onMount(async () => {
 		try {
@@ -185,9 +169,8 @@
 
 		<div class="card-muted space-y-4">
 			<p class="text-xs text-muted">
-				Tap chips to change what you request. Newly selected items are marked with +; items you turn off are
-				marked with − and struck through. Submit activates only when something has changed. Click a summary
-				item to undo it.
+				Search to add access. Selected items appear as chips — remove with ×. Newly added chips are yellow with
+				+; removed ones stay yellow with − until you restore them or submit. Click a summary item to undo.
 			</p>
 
 			{#if (availablePermissions || []).length === 0}
@@ -195,40 +178,14 @@
 			{:else}
 				<div class="edit-section">
 					<h3>Permissions</h3>
-					<div class="mb-3">
-						<input
-							type="text"
-							class="input"
-							placeholder="Search permissions..."
-							bind:value={permissionSearch}
-						/>
-					</div>
-					<div class="chip-selection">
-						{#each availablePermissions.filter(
-							(p) =>
-								!permissionSearch ||
-								p.name.toLowerCase().includes(permissionSearch.toLowerCase()) ||
-								p.key.toLowerCase().includes(permissionSearch.toLowerCase()) ||
-								(p.description &&
-									p.description.toLowerCase().includes(permissionSearch.toLowerCase()))
-						) as perm (perm.key)}
-							<button
-								type="button"
-								class={chipClass(selectedPermissions.has(perm.key), initialPermissions.has(perm.key))}
-								on:click={() => togglePermission(perm.key)}
-								title={perm.description}
-							>
-								{#if selectedPermissions.has(perm.key) && !initialPermissions.has(perm.key)}
-									<span class="chip-check">+</span>
-								{:else if !selectedPermissions.has(perm.key) && initialPermissions.has(perm.key)}
-									<span class="chip-check">−</span>
-								{:else if selectedPermissions.has(perm.key)}
-									<span class="chip-check">✓</span>
-								{/if}
-								{perm.name}
-							</button>
-						{/each}
-					</div>
+					<MultiSelectChips
+						options={availablePermissions}
+						bind:selected={selectedPermissions}
+						initial={initialPermissions}
+						variant="permission"
+						placeholder="Search permissions to add…"
+						label="Permissions"
+					/>
 				</div>
 			{/if}
 
@@ -237,47 +194,21 @@
 			{:else}
 				<div class="edit-section">
 					<h3>Groups</h3>
-					<div class="mb-3">
-						<input
-							type="text"
-							class="input"
-							placeholder="Search groups..."
-							bind:value={groupSearch}
-						/>
-					</div>
-					<div class="chip-selection">
-						{#each availableGroups.filter(
-							(g) =>
-								!groupSearch ||
-								g.name.toLowerCase().includes(groupSearch.toLowerCase()) ||
-								g.key.toLowerCase().includes(groupSearch.toLowerCase()) ||
-								(g.description &&
-									g.description.toLowerCase().includes(groupSearch.toLowerCase()))
-						) as group (group.key)}
-							<button
-								type="button"
-								class={groupChipClass(selectedGroups.has(group.key), initialGroups.has(group.key))}
-								on:click={() => toggleGroup(group.key)}
-								title={group.description}
-							>
-								{#if selectedGroups.has(group.key) && !initialGroups.has(group.key)}
-									<span class="chip-check">+</span>
-								{:else if !selectedGroups.has(group.key) && initialGroups.has(group.key)}
-									<span class="chip-check">−</span>
-								{:else if selectedGroups.has(group.key)}
-									<span class="chip-check">✓</span>
-								{/if}
-								{group.name}
-							</button>
-						{/each}
-					</div>
+					<MultiSelectChips
+						options={availableGroups}
+						bind:selected={selectedGroups}
+						initial={initialGroups}
+						variant="group"
+						placeholder="Search groups to add…"
+						label="Groups"
+					/>
 				</div>
 			{/if}
 
 			<ChangeSummary
 				title="Request summary"
 				items={changeItems}
-				emptyText="Toggle chips above to build a request."
+				emptyText="Search and add items above to build a request."
 				on:revert={revertChange}
 			/>
 

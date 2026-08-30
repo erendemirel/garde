@@ -28,7 +28,7 @@
 					{#each added as item}
 						<button
 							type="button"
-							class="change-summary-item"
+							class="change-summary-item chip-pending"
 							title="Click to undo"
 							on:click={() => handleRevert(item)}
 						>
@@ -46,7 +46,7 @@
 					{#each removed as item}
 						<button
 							type="button"
-							class="change-summary-item"
+							class="change-summary-item chip-pending"
 							title="Click to undo"
 							on:click={() => handleRevert(item)}
 						>
@@ -64,7 +64,7 @@
 					{#each changed as item}
 						<button
 							type="button"
-							class="change-summary-item"
+							class="change-summary-item chip-pending"
 							title="Click to undo"
 							on:click={() => handleRevert(item)}
 						>

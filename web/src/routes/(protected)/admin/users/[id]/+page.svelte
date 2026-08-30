@@ -7,6 +7,7 @@
 	import { CircleCheck, CircleX, CircleAlert, Save, ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from 'lucide-svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
+	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 	import ShieldLock from '$lib/components/ShieldLock.svelte';
 
 	const STATUS_OK = 'ok';
@@ -51,11 +52,7 @@
 	/** @type {Set<string>} */
 	let initialGroups = new Set();
 
-	let permissionSearch = '';
-	let groupSearch = '';
-
 	$: userId = $page.params.id;
-	$: hasEnabledPermissions = Object.values(userData?.permissions || {}).some(Boolean);
 	$: accountStatus = (userData?.status || '').toLowerCase();
 	$: isLockedByAdmin = accountStatus === STATUS_LOCKED_ADMIN;
 	$: isLockedBySecurity = accountStatus === STATUS_LOCKED_SECURITY;
@@ -186,20 +183,6 @@
 	function applyUser(user) {
 		userData = user;
 		snapshotBaseline(user);
-	}
-
-	function chipClass(selected, initial) {
-		if (selected && !initial) return 'chip-selectable chip-added';
-		if (!selected && initial) return 'chip-selectable chip-removed';
-		if (selected) return 'chip-selectable chip-selected chip-permission';
-		return 'chip-selectable chip-unselected';
-	}
-
-	function groupChipClass(selected, initial) {
-		if (selected && !initial) return 'chip-selectable chip-added';
-		if (!selected && initial) return 'chip-selectable chip-removed';
-		if (selected) return 'chip-selectable chip-selected chip-group';
-		return 'chip-selectable chip-unselected';
 	}
 
 	function togglePermission(key) {
@@ -589,32 +572,6 @@
 				</div>
 			</div>
 
-			<h2>Current Permissions</h2>
-			{#if hasEnabledPermissions}
-				<div class="chip-group mb-3">
-					{#each Object.entries(userData.permissions || {}) as [perm, enabled]}
-						{#if enabled}
-							<span class="badge badge-permission">{perm}</span>
-						{/if}
-					{/each}
-				</div>
-			{:else}
-				<p class="text-sm text-muted mb-3">No permissions assigned.</p>
-			{/if}
-
-			<h2>Current Groups</h2>
-			{#if Object.keys(userData.groups || {}).length > 0}
-				<div class="chip-group mb-3">
-					{#each Object.entries(userData.groups) as [group, member]}
-						{#if member}
-							<span class="badge badge-group">{group}</span>
-						{/if}
-					{/each}
-				</div>
-			{:else}
-				<p class="text-sm text-muted mb-3">No groups assigned.</p>
-			{/if}
-
 			{#if needsAccountApproval}
 				<div
 					class="card-muted space-y-3 my-6 border {isApprovalRejected
@@ -735,94 +692,36 @@
 			<div class="card-muted space-y-4 mt-6">
 				<h2 class="section-title">Edit User</h2>
 				<p class="text-xs text-muted">
-					Tap chips to change access. Newly selected items are marked with +; items you turn off are marked
-					with − and struck through. Save activates only when something has changed. Click a summary item to
-					undo it.
+					Search to add access. Selected items appear as chips — remove with ×. Newly added chips are yellow
+					with +; removed ones stay yellow with − until you restore them or save. Save activates only when
+					something has changed. Click a summary item to undo.
 				</p>
 				<form class="space-y-4" on:submit|preventDefault={requestSave}>
 					{#if availablePermissions.length > 0}
 						<div class="edit-section">
 							<h3>Permissions</h3>
-							<div class="mb-3">
-								<input
-									type="text"
-									class="input"
-									placeholder="Search permissions..."
-									bind:value={permissionSearch}
-								/>
-							</div>
-							<div class="chip-selection">
-								{#each availablePermissions.filter(
-									(p) =>
-										!permissionSearch ||
-										p.name.toLowerCase().includes(permissionSearch.toLowerCase()) ||
-										p.key.toLowerCase().includes(permissionSearch.toLowerCase()) ||
-										(p.description &&
-											p.description.toLowerCase().includes(permissionSearch.toLowerCase()))
-								) as perm (perm.key)}
-									<button
-										type="button"
-										class={chipClass(
-											selectedPermissions.has(perm.key),
-											initialPermissions.has(perm.key)
-										)}
-										on:click={() => togglePermission(perm.key)}
-										title={perm.description}
-									>
-										{#if selectedPermissions.has(perm.key) && !initialPermissions.has(perm.key)}
-											<span class="chip-check">+</span>
-										{:else if !selectedPermissions.has(perm.key) && initialPermissions.has(perm.key)}
-											<span class="chip-check">−</span>
-										{:else if selectedPermissions.has(perm.key)}
-											<span class="chip-check">✓</span>
-										{/if}
-										{perm.name}
-									</button>
-								{/each}
-							</div>
+							<MultiSelectChips
+								options={availablePermissions}
+								bind:selected={selectedPermissions}
+								initial={initialPermissions}
+								variant="permission"
+								placeholder="Search permissions to add…"
+								label="Permissions"
+							/>
 						</div>
 					{/if}
 
 					{#if availableGroups.length > 0}
 						<div class="edit-section">
 							<h3>Groups</h3>
-							<div class="mb-3">
-								<input
-									type="text"
-									class="input"
-									placeholder="Search groups..."
-									bind:value={groupSearch}
-								/>
-							</div>
-							<div class="chip-selection">
-								{#each availableGroups.filter(
-									(g) =>
-										!groupSearch ||
-										g.name.toLowerCase().includes(groupSearch.toLowerCase()) ||
-										g.key.toLowerCase().includes(groupSearch.toLowerCase()) ||
-										(g.description &&
-											g.description.toLowerCase().includes(groupSearch.toLowerCase()))
-								) as group (group.key)}
-									<button
-										type="button"
-										class={groupChipClass(
-											selectedGroups.has(group.key),
-											initialGroups.has(group.key)
-										)}
-										on:click={() => toggleGroup(group.key)}
-										title={group.description}
-									>
-										{#if selectedGroups.has(group.key) && !initialGroups.has(group.key)}
-											<span class="chip-check">+</span>
-										{:else if !selectedGroups.has(group.key) && initialGroups.has(group.key)}
-											<span class="chip-check">−</span>
-										{:else if selectedGroups.has(group.key)}
-											<span class="chip-check">✓</span>
-										{/if}
-										{group.name}
-									</button>
-								{/each}
-							</div>
+							<MultiSelectChips
+								options={availableGroups}
+								bind:selected={selectedGroups}
+								initial={initialGroups}
+								variant="group"
+								placeholder="Search groups to add…"
+								label="Groups"
+							/>
 						</div>
 					{/if}
 
