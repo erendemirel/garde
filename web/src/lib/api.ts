@@ -1,9 +1,29 @@
+import { browser } from '$app/environment';
+import { goto } from '$app/navigation';
+import { clearAuthState } from './stores';
+
 // Use environment variable in production, fallback to /api for development
 const API_BASE = import.meta.env.PUBLIC_API_URL || '/api';
 
+const PUBLIC_PATHS = new Set(['/', '/register', '/forgot-password']);
+const CREDENTIAL_401_ENDPOINTS = new Set(['/login']);
+
 type ApiResponse<T> = { data: T } | { error: { message: string } };
 
+function isPublicLocation() {
+	if (!browser) return true;
+	return PUBLIC_PATHS.has(window.location.pathname);
+}
+
+function handleExpiredSession() {
+	clearAuthState();
+	if (browser && !isPublicLocation()) {
+		goto('/');
+	}
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+	const path = endpoint.split('?')[0];
 	const res = await fetch(`${API_BASE}${endpoint}`, {
 		...options,
 		credentials: 'include',
@@ -17,7 +37,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 	try {
 		json = await res.json();
 	} catch {
+		if (res.status === 401 && !CREDENTIAL_401_ENDPOINTS.has(path)) {
+			handleExpiredSession();
+		}
 		throw new Error(res.ok ? 'Invalid response from server' : `Request failed (${res.status})`);
+	}
+
+	if (res.status === 401 && !CREDENTIAL_401_ENDPOINTS.has(path)) {
+		handleExpiredSession();
 	}
 
 	if ('error' in json) {
@@ -118,7 +145,24 @@ export const disableMfa = (mfa_code: string) =>
 	});
 
 // Admin
-export const listUsers = () => request<{ users: User[] }>('/users');
+export const listUsers = (params?: {
+	q?: string;
+	sort?: string;
+	order?: string;
+	page?: number;
+	limit?: number;
+}) => {
+	const sp = new URLSearchParams();
+	if (params?.q) sp.set('q', params.q);
+	if (params?.sort) sp.set('sort', params.sort);
+	if (params?.order) sp.set('order', params.order);
+	if (params?.page) sp.set('page', String(params.page));
+	if (params?.limit) sp.set('limit', String(params.limit));
+	const qs = sp.toString();
+	return request<{ users: User[]; total?: number; page?: number; limit?: number }>(
+		`/users${qs ? `?${qs}` : ''}`
+	);
+};
 
 export const getUser = (user_id: string) => request<User>(`/users/${user_id}`);
 
@@ -215,9 +259,6 @@ export const removePermissionVisibility = (permission_name: string, group_name: 
 
 export const getAllPermissionVisibility = () =>
 	request<Record<string, string[]>>('/admin/permissions/visibility');
-
-export const getAllGroupUsers = () =>
-	request<Record<string, string[]>>('/admin/groups/users');
 
 export const getAdminUserManagement = () =>
 	request<Record<string, string[]>>('/admin/users/management');

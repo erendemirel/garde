@@ -826,9 +826,7 @@ This removes visibility of `a_permission` from group `x`.
 
 3. **Get All Permission Visibility:** `GET /admin/permissions/visibility` — Returns a map of permission names to list of group names (which groups can see which permissions). Superuser only.
 
-4. **Get All Group Users:** `GET /admin/groups/users` — Returns a map of group names to list of user identifiers/emails. Superuser only.
-
-5. **Get Admin User Management:** `GET /admin/users/management` — Returns admin-to-managed-users mapping. Superuser only.
+4. **Get Admin User Management:** `GET /admin/users/management` — Returns admin-to-managed-users mapping. Superuser only.
 
 **Important Notes:**
 - All these operations require superuser authentication

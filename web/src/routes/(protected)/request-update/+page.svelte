@@ -147,7 +147,7 @@
 		showToast = true;
 		setTimeout(() => {
 			showToast = false;
-		}, 3000);
+		}, 5000);
 	}
 </script>
 
@@ -162,9 +162,7 @@
 				<h1 class="page-title">Request Update</h1>
 				<p class="section-subtitle">Request permission or group changes from an admin</p>
 			</div>
-			<a href="/dashboard" class="w-full sm:w-auto sm:ml-auto">
-				<button class="btn-secondary w-full sm:w-auto"><ArrowLeft size={18} />Back to Dashboard</button>
-			</a>
+			<a href="/dashboard" class="btn-secondary w-full sm:w-auto sm:ml-auto"><ArrowLeft size={18} />Back to Dashboard</a>
 		</div>
 
 		<div class="card-muted space-y-4">

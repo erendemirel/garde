@@ -12,6 +12,8 @@ import (
 	"garde/pkg/validation"
 	"log/slog"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -612,6 +614,11 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 // @Produce json
 // @Security SessionCookie
 // @Security Bearer
+// @Param q query string false "Filter by email substring"
+// @Param sort query string false "Sort field: email, status, mfa, pending"
+// @Param order query string false "Sort order: asc or desc"
+// @Param page query int false "Page number (1-based). Used with limit."
+// @Param limit query int false "Page size. If omitted, returns the full list."
 // @Success 200 {object} models.SuccessResponse{data=models.ListUsersResponse} "List of users"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized"
 // @Failure 403 {object} models.ErrorResponse "Forbidden - insufficient permissions"
@@ -640,7 +647,84 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, models.NewSuccessResponse(models.ListUsersResponse{Users: users}))
+	c.JSON(http.StatusOK, models.NewSuccessResponse(applyUserListQuery(users, c)))
+}
+
+func mfaSortKey(u models.UserResponse) string {
+	enabled, enforced := "0", "0"
+	if u.MFAEnabled {
+		enabled = "1"
+	}
+	if u.MFAEnforced {
+		enforced = "1"
+	}
+	return enabled + enforced
+}
+
+func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.ListUsersResponse {
+	q := strings.ToLower(strings.TrimSpace(c.Query("q")))
+	sortField := c.DefaultQuery("sort", "email")
+	order := strings.ToLower(c.DefaultQuery("order", "asc"))
+	page, _ := strconv.Atoi(c.Query("page"))
+	limit, _ := strconv.Atoi(c.Query("limit"))
+
+	filtered := users
+	if q != "" {
+		filtered = make([]models.UserResponse, 0, len(users))
+		for _, u := range users {
+			if strings.Contains(strings.ToLower(u.Email), q) {
+				filtered = append(filtered, u)
+			}
+		}
+	}
+
+	sort.SliceStable(filtered, func(i, j int) bool {
+		less := false
+		switch sortField {
+		case "status":
+			less = strings.ToLower(string(filtered[i].Status)) < strings.ToLower(string(filtered[j].Status))
+		case "mfa":
+			less = mfaSortKey(filtered[i]) < mfaSortKey(filtered[j])
+		case "pending":
+			pi, pj := "0", "0"
+			if filtered[i].PendingUpdates != nil {
+				pi = "1"
+			}
+			if filtered[j].PendingUpdates != nil {
+				pj = "1"
+			}
+			less = pi < pj
+		default:
+			less = strings.ToLower(filtered[i].Email) < strings.ToLower(filtered[j].Email)
+		}
+		if order == "desc" {
+			return !less
+		}
+		return less
+	})
+
+	total := len(filtered)
+	if filtered == nil {
+		filtered = []models.UserResponse{}
+	}
+	if limit <= 0 {
+		return models.ListUsersResponse{Users: filtered, Total: total, Page: 1, Limit: total}
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	start := (page - 1) * limit
+	if start >= total {
+		return models.ListUsersResponse{Users: []models.UserResponse{}, Total: total, Page: page, Limit: limit}
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	return models.ListUsersResponse{Users: filtered[start:end], Total: total, Page: page, Limit: limit}
 }
 
 // @Summary Get user details
@@ -899,42 +983,6 @@ func (h *AuthHandler) GetAllPermissionVisibility(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(visibilityMap))
-}
-
-// @Summary Get all group-user mappings
-// @Description Returns all group-user mappings (which users belong to which groups). Only superuser can perform this operation.
-// @Tags Superuser Routes
-// @Produce json
-// @Security SessionCookie
-// @Security Bearer
-// @Success 200 {object} models.SuccessResponse{data=map[string][]string} "Map of group names to user emails"
-// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
-// @Failure 500 {object} models.ErrorResponse "Operation failed"
-// @Router /admin/groups/users [get]
-func (h *AuthHandler) GetAllGroupUsers(c *gin.Context) {
-	users, err := h.authService.ListUsers(
-		c.Request.Context(),
-		c.GetString("user_id"),
-		true,  // isSuperUser
-		false, // isAdmin
-	)
-	if err != nil {
-		slog.Error("Failed to list users for group mapping", "error", err)
-		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
-		return
-	}
-
-	// Build group -> users mapping
-	groupUsers := make(map[string][]string)
-	for _, user := range users {
-		for groupName, enabled := range user.Groups {
-			if enabled {
-				groupUsers[string(groupName)] = append(groupUsers[string(groupName)], user.Email)
-			}
-		}
-	}
-
-	c.JSON(http.StatusOK, models.NewSuccessResponse(groupUsers))
 }
 
 // @Summary Get admin-user management relationships

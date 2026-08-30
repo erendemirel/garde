@@ -21,8 +21,8 @@ module.exports = {
 				DEFAULT: '10px'
 			},
 			boxShadow: {
-				card: '0 18px 60px rgba(0,0,0,0.35)',
-				button: '0 10px 30px rgba(0,0,0,0.25)'
+				card: '0 8px 24px rgba(31, 27, 42, 0.08)',
+				button: '0 4px 12px rgba(31, 27, 42, 0.12)'
 			},
 			fontFamily: {
 				sans: ['"Google Sans Variable"', 'Roboto', 'ui-sans-serif', 'system-ui', 'sans-serif']

@@ -105,19 +105,46 @@ const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 			</div>
 
 			{#if $user.pending_updates}
-				<div class="pill-card border-warning/40">
+				{@const fields = $user.pending_updates.fields || {}}
+				<div class="pill-card border-warning/40 space-y-3">
 					<h2 class="section-title text-warning">Pending Update Request</h2>
 					<p class="text-sm text-muted">
 						Submitted: {new Date($user.pending_updates.requested_at).toLocaleString()}
 					</p>
+					{#if fields.permissions_add?.length || fields.permissions_remove?.length}
+						<div class="space-y-2">
+							<p class="text-sm font-semibold text-text">Permissions</p>
+							<div class="flex flex-wrap gap-2">
+								{#each fields.permissions_add || [] as perm}
+									<span class="badge badge-permission">Add: {perm}</span>
+								{/each}
+								{#each fields.permissions_remove || [] as perm}
+									<span class="badge badge-locked">Remove: {perm}</span>
+								{/each}
+							</div>
+						</div>
+					{/if}
+					{#if fields.groups_add?.length || fields.groups_remove?.length}
+						<div class="space-y-2">
+							<p class="text-sm font-semibold text-text">Groups</p>
+							<div class="flex flex-wrap gap-2">
+								{#each fields.groups_add || [] as group}
+									<span class="badge badge-group">Join: {group}</span>
+								{/each}
+								{#each fields.groups_remove || [] as group}
+									<span class="badge badge-locked">Leave: {group}</span>
+								{/each}
+							</div>
+						</div>
+					{/if}
 				</div>
 			{/if}
 
 			<div class="actions">
-				<a href="/mfa"><button class="btn-secondary"><ShieldCheck size={18} />{$user.mfa_enabled ? 'Manage MFA' : 'Setup MFA'}</button></a>
-				<a href="/password"><button class="btn-secondary"><KeyRound size={18} />Change Password</button></a>
+				<a href="/mfa" class="btn-secondary"><ShieldCheck size={18} />{$user.mfa_enabled ? 'Manage MFA' : 'Setup MFA'}</a>
+				<a href="/password" class="btn-secondary"><KeyRound size={18} />Change Password</a>
 				{#if !$isSuperuser}
-					<a href="/request-update"><button class="btn-secondary"><MailQuestion size={18} />Request Update</button></a>
+					<a href="/request-update" class="btn-secondary"><MailQuestion size={18} />Request Update</a>
 				{/if}
 			</div>
 		{/if}
