@@ -61,6 +61,9 @@ func (u *UserResponse) IsUserAdmin() bool {
 
 type ListUsersResponse struct {
 	Users []UserResponse `json:"users"`
+	Total int            `json:"total,omitempty"`
+	Page  int            `json:"page,omitempty"`
+	Limit int            `json:"limit,omitempty"`
 }
 
 type PermissionResponse struct {

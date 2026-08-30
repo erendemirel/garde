@@ -449,40 +449,6 @@ paths:
       summary: Update a group
       tags:
       - Superuser Routes
-  /admin/groups/users:
-    get:
-      description: Returns all group-user mappings (which users belong to which groups).
-        Only superuser can perform this operation.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Map of group names to user emails
-          schema:
-            allOf:
-            - $ref: '#/definitions/models.SuccessResponse'
-            - properties:
-                data:
-                  additionalProperties:
-                    items:
-                      type: string
-                    type: array
-                  type: object
-              type: object
-        "401":
-          description: Unauthorized - superuser access required
-          schema:
-            $ref: '#/definitions/models.ErrorResponse'
-        "500":
-          description: Operation failed
-          schema:
-            $ref: '#/definitions/models.ErrorResponse'
-      security:
-      - SessionCookie: []
-      - Bearer: []
-      summary: Get all group-user mappings
-      tags:
-      - Superuser Routes
   /admin/permissions:
     post:
       consumes:

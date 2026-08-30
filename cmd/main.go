@@ -266,8 +266,7 @@ func main() {
 		superuserProtected.POST("/admin/permissions/visibility", authHandler.AddPermissionVisibility)
 		superuserProtected.DELETE("/admin/permissions/visibility", authHandler.RemovePermissionVisibility)
 
-		// Group-user and admin-user management mappings
-		superuserProtected.GET("/admin/groups/users", authHandler.GetAllGroupUsers)
+		// Admin-user management mapping
 		superuserProtected.GET("/admin/users/management", authHandler.GetAdminUserManagement)
 	}
 

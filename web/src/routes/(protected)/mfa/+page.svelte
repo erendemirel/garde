@@ -71,9 +71,9 @@
 	<div class="card space-y-4">
 		<div class="flex items-start justify-between gap-3">
 			<h1 class="page-title">Multi-Factor Authentication</h1>
-			<a href="/dashboard" class="w-full sm:w-auto sm:ml-auto">
-				<button class="btn-secondary w-full sm:w-auto"><ArrowLeft size={18} />Back to Dashboard</button>
-			</a>
+			{#if !($user?.mfa_enforced && !$user?.mfa_enabled)}
+				<a href="/dashboard" class="btn-secondary w-full sm:w-auto sm:ml-auto"><ArrowLeft size={18} />Back to Dashboard</a>
+			{/if}
 		</div>
 
 		{#if success}

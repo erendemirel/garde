@@ -79,64 +79,6 @@
                 }
             }
         },
-        "/admin/groups/users": {
-            "get": {
-                "security": [
-                    {
-                        "SessionCookie": []
-                    },
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Returns all group-user mappings (which users belong to which groups). Only superuser can perform this operation.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Superuser Routes"
-                ],
-                "summary": "Get all group-user mappings",
-                "responses": {
-                    "200": {
-                        "description": "Map of group names to user emails",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/models.SuccessResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "object",
-                                            "additionalProperties": {
-                                                "type": "array",
-                                                "items": {
-                                                    "type": "string"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - superuser access required",
-                        "schema": {
-                            "$ref": "#/definitions/models.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Operation failed",
-                        "schema": {
-                            "$ref": "#/definitions/models.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/groups/{group_name}": {
             "put": {
                 "security": [

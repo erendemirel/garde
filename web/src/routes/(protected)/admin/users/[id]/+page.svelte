@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { getUser, updateUser, revokeSessions, deleteUser, listPermissions, listGroups } from '$lib/api';
-	import { user as currentUser } from '$lib/stores';
+	import { user as currentUser, isSuperuser } from '$lib/stores';
 	import { CircleCheck, CircleX, CircleAlert, Save, ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from 'lucide-svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
@@ -15,6 +15,8 @@
 	const STATUS_REJECTED = 'admin approval rejected';
 	const STATUS_LOCKED_ADMIN = 'locked by admin';
 	const STATUS_LOCKED_SECURITY = 'locked by security';
+
+	$: usersListHref = $isSuperuser ? '/superuser?tab=users' : '/admin';
 
 	let userData = null;
 	let error = '';
@@ -31,10 +33,13 @@
 	let showApproveConfirm = false;
 	let showRejectAccountConfirm = false;
 	let showLeaveConfirm = false;
+	let showRevokeConfirm = false;
+	let showApproveUpdateConfirm = false;
+	let showRejectUpdateConfirm = false;
 	let pendingMfaEnforced = false;
 	/** true = lock account, false = unlock */
 	let pendingLock = false;
-	let pendingLeaveHref = '/admin';
+	let pendingLeaveHref = '';
 	let allowNextNavigation = false;
 	let dirty = false;
 
@@ -130,7 +135,7 @@
 		}
 		if (!dirty) return;
 		cancel();
-		pendingLeaveHref = to ? `${to.url.pathname}${to.url.search}` : '/admin';
+		pendingLeaveHref = to ? `${to.url.pathname}${to.url.search}` : usersListHref;
 		showLeaveConfirm = true;
 	});
 
@@ -163,14 +168,14 @@
 	function confirmLeave() {
 		showLeaveConfirm = false;
 		allowNextNavigation = true;
-		const href = pendingLeaveHref || '/admin';
-		pendingLeaveHref = '/admin';
+		const href = pendingLeaveHref || usersListHref;
+		pendingLeaveHref = usersListHref;
 		goto(href);
 	}
 
 	function cancelLeave() {
 		showLeaveConfirm = false;
-		pendingLeaveHref = '/admin';
+		pendingLeaveHref = usersListHref;
 	}
 
 	function snapshotBaseline(user) {
@@ -280,7 +285,7 @@
 		showToast = true;
 		setTimeout(() => {
 			showToast = false;
-		}, 3000);
+		}, 5000);
 	}
 
 	function requestSave() {
@@ -315,8 +320,17 @@
 		saving = false;
 	}
 
+	function requestApproveUpdate() {
+		showApproveUpdateConfirm = true;
+	}
+
+	function requestRejectUpdate() {
+		showRejectUpdateConfirm = true;
+	}
+
 	async function handleApproveUpdate() {
 		saving = true;
+		showApproveUpdateConfirm = false;
 		try {
 			const updatedUser = await updateUser(userId, { approve_update: true });
 			showToastMessage('Update approved!', 'success');
@@ -334,6 +348,7 @@
 
 	async function handleRejectUpdate() {
 		saving = true;
+		showRejectUpdateConfirm = false;
 		try {
 			const updatedUser = await updateUser(userId, { reject_update: true });
 			showToastMessage('Update rejected!', 'success');
@@ -349,8 +364,17 @@
 		saving = false;
 	}
 
+	function requestRevokeSessions() {
+		if ($currentUser?.mfa_enabled && !mfaCode.trim()) {
+			showToastMessage('Enter your MFA code to revoke sessions', 'error');
+			return;
+		}
+		showRevokeConfirm = true;
+	}
+
 	async function handleRevokeSessions() {
 		saving = true;
+		showRevokeConfirm = false;
 		try {
 			await revokeSessions(userId, $currentUser?.mfa_enabled ? mfaCode : undefined);
 			showToastMessage('Sessions revoked!', 'success');
@@ -473,7 +497,7 @@
 			showToastMessage('User deleted successfully!', 'success');
 			allowNextNavigation = true;
 			setTimeout(() => {
-				goto('/admin');
+				goto(usersListHref);
 			}, 1500);
 		} catch (e) {
 			showToastMessage(e instanceof Error ? e.message : 'Failed to delete user', 'error');
@@ -503,11 +527,11 @@
 			<p class="text-muted mb-4">
 				You don't have permission to view this user. Admin privileges are required.
 			</p>
-			<a href="/dashboard"><button class="btn-secondary"><ArrowLeft size={18} />Back to Dashboard</button></a>
+			<a href="/dashboard" class="btn-secondary"><ArrowLeft size={18} />Back to Dashboard</a>
 		{:else if error && !userData}
 			<p class="error">{error}</p>
 			<div class="links">
-				<a href="/admin">Back to users</a>
+				<a href={usersListHref}>Back to users</a>
 			</div>
 		{:else if userData}
 			<div class="flex items-start justify-between gap-3">
@@ -515,9 +539,7 @@
 					<h1 class="page-title">User Details</h1>
 					<p class="section-subtitle">Review and edit user access</p>
 				</div>
-				<a href="/admin" class="w-full sm:w-auto sm:ml-auto">
-					<button class="btn-secondary w-full sm:w-auto"><ArrowLeft size={18} />Back to users</button>
-				</a>
+				<a href={usersListHref} class="btn-secondary w-full sm:w-auto sm:ml-auto"><ArrowLeft size={18} />Back to users</a>
 			</div>
 
 			<div class="info-grid">
@@ -679,10 +701,10 @@
 					{/if}
 
 					<div class="flex flex-wrap gap-3 mt-4">
-						<button class="btn-secondary" type="button" on:click={handleApproveUpdate} disabled={saving}
+						<button class="btn-secondary" type="button" on:click={requestApproveUpdate} disabled={saving}
 							><Check size={18} />Approve</button
 						>
-						<button class="btn-danger" type="button" on:click={handleRejectUpdate} disabled={saving}
+						<button class="btn-danger" type="button" on:click={requestRejectUpdate} disabled={saving}
 							><X size={18} />Reject</button
 						>
 					</div>
@@ -854,7 +876,7 @@
 					<button
 						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-red-700 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-red-700 shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 						type="button"
-						on:click={handleRevokeSessions}
+						on:click={requestRevokeSessions}
 						disabled={saving}
 					>
 						<LogOut size={16} />
@@ -943,6 +965,33 @@
 	confirmClass="btn-primary"
 	on:confirm={confirmLeave}
 	on:cancel={cancelLeave}
+/>
+
+<ConfirmModal
+	bind:open={showApproveUpdateConfirm}
+	title="Approve update request"
+	message="Approve this user's pending permission and group changes? The request will be applied immediately."
+	confirmText="Approve request"
+	confirmClass="btn-primary"
+	on:confirm={handleApproveUpdate}
+/>
+
+<ConfirmModal
+	bind:open={showRejectUpdateConfirm}
+	title="Reject update request"
+	message="Reject this user's pending permission and group changes? They will need to submit a new request."
+	confirmText="Reject request"
+	confirmClass="btn-danger"
+	on:confirm={handleRejectUpdate}
+/>
+
+<ConfirmModal
+	bind:open={showRevokeConfirm}
+	title="Revoke all sessions"
+	message="Sign this user out everywhere? They can sign in again with their credentials."
+	confirmText="Revoke sessions"
+	confirmClass="btn-danger"
+	on:confirm={handleRevokeSessions}
 />
 
 <ConfirmModal
