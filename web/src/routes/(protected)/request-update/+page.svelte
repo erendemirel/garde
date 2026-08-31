@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { requestUpdate, listPermissions, listGroups } from '$lib/api';
+	import { showToast } from '$lib/toast';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
 	import { ArrowLeft, Send } from 'lucide-svelte';
@@ -8,9 +9,6 @@
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 
 	let loading = false;
-	let showToast = false;
-	let toastMessage = '';
-	let toastType = 'success';
 
 	let availablePermissions = [];
 	let availableGroups = [];
@@ -116,7 +114,7 @@
 
 	async function handleSubmit() {
 		if (!hasChanges) {
-			showToastMessage('No changes to request', 'error');
+			showToast('No changes to request', 'error');
 			return;
 		}
 
@@ -133,21 +131,12 @@
 			if (permissionsRemove.length) parts.push(`−${permissionsRemove.length} perm`);
 			if (groupsAdd.length) parts.push(`+${groupsAdd.length} group`);
 			if (groupsRemove.length) parts.push(`−${groupsRemove.length} group`);
-			showToastMessage(`Request submitted (${parts.join(', ')})`, 'success');
+			showToast(`Request submitted (${parts.join(', ')})`, 'success');
 			setTimeout(() => goto('/dashboard'), 2000);
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Request failed', 'error');
+			showToast(e instanceof Error ? e.message : 'Request failed', 'error');
 		}
 		loading = false;
-	}
-
-	function showToastMessage(message, type = 'success') {
-		toastMessage = message;
-		toastType = type;
-		showToast = true;
-		setTimeout(() => {
-			showToast = false;
-		}, 5000);
 	}
 </script>
 
@@ -167,8 +156,8 @@
 
 		<div class="card-muted space-y-4">
 			<p class="text-xs text-muted">
-				Search to add access. Selected items appear as chips — remove with ×. Newly added chips are yellow with
-				+; removed ones stay yellow with − until you restore them or submit. Click a summary item to undo.
+				Ask an admin to change your permissions or groups. You can only request permissions visible to your
+				groups. Changes take effect after an admin who shares a group with you approves the request.
 			</p>
 
 			{#if (availablePermissions || []).length === 0}
@@ -206,7 +195,7 @@
 			<ChangeSummary
 				title="Request summary"
 				items={changeItems}
-				emptyText="Search and add items above to build a request."
+				emptyText="No permission or group changes selected yet."
 				on:revert={revertChange}
 			/>
 
@@ -224,12 +213,6 @@
 		</div>
 	</div>
 </div>
-
-{#if showToast}
-	<div class="toast" class:toast-success={toastType === 'success'} class:toast-error={toastType === 'error'}>
-		{toastMessage}
-	</div>
-{/if}
 
 <style>
 	.edit-section {

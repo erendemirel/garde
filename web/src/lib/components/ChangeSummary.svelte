@@ -29,7 +29,7 @@
 						<button
 							type="button"
 							class="change-summary-item chip-pending"
-							title="Click to undo"
+							title="Undo"
 							on:click={() => handleRevert(item)}
 						>
 							+ {item.label}
@@ -47,7 +47,7 @@
 						<button
 							type="button"
 							class="change-summary-item chip-pending"
-							title="Click to undo"
+							title="Undo"
 							on:click={() => handleRevert(item)}
 						>
 							− {item.label}
@@ -65,7 +65,7 @@
 						<button
 							type="button"
 							class="change-summary-item chip-pending"
-							title="Click to undo"
+							title="Undo"
 							on:click={() => handleRevert(item)}
 						>
 							~ {item.label}

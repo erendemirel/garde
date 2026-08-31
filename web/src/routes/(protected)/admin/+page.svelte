@@ -1,10 +1,9 @@
 <script>
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { listUsers } from '$lib/api';
-	import { isAdmin, isSuperuser } from '$lib/stores';
 	import { get } from 'svelte/store';
-	import { Users, KeyRound, UsersRound } from 'lucide-svelte';
+	import { isAdmin, isSuperuser } from '$lib/stores';
+	import { Users, Ungroup, Blocks } from 'lucide-svelte';
 	import AdminMembershipCatalog from '$lib/components/AdminMembershipCatalog.svelte';
 	import UsersListPanel from '$lib/components/UsersListPanel.svelte';
 
@@ -13,25 +12,13 @@
 	let accessDenied = false;
 	let checking = true;
 
-	onMount(async () => {
+	onMount(() => {
 		if (get(isSuperuser)) {
 			goto('/superuser?tab=users');
 			return;
 		}
-		try {
-			await listUsers({ page: 1, limit: 1 });
-			isAdmin.set(true);
-			accessDenied = false;
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : '';
-			if (
-				msg.toLowerCase().includes('unauthorized') ||
-				msg.toLowerCase().includes('forbidden') ||
-				msg.toLowerCase().includes('permission')
-			) {
-				accessDenied = true;
-				isAdmin.set(false);
-			}
+		if (!get(isAdmin)) {
+			accessDenied = true;
 		}
 		checking = false;
 	});
@@ -55,7 +42,8 @@
 			<div>
 				<h1 class="page-title">Admin</h1>
 				<p class="section-subtitle">
-					Manage users in your shared groups, and assign permissions and groups you can use.
+					Users who share a group with you, plus permissions and groups within your visibility and
+					membership.
 				</p>
 			</div>
 
@@ -77,7 +65,7 @@
 						: 'text-muted hover:text-accent'}"
 					on:click={() => (activeTab = 'permissions')}
 				>
-					<KeyRound size={18} class="inline mr-2" />
+					<Ungroup size={18} class="inline mr-2" />
 					Permissions
 				</button>
 				<button
@@ -87,7 +75,7 @@
 						: 'text-muted hover:text-accent'}"
 					on:click={() => (activeTab = 'groups')}
 				>
-					<UsersRound size={18} class="inline mr-2" />
+					<Blocks size={18} class="inline mr-2" />
 					Groups
 				</button>
 			</div>

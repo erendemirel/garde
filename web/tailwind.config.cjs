@@ -1,7 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
 	content: ['./src/**/*.{svelte,ts}'],
-	darkMode: 'class',
 	theme: {
 		extend: {
 			colors: {
@@ -21,8 +20,7 @@ module.exports = {
 				DEFAULT: '10px'
 			},
 			boxShadow: {
-				card: '0 8px 24px rgba(31, 27, 42, 0.08)',
-				button: '0 4px 12px rgba(31, 27, 42, 0.12)'
+				card: '0 8px 24px rgba(31, 27, 42, 0.08)'
 			},
 			fontFamily: {
 				sans: ['"Google Sans Variable"', 'Roboto', 'ui-sans-serif', 'system-ui', 'sans-serif']

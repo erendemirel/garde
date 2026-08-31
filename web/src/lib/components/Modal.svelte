@@ -5,6 +5,8 @@
 	export let title = '';
 	export let labelledBy = 'modal-title';
 	export let wide = false;
+	/** When true, prefer focusing the dialog shell instead of the first input (keeps search closed). */
+	export let preferDialogFocus = false;
 
 	const dispatch = createEventDispatcher();
 
@@ -25,6 +27,10 @@
 
 		tick().then(() => {
 			const items = focusables();
+			if (preferDialogFocus) {
+				node.focus();
+				return;
+			}
 			const preferred = items.find((el) =>
 				['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
 			);
@@ -83,12 +89,19 @@
 			use:dialogAction
 		>
 			{#if title}
-				<div class="flex justify-between items-center gap-3 mb-4">
+				<div class="mb-4 flex shrink-0 items-center justify-between gap-3">
 					<h2 id={labelledBy} class="section-title">{title}</h2>
 					<slot name="header-end" />
 				</div>
 			{/if}
-			<slot />
+			<div class="modal-body">
+				<slot />
+			</div>
+			{#if $$slots.footer}
+				<div class="modal-footer">
+					<slot name="footer" />
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

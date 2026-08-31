@@ -1,15 +1,10 @@
 <script>
 	import { user, isSuperuser } from '$lib/stores';
-	import { CircleCheck, CircleX, CircleAlert, ShieldCheck, KeyRound, MailQuestion } from 'lucide-svelte';
+	import { ShieldCheck, KeyRound, MailQuestion } from 'lucide-svelte';
+	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
-	function getStatusClass(status) {
-		if (status === 'ok') return 'ok';
-		if (status.toLowerCase().includes('locked') || status.toLowerCase().includes('disabled')) return 'locked';
-		if (status.toLowerCase().includes('pending')) return 'pending';
-		return 'pending';
-	}
-
-const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
+	const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 </script>
 
 <svelte:head>
@@ -34,32 +29,13 @@ const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 				<div class="info-card">
 					<p class="info-label">Status</p>
 					<p class="info-value">
-						<span class="status-display status-{getStatusClass($user.status)}">
-							<span class="status-icon">
-								{#if getStatusClass($user.status) === 'ok'}
-									<CircleCheck size={18} />
-								{:else if getStatusClass($user.status) === 'locked'}
-									<CircleX size={18} />
-								{:else}
-									<CircleAlert size={18} />
-								{/if}
-							</span>
-							<span class="status-text">{$user.status}</span>
-						</span>
+						<StatusBadge status={$user.status} />
 					</p>
 				</div>
 				<div class="info-card">
 					<p class="info-label">MFA</p>
 					<p class="info-value">
-						{#if $user.mfa_enabled && $user.mfa_enforced}
-							<span class="text-blue-600">Enforced and set up</span>
-						{:else if $user.mfa_enabled}
-							<span class="text-green-700">Set up although not enforced</span>
-						{:else if $user.mfa_enforced}
-							<span class="text-red-600">Enforced but not set up</span>
-						{:else}
-							<span class="text-orange-500">Not enforced and not set up</span>
-						{/if}
+						<MfaLabel enabled={$user.mfa_enabled} enforced={$user.mfa_enforced} />
 					</p>
 				</div>
 				<div class="info-card">
@@ -150,4 +126,3 @@ const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 		{/if}
 	</div>
 </div>
-
