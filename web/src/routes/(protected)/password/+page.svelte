@@ -49,40 +49,83 @@
 	<title>Change Password | garde</title>
 </svelte:head>
 
-<div class="container-medium">
+<div class="container-medium" data-testid="password-page">
 	<div class="card space-y-4">
 		<div class="flex items-start justify-between gap-3">
 			<h1 class="page-title">Change Password</h1>
-			<a href="/dashboard" class="btn-secondary w-full sm:w-auto sm:ml-auto"><ArrowLeft size={18} />Back to Dashboard</a>
+			<a
+				href="/dashboard"
+				class="btn-secondary w-full sm:w-auto sm:ml-auto"
+				data-testid="password-back"
+				><ArrowLeft size={18} />Back to Dashboard</a
+			>
 		</div>
 
 		{#if success}
-			<p class="success">{success}</p>
+			<p class="success" data-testid="password-success">{success}</p>
 		{:else}
-			<form class="space-y-4" on:submit|preventDefault={requestConfirmation}>
+			<form
+				class="space-y-4"
+				data-testid="password-form"
+				method="post"
+				action="#"
+				onsubmit="return false;"
+				on:submit|preventDefault={requestConfirmation}
+			>
 				<label class="form-label">
 					<span>Current Password</span>
-					<input class="input" type="password" bind:value={oldPassword} required />
+					<input
+						class="input"
+						type="password"
+						data-testid="password-current"
+						bind:value={oldPassword}
+						required
+					/>
 				</label>
 				<label class="form-label">
 					<span>New Password</span>
-					<input class="input" type="password" bind:value={newPassword} required minlength="8" />
+					<input
+						class="input"
+						type="password"
+						data-testid="password-new"
+						bind:value={newPassword}
+						required
+						minlength="8"
+					/>
 				</label>
 				<label class="form-label">
 					<span>Confirm New Password</span>
-					<input class="input" type="password" bind:value={confirmPassword} required />
+					<input
+						class="input"
+						type="password"
+						data-testid="password-confirm"
+						bind:value={confirmPassword}
+						required
+					/>
 				</label>
 				{#if $user?.mfa_enabled}
 					<label class="form-label">
 						<span>MFA Code</span>
-						<input class="input" type="text" bind:value={mfaCode} placeholder="6-digit code" required />
+						<input
+							class="input"
+							type="text"
+							data-testid="password-mfa"
+							bind:value={mfaCode}
+							placeholder="6-digit code"
+							required
+						/>
 					</label>
 				{/if}
 				{#if error}
-					<p class="error">{error}</p>
+					<p class="error" data-testid="password-error">{error}</p>
 				{/if}
 				<div class="form-actions-center">
-					<button class="btn-secondary w-full md:w-auto" type="submit" disabled={loading}>
+					<button
+						class="btn-secondary w-full md:w-auto"
+						type="submit"
+						data-testid="password-submit"
+						disabled={loading}
+					>
 						<KeyRound size={18} />
 						{loading ? 'Changing...' : 'Change Password'}
 					</button>
@@ -92,11 +135,10 @@
 	</div>
 </div>
 
-<ConfirmModal 
+<ConfirmModal
 	bind:open={showConfirmModal}
 	title="Confirm Password Change"
 	message="Change your password now? You will be signed out immediately and must sign in with the new password."
 	confirmText="Change Password"
 	on:confirm={handleChange}
 />
-

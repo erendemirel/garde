@@ -90,16 +90,17 @@
 </script>
 
 {#if loading}
-	<p class="text-muted">Loading users...</p>
+	<p class="text-muted" data-testid="users-list-loading">Loading users...</p>
 {:else if error}
-	<p class="error">{error}</p>
+	<p class="error" data-testid="users-list-error">{error}</p>
 {:else}
-	<div class="space-y-4">
+	<div class="space-y-4" data-testid="users-list">
 		<label class="form-label max-w-md">
 			<span>Search by email</span>
 			<input
 				class="input"
 				type="search"
+				data-testid="users-list-search"
 				placeholder="Enter email to search..."
 				bind:value={searchInput}
 				on:input={onSearchInput}
@@ -107,14 +108,15 @@
 		</label>
 
 		<!-- Desktop / wide table -->
-		<div class="table-scroll hidden sm:block">
-			<table class="table-base">
+		<div class="table-scroll hidden sm:block" data-testid="users-list-table-wrap">
+			<table class="table-base" data-testid="users-list-table">
 				<thead>
 					<tr>
 						<th aria-sort={sortAria('email')}>
 							<button
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
+								data-testid="users-list-sort-email"
 								on:click={() => handleSort('email')}
 							>
 								Email
@@ -127,6 +129,7 @@
 							<button
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
+								data-testid="users-list-sort-status"
 								on:click={() => handleSort('status')}
 							>
 								Status
@@ -139,6 +142,7 @@
 							<button
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
+								data-testid="users-list-sort-mfa"
 								on:click={() => handleSort('mfa')}
 							>
 								MFA
@@ -151,6 +155,7 @@
 							<button
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
+								data-testid="users-list-sort-pending"
 								on:click={() => handleSort('pending')}
 							>
 								Pending
@@ -162,17 +167,17 @@
 						<th>Actions</th>
 					</tr>
 				</thead>
-				<tbody>
+				<tbody data-testid="users-list-tbody">
 					{#if users.length === 0}
-						<tr>
+						<tr data-testid="users-list-empty">
 							<td colspan="5" class="text-center text-muted py-4">
 								{searchQuery ? 'No users found matching your search.' : 'No users found.'}
 							</td>
 						</tr>
 					{:else}
 						{#each users as u}
-							<tr>
-								<td>{u.email}</td>
+							<tr data-testid="users-list-row" data-user-id={u.id} data-user-email={u.email}>
+								<td data-testid="users-list-row-email">{u.email}</td>
 								<td><StatusBadge status={u.status} /></td>
 								<td>
 									<MfaLabel enabled={u.mfa_enabled} enforced={u.mfa_enforced} compact />
@@ -190,6 +195,8 @@
 										class="btn-icon"
 										title="Edit user"
 										aria-label="Edit user {u.email}"
+										data-testid="users-list-edit"
+										data-user-id={u.id}
 									>
 										<Edit size={20} />
 									</a>
@@ -202,9 +209,9 @@
 		</div>
 
 		<!-- Narrow viewport cards -->
-		<div class="space-y-3 sm:hidden">
+		<div class="space-y-3 sm:hidden" data-testid="users-list-cards">
 			{#if users.length === 0}
-				<p class="text-center text-muted py-4">
+				<p class="text-center text-muted py-4" data-testid="users-list-empty">
 					{searchQuery ? 'No users found matching your search.' : 'No users found.'}
 				</p>
 			{:else}
@@ -212,6 +219,9 @@
 					<a
 						href="{detailBase}/{u.id}"
 						class="block rounded-lg border border-borderc bg-input p-3 no-underline text-text hover:border-accent/40"
+						data-testid="users-list-card"
+						data-user-id={u.id}
+						data-user-email={u.email}
 					>
 						<p class="font-semibold text-sm break-all">{u.email}</p>
 						<div class="mt-2 flex flex-wrap items-center gap-2 text-sm">

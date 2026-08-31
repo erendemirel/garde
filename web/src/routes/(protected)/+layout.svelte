@@ -43,15 +43,21 @@
 </script>
 
 {#if loading}
-	<div class="container-base max-w-md mx-auto pt-32 text-center text-muted" aria-live="polite">
+	<div
+		class="container-base max-w-md mx-auto pt-32 text-center text-muted"
+		aria-live="polite"
+		data-testid="session-loading"
+	>
 		<p>Loading session…</p>
 	</div>
 {:else if $user}
-	<nav class="navbar">
+	<nav class="navbar" data-testid="app-nav">
 		{#if mfaBlocked}
 			<span class="text-lg font-semibold text-accent">garde</span>
 		{:else}
-			<a href="/dashboard" class="text-lg font-semibold text-accent no-underline">garde</a>
+			<a href="/dashboard" class="text-lg font-semibold text-accent no-underline" data-testid="nav-brand"
+				>garde</a
+			>
 		{/if}
 		<div class="nav-links">
 			{#if !mfaBlocked}
@@ -60,6 +66,7 @@
 					class="nav-link"
 					class:nav-link-active={path.startsWith('/dashboard')}
 					aria-current={path.startsWith('/dashboard') ? 'page' : undefined}
+					data-testid="nav-dashboard"
 				>Dashboard</a>
 				{#if $isSuperuser}
 					<a
@@ -67,6 +74,7 @@
 						class="nav-link"
 						class:nav-link-active={path.startsWith('/superuser')}
 						aria-current={path.startsWith('/superuser') ? 'page' : undefined}
+						data-testid="nav-superuser"
 					>Superuser</a>
 				{:else if $isAdmin}
 					<a
@@ -74,10 +82,11 @@
 						class="nav-link"
 						class:nav-link-active={path.startsWith('/admin')}
 						aria-current={path.startsWith('/admin') ? 'page' : undefined}
+						data-testid="nav-admin"
 					>Admin</a>
 				{/if}
 			{/if}
-			<button class="btn-secondary" type="button" on:click={handleLogout}>
+			<button class="btn-secondary" type="button" data-testid="nav-logout" on:click={handleLogout}>
 				<LogOut size={18} />
 				Logout
 			</button>

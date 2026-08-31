@@ -144,26 +144,31 @@
 	<title>Request Update | garde</title>
 </svelte:head>
 
-<div class="container-medium">
+<div class="container-medium" data-testid="request-update-page">
 	<div class="card space-y-4">
 		<div class="flex items-start justify-between gap-3">
 			<div>
 				<h1 class="page-title">Request Update</h1>
 				<p class="section-subtitle">Request permission or group changes from an admin</p>
 			</div>
-			<a href="/dashboard" class="btn-secondary w-full sm:w-auto sm:ml-auto"><ArrowLeft size={18} />Back to Dashboard</a>
+			<a
+				href="/dashboard"
+				class="btn-secondary w-full sm:w-auto sm:ml-auto"
+				data-testid="request-update-back"
+				><ArrowLeft size={18} />Back to Dashboard</a
+			>
 		</div>
 
-		<div class="card-muted space-y-4">
+		<div class="card-muted space-y-4" data-testid="request-update-form">
 			<p class="text-xs text-muted">
 				Ask an admin to change your permissions or groups. You can only request permissions visible to your
 				groups. Changes take effect after an admin who shares a group with you approves the request.
 			</p>
 
 			{#if (availablePermissions || []).length === 0}
-				<p class="text-muted text-sm">No permissions available.</p>
+				<p class="text-muted text-sm" data-testid="request-update-permissions-empty">No permissions available.</p>
 			{:else}
-				<div class="edit-section">
+				<div class="edit-section" data-testid="request-update-permissions">
 					<h3>Permissions</h3>
 					<MultiSelectChips
 						options={availablePermissions}
@@ -177,9 +182,9 @@
 			{/if}
 
 			{#if (availableGroups || []).length === 0}
-				<p class="text-muted text-sm">No groups available.</p>
+				<p class="text-muted text-sm" data-testid="request-update-groups-empty">No groups available.</p>
 			{:else}
-				<div class="edit-section">
+				<div class="edit-section" data-testid="request-update-groups">
 					<h3>Groups</h3>
 					<MultiSelectChips
 						options={availableGroups}
@@ -203,6 +208,7 @@
 				<button
 					class="btn-secondary w-full sm:w-auto min-w-[9rem]"
 					type="button"
+					data-testid="request-update-submit"
 					on:click={handleSubmit}
 					disabled={loading || !hasChanges}
 				>

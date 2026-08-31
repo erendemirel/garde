@@ -360,29 +360,30 @@
 	}
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="admin-catalog" data-mode={mode}>
 	<div>
-		<h2 class="section-title">{title}</h2>
+		<h2 class="section-title" data-testid="admin-catalog-title">{title}</h2>
 		<p class="text-sm text-muted mt-1">{subtitle}</p>
 	</div>
 
 	{#if loading}
-		<p class="text-muted">Loading...</p>
+		<p class="text-muted" data-testid="admin-catalog-loading">Loading...</p>
 	{:else if error}
-		<p class="error">{error}</p>
+		<p class="error" data-testid="admin-catalog-error">{error}</p>
 	{:else}
 		<label class="form-label max-w-md">
 			<span>Search</span>
 			<input
 				class="input"
 				type="search"
+				data-testid="admin-catalog-search"
 				placeholder="Search by name or description..."
 				bind:value={search}
 			/>
 		</label>
 
 		<div class="table-scroll">
-			<table class="table-base">
+			<table class="table-base" data-testid="admin-catalog-table">
 				<thead>
 					<tr>
 						<th>Name</th>
@@ -391,9 +392,9 @@
 						<th>Actions</th>
 					</tr>
 				</thead>
-				<tbody>
+				<tbody data-testid="admin-catalog-tbody">
 					{#if catalog.length === 0}
-						<tr>
+						<tr data-testid="admin-catalog-empty">
 							<td colspan="4" class="text-center text-muted py-4">
 								{#if mode === 'groups'}
 									You are not in any groups yet. A superuser must assign groups before you can manage
@@ -404,13 +405,19 @@
 							</td>
 						</tr>
 					{:else if filteredCatalog.length === 0}
-						<tr>
+						<tr data-testid="admin-catalog-empty">
 							<td colspan="4" class="text-center text-muted py-4">No matches for your search.</td>
 						</tr>
 					{:else}
 						{#each pagedCatalog as item}
-							<tr>
-								<td class="font-medium whitespace-nowrap">{item.name}</td>
+							<tr
+								data-testid="admin-catalog-row"
+								data-item-key={item.key}
+								data-item-name={item.name}
+							>
+								<td class="font-medium whitespace-nowrap" data-testid="admin-catalog-row-name"
+									>{item.name}</td
+								>
 								<td class="text-muted max-w-md truncate" title={item.description || ''}>
 									{item.description || '—'}
 								</td>
@@ -421,6 +428,7 @@
 										type="button"
 										title="Manage users"
 										aria-label="Manage users for {item.name}"
+										data-testid="admin-catalog-manage"
 										on:click={() => openManageUsers(item)}
 									>
 										<Users size={20} />
@@ -453,13 +461,14 @@
 		slot="header-end"
 		type="button"
 		class="text-muted hover:text-accent"
+		data-testid="admin-catalog-modal-close"
 		on:click={closeManageUsersModal}
 		aria-label="Close"
 	>
 		<X size={20} />
 	</button>
 	{#if managingMembership}
-		<div class="space-y-4">
+		<div class="space-y-4" data-testid="admin-catalog-manage-modal">
 			<p class="text-xs text-muted">
 				{#if mode === 'permissions'}
 					Only users who already share a group with you appear here. Granting a permission applies only if it
@@ -492,12 +501,14 @@
 			<button
 				type="button"
 				class="btn-secondary"
+				data-testid="admin-catalog-manage-cancel"
 				on:click={closeManageUsersModal}
 				disabled={membershipSaving}>Cancel</button
 			>
 			<button
 				type="button"
 				class="btn-primary"
+				data-testid="admin-catalog-manage-save"
 				on:click={requestMembershipSave}
 				disabled={membershipSaving || !membershipDirty}
 			>

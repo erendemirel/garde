@@ -35,36 +35,69 @@
 	<title>Register | garde</title>
 </svelte:head>
 
-<div class="container-auth">
+<div class="container-auth" data-testid="register-page">
 	<div class="card space-y-4 w-full">
 		<h1 class="text-xl font-bold text-accent">Create Account</h1>
 		{#if success}
-			<p class="success">{success}</p>
+			<p class="success" data-testid="register-success">{success}</p>
 		{:else}
-			<form class="space-y-4" on:submit|preventDefault={handleRegister}>
+			<form
+				class="space-y-4"
+				data-testid="register-form"
+				method="post"
+				action="#"
+				onsubmit="return false;"
+				on:submit|preventDefault={handleRegister}
+			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Email
-					<input class="input" type="email" bind:value={email} required autocomplete="email" />
+					<input
+						class="input"
+						type="email"
+						data-testid="register-email"
+						bind:value={email}
+						required
+						autocomplete="email"
+					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Password
-					<input class="input" type="password" bind:value={password} required minlength="8" autocomplete="new-password" />
+					<input
+						class="input"
+						type="password"
+						data-testid="register-password"
+						bind:value={password}
+						required
+						minlength="8"
+						autocomplete="new-password"
+					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Confirm Password
-					<input class="input" type="password" bind:value={confirmPassword} required autocomplete="new-password" />
+					<input
+						class="input"
+						type="password"
+						data-testid="register-confirm"
+						bind:value={confirmPassword}
+						required
+						autocomplete="new-password"
+					/>
 				</label>
 				{#if error}
-					<p class="error">{error}</p>
+					<p class="error" data-testid="register-error">{error}</p>
 				{/if}
-				<button class="btn-secondary w-full justify-center" type="submit" disabled={loading}>
+				<button
+					class="btn-secondary w-full justify-center"
+					type="submit"
+					data-testid="register-submit"
+					disabled={loading}
+				>
 					{loading ? 'Creating...' : 'Create Account'}
 				</button>
 			</form>
 		{/if}
 		<div class="links">
-			<a href="/">Back to login</a>
+			<a href="/" data-testid="register-login-link">Back to login</a>
 		</div>
 	</div>
 </div>
-

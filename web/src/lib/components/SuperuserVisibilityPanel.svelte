@@ -358,7 +358,7 @@
 	}
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="superuser-visibility-panel">
 	<div class="flex justify-between items-center gap-3 flex-wrap">
 		<div>
 			<h2 class="section-title">Permission Visibility</h2>
@@ -371,6 +371,8 @@
 			<button
 				class="btn-small {visibilityViewMode === 'list' ? 'bg-accent/20' : ''}"
 				type="button"
+				data-testid="superuser-visibility-view-list"
+				aria-pressed={visibilityViewMode === 'list'}
 				on:click={() => (visibilityViewMode = 'list')}
 				title="List view"
 			>
@@ -380,6 +382,8 @@
 			<button
 				class="btn-small {visibilityViewMode === 'matrix' ? 'bg-accent/20' : ''}"
 				type="button"
+				data-testid="superuser-visibility-view-matrix"
+				aria-pressed={visibilityViewMode === 'matrix'}
 				on:click={() => (visibilityViewMode = 'matrix')}
 				title="Matrix view"
 			>
@@ -390,17 +394,20 @@
 	</div>
 
 	{#if loading}
-		<p class="text-muted">Loading...</p>
+		<p class="text-muted" data-testid="superuser-visibility-loading">Loading...</p>
 	{:else if error}
-		<p class="error">{error}</p>
+		<p class="error" data-testid="superuser-visibility-error">{error}</p>
 	{:else if permissions.length === 0 || groups.length === 0}
-		<p class="text-muted">You need at least one permission and one group to manage visibility.</p>
+		<p class="text-muted" data-testid="superuser-visibility-empty-prereq">
+			You need at least one permission and one group to manage visibility.
+		</p>
 	{:else}
 		<label class="form-label max-w-md">
 			<span>Search</span>
 			<input
 				class="input"
 				type="search"
+				data-testid="superuser-visibility-search"
 				placeholder="Search by permission or group..."
 				bind:value={visibilitySearch}
 			/>
@@ -408,7 +415,7 @@
 
 		{#if visibilityViewMode === 'list'}
 			<div class="table-scroll">
-				<table class="table-base">
+				<table class="table-base" data-testid="superuser-visibility-list-table">
 					<thead>
 						<tr>
 							<th>Permission</th>
@@ -419,7 +426,7 @@
 					</thead>
 					<tbody>
 						{#if filteredVisibilityPermissions.length === 0}
-							<tr>
+							<tr data-testid="superuser-visibility-empty">
 								<td colspan="4" class="text-center text-muted py-4">
 									No permissions match your search.
 								</td>
@@ -427,18 +434,25 @@
 						{:else}
 							{#each pagedVisibilityPermissions as perm}
 								{@const visibleGroups = permissionVisibility[perm.key] || []}
-								<tr>
+								<tr
+									data-testid="superuser-visibility-list-row"
+									data-permission-name={perm.name}
+									data-permission-key={perm.key}
+								>
 									<td class="font-medium whitespace-nowrap">{perm.name}</td>
 									<td class="text-muted max-w-md truncate" title={perm.description || ''}>
 										{perm.description || '—'}
 									</td>
-									<td class="tabular-nums">{visibleGroups.length}</td>
+									<td class="tabular-nums" data-testid="superuser-visibility-count"
+										>{visibleGroups.length}</td
+									>
 									<td>
 										<button
 											class="btn-icon"
 											type="button"
 											title="Manage visibility"
 											aria-label="Manage visibility for permission {perm.name}"
+											data-testid="superuser-visibility-manage"
 											on:click={() => openManageVisibilityGroups(perm)}
 										>
 											<Edit size={20} />
@@ -451,26 +465,32 @@
 				</table>
 			</div>
 		{:else}
-			<div class="table-scroll">
-				<table class="table-base">
+			<div class="table-scroll" data-testid="superuser-visibility-matrix-wrap">
+				<table class="table-base" data-testid="superuser-visibility-matrix">
 					<thead>
 						<tr>
 							<th class="sticky left-0 z-10 bg-input">Permission</th>
 							{#each groups as group}
-								<th class="!text-center min-w-[100px]">{group.name}</th>
+								<th class="!text-center min-w-[100px]" data-testid="superuser-visibility-matrix-group"
+									>{group.name}</th
+								>
 							{/each}
 						</tr>
 					</thead>
 					<tbody>
 						{#if filteredVisibilityPermissions.length === 0}
-							<tr>
+							<tr data-testid="superuser-visibility-empty">
 								<td colspan={groups.length + 1} class="text-center text-muted py-4">
 									No permissions match your search.
 								</td>
 							</tr>
 						{:else}
 							{#each pagedVisibilityPermissions as perm}
-								<tr>
+								<tr
+									data-testid="superuser-visibility-matrix-row"
+									data-permission-name={perm.name}
+									data-permission-key={perm.key}
+								>
 									<td class="sticky left-0 z-10 bg-input">
 										<div class="font-medium text-gray-600">{perm.name}</div>
 										<div class="text-xs text-muted">{perm.description}</div>
@@ -483,6 +503,9 @@
 												class="mx-auto flex h-6 w-6 items-center justify-center border-0 bg-transparent p-0 transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 {hasVisibility
 													? 'text-accent'
 													: 'text-muted opacity-35'}"
+												data-testid="superuser-visibility-cell"
+												data-permission-name={perm.name}
+												data-group-name={group.name}
 												on:click={() => toggleVisibility(perm.key, group.key)}
 												title={hasVisibility ? 'Remove visibility' : 'Add visibility'}
 												aria-label="{hasVisibility
@@ -538,19 +561,22 @@
 		slot="header-end"
 		type="button"
 		class="text-muted hover:text-accent"
+		data-testid="superuser-visibility-manage-close"
 		on:click={closeManageUsersModal}
 		aria-label="Close"
 	>
 		<X size={20} />
 	</button>
 	{#if managingMembership}
-		<div class="space-y-4">
+		<div class="space-y-4" data-testid="superuser-visibility-manage-modal">
 			<p class="text-xs text-muted">
 				Only groups listed here can see this permission and grant it to users. Groups without
 				visibility cannot use it.
 			</p>
 			{#if groupOptions.length === 0}
-				<p class="text-sm text-muted">No groups available.</p>
+				<p class="text-sm text-muted" data-testid="superuser-visibility-manage-empty"
+					>No groups available.</p
+				>
 			{:else}
 				<MultiSelectChips
 					options={groupOptions}
@@ -575,12 +601,14 @@
 			<button
 				type="button"
 				class="btn-secondary"
+				data-testid="superuser-visibility-manage-cancel"
 				on:click={closeManageUsersModal}
 				disabled={membershipSaving}>Cancel</button
 			>
 			<button
 				type="button"
 				class="btn-primary"
+				data-testid="superuser-visibility-manage-save"
 				on:click={requestMembershipSave}
 				disabled={membershipSaving || !membershipDirty}
 			>

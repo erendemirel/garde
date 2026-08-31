@@ -67,34 +67,55 @@
 	<title>MFA | garde</title>
 </svelte:head>
 
-<div class="container-medium">
+<div class="container-medium" data-testid="mfa-page" data-step={step}>
 	<div class="card space-y-4">
 		<div class="flex items-start justify-between gap-3">
 			<h1 class="page-title">Multi-Factor Authentication</h1>
 			{#if !($user?.mfa_enforced && !$user?.mfa_enabled)}
-				<a href="/dashboard" class="btn-secondary w-full sm:w-auto sm:ml-auto"><ArrowLeft size={18} />Back to Dashboard</a>
+				<a
+					href="/dashboard"
+					class="btn-secondary w-full sm:w-auto sm:ml-auto"
+					data-testid="mfa-back"
+					><ArrowLeft size={18} />Back to Dashboard</a
+				>
 			{/if}
 		</div>
 
 		{#if success}
-			<p class="success">{success}</p>
+			<p class="success" data-testid="mfa-success">{success}</p>
 		{:else if step === 'choice'}
 			{#if $user?.mfa_enabled}
-				<p class="text-sm text-text mb-4">MFA is currently <strong>enabled</strong>.</p>
+				<p class="text-sm text-text mb-4" data-testid="mfa-status">
+					MFA is currently <strong>enabled</strong>.
+				</p>
 				{#if $user?.mfa_enforced}
-					<p class="error">MFA is enforced and cannot be disabled.</p>
+					<p class="error" data-testid="mfa-error">MFA is enforced and cannot be disabled.</p>
 				{:else}
-					<button class="btn-danger" on:click={() => (step = 'disable')}><ShieldOff size={18} />Disable MFA</button>
+					<button
+						class="btn-danger"
+						type="button"
+						data-testid="mfa-disable-start"
+						on:click={() => (step = 'disable')}
+						><ShieldOff size={18} />Disable MFA</button
+					>
 				{/if}
 			{:else}
 				{#if $user?.mfa_enforced}
 					<p class="text-sm text-warning mb-2 font-semibold">MFA has been enforced for your account.</p>
 					<p class="text-sm text-muted mb-4">You must set up MFA before you can continue using the application.</p>
 				{:else}
-					<p class="text-sm text-text mb-4">MFA is currently <strong>disabled</strong>.</p>
+					<p class="text-sm text-text mb-4" data-testid="mfa-status">
+						MFA is currently <strong>disabled</strong>.
+					</p>
 				{/if}
 				<div class="flex justify-center">
-					<button class="btn-secondary" on:click={handleSetup} disabled={loading}>
+					<button
+						class="btn-secondary"
+						type="button"
+						data-testid="mfa-setup"
+						on:click={handleSetup}
+						disabled={loading}
+					>
 						<ShieldCheck size={18} />
 						{loading ? 'Setting up...' : 'Setup MFA'}
 					</button>
@@ -102,40 +123,84 @@
 			{/if}
 		{:else if step === 'verify'}
 			<p class="text-sm text-text mb-3">Scan this QR code with your authenticator app:</p>
-			<div class="qr-code">
+			<div class="qr-code" data-testid="mfa-qr">
 				<img src={qrCodeUrl} alt="MFA QR Code" width="200" height="200" />
 			</div>
 			<p class="text-sm text-muted my-3">Or enter this secret manually:</p>
-			<p class="secret-key">{secret}</p>
-			<form class="space-y-4 mt-4" on:submit|preventDefault={handleVerify}>
+			<p class="secret-key" data-testid="mfa-secret">{secret}</p>
+			<form
+				class="space-y-4 mt-4"
+				data-testid="mfa-verify-form"
+				method="post"
+				action="#"
+				onsubmit="return false;"
+				on:submit|preventDefault={handleVerify}
+			>
 				<label class="form-label">
 					<span>Enter code from app</span>
-					<input class="input" type="text" bind:value={code} placeholder="6-digit code" required />
+					<input
+						class="input"
+						type="text"
+						data-testid="mfa-code"
+						bind:value={code}
+						placeholder="6-digit code"
+						required
+					/>
 				</label>
 				{#if error}
-					<p class="error">{error}</p>
+					<p class="error" data-testid="mfa-error">{error}</p>
 				{/if}
-				<button class="btn-secondary" type="submit" disabled={loading}>
+				<button
+					class="btn-secondary"
+					type="submit"
+					data-testid="mfa-verify-submit"
+					disabled={loading}
+				>
 					<CheckCircle size={18} />
 					{loading ? 'Verifying...' : 'Verify & Enable'}
 				</button>
 			</form>
 		{:else if step === 'disable'}
 			<p class="text-sm text-text mb-3">Enter your MFA code to disable:</p>
-			<form class="space-y-4" on:submit|preventDefault={requestDisableConfirmation}>
+			<form
+				class="space-y-4"
+				data-testid="mfa-disable-form"
+				method="post"
+				action="#"
+				onsubmit="return false;"
+				on:submit|preventDefault={requestDisableConfirmation}
+			>
 				<label class="form-label">
 					<span>MFA Code</span>
-					<input class="input" type="text" bind:value={code} placeholder="6-digit code" required />
+					<input
+						class="input"
+						type="text"
+						data-testid="mfa-code"
+						bind:value={code}
+						placeholder="6-digit code"
+						required
+					/>
 				</label>
 				{#if error}
-					<p class="error">{error}</p>
+					<p class="error" data-testid="mfa-error">{error}</p>
 				{/if}
 				<div class="flex flex-wrap gap-3">
-					<button class="btn-danger" type="submit" disabled={loading}>
+					<button
+						class="btn-danger"
+						type="submit"
+						data-testid="mfa-disable-submit"
+						disabled={loading}
+					>
 						<ShieldOff size={18} />
 						{loading ? 'Disabling...' : 'Disable MFA'}
 					</button>
-					<button type="button" class="btn-secondary" on:click={() => (step = 'choice')}><X size={18} />Cancel</button>
+					<button
+						type="button"
+						class="btn-secondary"
+						data-testid="mfa-disable-cancel"
+						on:click={() => (step = 'choice')}
+						><X size={18} />Cancel</button
+					>
 				</div>
 			</form>
 		{/if}
