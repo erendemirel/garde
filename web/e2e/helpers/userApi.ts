@@ -1,10 +1,14 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import path from 'node:path';
 import { e2eAdmin, e2eSuperuser, loginAs } from './auth';
+import { waitForUserDetail, waitForUsersList } from './waits';
 
 export type BoolMap = Record<string, boolean>;
 
 export const AUTH_DIR = path.join(process.cwd(), 'playwright', '.auth');
+
+/** Re-export for existing call sites. Prefer `./waits` for new code. */
+export { waitForUsersList } from './waits';
 
 /** API wraps payloads as `{ data: T }`. */
 export async function apiData<T>(res: { json: () => Promise<any>; ok: () => boolean; status: () => number; text: () => Promise<string> }): Promise<T> {
@@ -182,7 +186,7 @@ export async function openUserDetailFromSuperuser(page: Page, email: string) {
 		await page.getByTestId('nav-superuser').click();
 	}
 	await page.getByTestId('superuser-tab-users').click();
-	await expect(page.getByTestId('users-list')).toBeVisible();
+	await waitForUsersList(page);
 
 	const usersResponse = page.waitForResponse(
 		(res) =>
@@ -196,6 +200,7 @@ export async function openUserDetailFromSuperuser(page: Page, email: string) {
 	const row = page.locator(`[data-testid="users-list-row"][data-user-email="${email}"]`);
 	await expect(row).toBeVisible();
 	await row.getByTestId('users-list-edit').click();
+	await waitForUserDetail(page);
 	await expect(page.getByTestId('user-detail-email')).toHaveText(email);
 }
 

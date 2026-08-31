@@ -1,4 +1,5 @@
 import { test, expect } from './helpers/fixtures';
+import { waitForAdminCatalog } from './helpers/waits';
 
 /**
  * Admin permissions / groups catalog tabs (read-only against seed admin).
@@ -20,8 +21,8 @@ test.describe('Admin catalog tabs', () => {
 		await expect(catalog).toBeVisible();
 		await expect(catalog).toHaveAttribute('data-mode', 'permissions');
 		await expect(page.getByTestId('admin-catalog-title')).toHaveText('Permissions');
+		await waitForAdminCatalog(page);
 		await expect(page.getByTestId('admin-catalog-search')).toBeVisible();
-		await expect(page.getByTestId('admin-catalog-table')).toBeVisible();
 	});
 
 	test('switches to Groups and shows the catalog', async ({ adminPage: page }) => {
@@ -32,6 +33,6 @@ test.describe('Admin catalog tabs', () => {
 		await expect(catalog).toBeVisible();
 		await expect(catalog).toHaveAttribute('data-mode', 'groups');
 		await expect(page.getByTestId('admin-catalog-title')).toHaveText('Groups');
-		await expect(page.getByTestId('admin-catalog-table')).toBeVisible();
+		await waitForAdminCatalog(page);
 	});
 });

@@ -1,4 +1,5 @@
 import { test, expect } from './helpers/fixtures';
+import { waitForSuperuserCatalog } from './helpers/waits';
 
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
@@ -11,6 +12,7 @@ test.describe('Superuser group CRUD', () => {
 		await page.goto('/superuser');
 		await page.getByTestId('superuser-tab-groups').click();
 		await expect(page.getByTestId('superuser-catalog')).toHaveAttribute('data-mode', 'groups');
+		await waitForSuperuserCatalog(page);
 
 		await page.getByTestId('superuser-catalog-create').click();
 		await page.getByTestId('superuser-catalog-item-name').fill(groupName);
@@ -37,6 +39,7 @@ test.describe('Superuser group CRUD', () => {
 
 		await page.goto('/superuser');
 		await page.getByTestId('superuser-tab-groups').click();
+		await waitForSuperuserCatalog(page);
 
 		await page.getByTestId('superuser-catalog-create').click();
 		await page.getByTestId('superuser-catalog-item-name').fill(groupName);

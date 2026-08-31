@@ -1,10 +1,11 @@
 import { test, expect } from './helpers/fixtures';
 import { e2eAdmin } from './helpers/auth';
+import { waitForUsersList } from './helpers/waits';
 
 test.describe('Admin user detail', () => {
 	test.beforeEach(async ({ adminPage: page }) => {
 		await page.goto('/admin');
-		await expect(page.getByTestId('users-list')).toBeVisible();
+		await waitForUsersList(page);
 
 		const usersResponse = page.waitForResponse(
 			(res) =>
@@ -37,6 +38,6 @@ test.describe('Admin user detail', () => {
 		await page.getByTestId('user-detail-back').click();
 		await expect(page).toHaveURL(/\/admin/);
 		await expect(page.getByTestId('admin-page')).toBeVisible();
-		await expect(page.getByTestId('users-list')).toBeVisible();
+		await waitForUsersList(page);
 	});
 });

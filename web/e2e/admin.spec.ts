@@ -1,5 +1,6 @@
 import { test, expect } from './helpers/fixtures';
 import { e2eAdmin } from './helpers/auth';
+import { waitForUsersList } from './helpers/waits';
 
 test.describe('Admin users list', () => {
 	test('opens Admin from nav and shows the users list', async ({ adminPage: page }) => {
@@ -8,14 +9,14 @@ test.describe('Admin users list', () => {
 		await expect(page).toHaveURL(/\/admin/);
 		await expect(page.getByTestId('admin-page')).toBeVisible();
 		await expect(page.getByTestId('admin-tab-users')).toHaveAttribute('aria-selected', 'true');
-		await expect(page.getByTestId('users-list')).toBeVisible();
+		await waitForUsersList(page);
 		await expect(page.getByTestId('users-list-table')).toBeVisible();
 		await expect(page.getByTestId('users-list-row').first()).toBeVisible();
 	});
 
 	test('search filters users by email', async ({ adminPage: page }) => {
 		await page.goto('/admin');
-		await expect(page.getByTestId('users-list')).toBeVisible();
+		await waitForUsersList(page);
 
 		const usersResponse = page.waitForResponse(
 			(res) =>

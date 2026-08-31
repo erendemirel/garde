@@ -1,5 +1,6 @@
 import { test, expect } from './helpers/fixtures';
 import type { Page } from '@playwright/test';
+import { waitForSuperuserCatalog } from './helpers/waits';
 
 async function waitForToastGone(page: Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
@@ -52,6 +53,7 @@ test.describe('Superuser catalog members', () => {
 		try {
 			await page.goto('/superuser');
 			await page.getByTestId('superuser-tab-groups').click();
+			await waitForSuperuserCatalog(page);
 			await page.getByTestId('superuser-catalog-create').click();
 			await page.getByTestId('superuser-catalog-item-name').fill(groupName);
 			await page.getByTestId('superuser-catalog-item-definition').fill('E2E catalog members');
@@ -91,6 +93,7 @@ test.describe('Superuser catalog members', () => {
 			await page.goto('/superuser?tab=groups').catch(() => undefined);
 			try {
 				await page.getByTestId('superuser-tab-groups').click();
+				await waitForSuperuserCatalog(page);
 				await page.getByTestId('superuser-catalog-search').fill(groupName);
 				const row = page.locator(
 					`[data-testid="superuser-catalog-row"][data-item-name="${groupName}"]`
@@ -118,6 +121,7 @@ test.describe('Superuser catalog members', () => {
 		try {
 			await page.goto('/superuser');
 			await page.getByTestId('superuser-tab-permissions').click();
+			await waitForSuperuserCatalog(page);
 			await page.getByTestId('superuser-catalog-create').click();
 			await page.getByTestId('superuser-catalog-item-name').fill(permissionName);
 			await page.getByTestId('superuser-catalog-item-definition').fill('E2E permission members');
@@ -151,6 +155,7 @@ test.describe('Superuser catalog members', () => {
 			await page.goto('/superuser?tab=permissions').catch(() => undefined);
 			try {
 				await page.getByTestId('superuser-tab-permissions').click();
+				await waitForSuperuserCatalog(page);
 				await page.getByTestId('superuser-catalog-search').fill(permissionName);
 				const row = page.locator(
 					`[data-testid="superuser-catalog-row"][data-item-name="${permissionName}"]`

@@ -1,4 +1,5 @@
 import { test, expect } from './helpers/fixtures';
+import { waitForSuperuserCatalog, waitForVisibilityPanel } from './helpers/waits';
 
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
@@ -11,6 +12,7 @@ async function createCatalogItem(
 	definition: string
 ) {
 	await page.getByTestId(`superuser-tab-${tab}`).click();
+	await waitForSuperuserCatalog(page);
 	await page.getByTestId('superuser-catalog-create').click();
 	await page.getByTestId('superuser-catalog-item-name').fill(name);
 	await page.getByTestId('superuser-catalog-item-definition').fill(definition);
@@ -26,6 +28,7 @@ async function deleteCatalogItemIfPresent(
 	name: string
 ) {
 	await page.getByTestId(`superuser-tab-${tab}`).click();
+	await waitForSuperuserCatalog(page);
 	await page.getByTestId('superuser-catalog-search').fill(name);
 	const row = page.locator(`[data-testid="superuser-catalog-row"][data-item-name="${name}"]`);
 	if ((await row.count()) === 0) return;
@@ -52,6 +55,7 @@ test.describe('Superuser permission visibility', () => {
 
 			await page.getByTestId('superuser-tab-visibility').click();
 			await expect(page.getByTestId('superuser-visibility-panel')).toBeVisible();
+			await waitForVisibilityPanel(page);
 			await page.getByTestId('superuser-visibility-view-matrix').click();
 			await expect(page.getByTestId('superuser-visibility-matrix')).toBeVisible();
 
@@ -97,6 +101,7 @@ test.describe('Superuser permission visibility', () => {
 
 			await page.getByTestId('superuser-tab-visibility').click();
 			await expect(page.getByTestId('superuser-visibility-panel')).toBeVisible();
+			await waitForVisibilityPanel(page);
 			await page.getByTestId('superuser-visibility-view-list').click();
 			await expect(page.getByTestId('superuser-visibility-list-table')).toBeVisible();
 
@@ -163,6 +168,7 @@ test.describe('Superuser permission visibility', () => {
 	test('switches between list and matrix views', async ({ superuserPage: page }) => {
 		await page.goto('/superuser?tab=visibility');
 		await expect(page.getByTestId('superuser-visibility-panel')).toBeVisible();
+		await waitForVisibilityPanel(page);
 
 		await expect(page.getByTestId('superuser-visibility-view-list')).toHaveAttribute(
 			'aria-pressed',

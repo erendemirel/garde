@@ -1,6 +1,6 @@
 import { test, expect } from './helpers/fixtures';
 import { openUserDetailFromSuperuser } from './helpers/userApi';
-
+import { waitForUsersList } from './helpers/waits';
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
 }
@@ -23,7 +23,7 @@ test.describe('Delete user', () => {
 		await waitForToastGone(page);
 
 		await expect(page).toHaveURL(/\/superuser/, { timeout: 10_000 });
-		await expect(page.getByTestId('users-list')).toBeVisible();
+		await waitForUsersList(page);
 
 		const usersResponse = page.waitForResponse(
 			(res) =>

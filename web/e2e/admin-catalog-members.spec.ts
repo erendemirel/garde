@@ -1,5 +1,6 @@
 import { test, expect } from './helpers/fixtures';
 import type { Page } from '@playwright/test';
+import { waitForAdminCatalog } from './helpers/waits';
 
 /** Seed group the admin already belongs to; ephemeral users start in group_a only. */
 const SCOPE_GROUP = 'asdfasdf';
@@ -46,6 +47,7 @@ test.describe('Admin catalog members', () => {
 		await page.goto('/admin');
 		await page.getByTestId('admin-tab-groups').click();
 		await expect(page.getByTestId('admin-catalog')).toHaveAttribute('data-mode', 'groups');
+		await waitForAdminCatalog(page);
 
 		await page.getByTestId('admin-catalog-search').fill(SCOPE_GROUP);
 		const row = page.locator(
@@ -106,6 +108,7 @@ test.describe('Admin catalog members', () => {
 				'data-mode',
 				'permissions'
 			);
+			await waitForAdminCatalog(page);
 
 			await page.getByTestId('admin-catalog-search').fill(permissionName);
 			const row = page.locator(
