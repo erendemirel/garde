@@ -12,17 +12,26 @@
 	export let variant = 'permission';
 	export let placeholder = 'Search to add…';
 	export let label = '';
+	/** When true, parent supplies options via `search` events (paginated API). Local text filter is skipped. */
+	export let remote = false;
+	export let remoteHint = 'Type at least 2 characters to search…';
 
+	const PAGE_SIZE = 25;
 	const dispatch = createEventDispatcher();
 	const listId = `ms-list-${Math.random().toString(36).slice(2, 9)}`;
 
 	let query = '';
 	let open = false;
 	let highlight = 0;
+	let visibleLimit = PAGE_SIZE;
 	/** @type {HTMLElement | null} */
 	let rootEl = null;
 	/** @type {HTMLInputElement | null} */
 	let inputEl = null;
+	/** @type {HTMLUListElement | null} */
+	let listEl = null;
+	/** @type {ReturnType<typeof setTimeout> | undefined} */
+	let searchTimer;
 
 	$: selectedStyle = variant === 'group' ? 'badge-group' : 'badge-permission';
 
@@ -38,6 +47,7 @@
 	$: filtered = options.filter((o) => {
 		if (selected.has(o.key)) return false;
 		if (initial.has(o.key) && !selected.has(o.key)) return false;
+		if (remote) return true;
 		if (!query) return true;
 		const q = query.toLowerCase();
 		return (
@@ -47,37 +57,48 @@
 		);
 	});
 
-	$: if (highlight >= filtered.length) highlight = Math.max(0, filtered.length - 1);
+	$: visibleOptions = filtered.slice(0, visibleLimit);
+	$: hasMore = visibleLimit < filtered.length;
 
-	function pendingState(key) {
+	$: if (highlight >= visibleOptions.length) {
+		highlight = Math.max(0, visibleOptions.length - 1);
+	}
+
+	function pendingState(/** @type {string} */ key) {
 		if (selected.has(key) && !initial.has(key)) return 'added';
 		if (!selected.has(key) && initial.has(key)) return 'removed';
 		return 'selected';
 	}
 
-	function chipClass(state) {
+	function chipClass(/** @type {string} */ state) {
 		if (state === 'added') return 'ms-chip chip-pending';
 		if (state === 'removed') return 'ms-chip chip-pending chip-pending-removed';
 		return `ms-chip ${selectedStyle}`;
 	}
 
-	function emit(next) {
+	function emit(/** @type {Set<string>} */ next) {
 		selected = next;
 		dispatch('change', next);
 	}
 
-	function add(key) {
+	function resetVisible() {
+		visibleLimit = PAGE_SIZE;
+		highlight = 0;
+		if (listEl) listEl.scrollTop = 0;
+	}
+
+	function add(/** @type {string} */ key) {
 		if (selected.has(key)) return;
 		const next = new Set(selected);
 		next.add(key);
 		emit(next);
 		query = '';
-		highlight = 0;
+		resetVisible();
 		open = true;
 		inputEl?.focus();
 	}
 
-	function remove(key) {
+	function remove(/** @type {string} */ key) {
 		if (!selected.has(key)) return;
 		const next = new Set(selected);
 		next.delete(key);
@@ -85,29 +106,50 @@
 		inputEl?.focus();
 	}
 
-	function restore(key) {
+	function restore(/** @type {string} */ key) {
 		add(key);
 	}
 
-	function onChipAction(item) {
+	function onChipAction(/** @type {{ key: string, state: string }} */ item) {
 		if (item.state === 'removed') restore(item.key);
 		else remove(item.key);
 	}
 
 	function openList() {
 		open = true;
+		resetVisible();
 	}
 
 	function closeList() {
 		open = false;
 		highlight = 0;
+		visibleLimit = PAGE_SIZE;
 	}
 
 	function onInput() {
 		open = true;
-		highlight = 0;
+		resetVisible();
+		if (!remote) return;
+		if (searchTimer) clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => {
+			dispatch('search', query);
+		}, 300);
 	}
 
+	function loadMore() {
+		if (!hasMore) return;
+		visibleLimit = Math.min(visibleLimit + PAGE_SIZE, filtered.length);
+	}
+
+	/** @param {Event} e */
+	function onListScroll(e) {
+		const el = /** @type {HTMLElement} */ (e.currentTarget);
+		if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
+			loadMore();
+		}
+	}
+
+	/** @param {KeyboardEvent} e */
 	function onKeydown(e) {
 		if (e.key === 'Escape') {
 			if (open) {
@@ -118,20 +160,25 @@
 		}
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
-			open = true;
-			if (filtered.length) highlight = (highlight + 1) % filtered.length;
+			if (!open) openList();
+			if (visibleOptions.length) {
+				highlight = (highlight + 1) % visibleOptions.length;
+				if (highlight >= visibleOptions.length - 3) loadMore();
+			}
 			return;
 		}
 		if (e.key === 'ArrowUp') {
 			e.preventDefault();
-			open = true;
-			if (filtered.length) highlight = (highlight - 1 + filtered.length) % filtered.length;
+			if (!open) openList();
+			if (visibleOptions.length) {
+				highlight = (highlight - 1 + visibleOptions.length) % visibleOptions.length;
+			}
 			return;
 		}
 		if (e.key === 'Enter') {
-			if (open && filtered[highlight]) {
+			if (open && visibleOptions[highlight]) {
 				e.preventDefault();
-				add(filtered[highlight].key);
+				add(visibleOptions[highlight].key);
 			}
 			return;
 		}
@@ -145,11 +192,15 @@
 	}
 
 	onMount(() => {
+		/** @param {PointerEvent} e */
 		const onDoc = (e) => {
-			if (!rootEl?.contains(e.target)) closeList();
+			if (!rootEl?.contains(/** @type {Node} */ (e.target))) closeList();
 		};
 		document.addEventListener('pointerdown', onDoc);
-		return () => document.removeEventListener('pointerdown', onDoc);
+		return () => {
+			document.removeEventListener('pointerdown', onDoc);
+			if (searchTimer) clearTimeout(searchTimer);
+		};
 	});
 </script>
 
@@ -184,7 +235,7 @@
 					<button
 						type="button"
 						class={chipClass(item.state)}
-						title={item.description || (item.state === 'removed' ? 'Click to restore' : 'Click to remove')}
+						title={item.description || (item.state === 'removed' ? 'Restore' : 'Remove')}
 						on:click={() => onChipAction(item)}
 					>
 						{#if item.state === 'added'}
@@ -203,13 +254,27 @@
 	</div>
 
 	{#if open}
-		<ul class="ms-dropdown" id={listId} role="listbox">
-			{#if filtered.length === 0}
+		<ul
+			class="ms-dropdown"
+			id={listId}
+			role="listbox"
+			bind:this={listEl}
+			on:scroll={onListScroll}
+		>
+			{#if remote && query.trim().length > 0 && query.trim().length < 2}
+				<li class="ms-empty" role="presentation">{remoteHint}</li>
+			{:else if filtered.length === 0}
 				<li class="ms-empty" role="presentation">
-					{query ? 'No matches' : 'Nothing left to add'}
+					{remote
+						? query.trim().length >= 2
+							? 'No matches'
+							: remoteHint
+						: query
+							? 'No matches'
+							: 'Nothing left to add'}
 				</li>
 			{:else}
-				{#each filtered as opt, i (opt.key)}
+				{#each visibleOptions as opt, i (opt.key)}
 					<li role="option" aria-selected={i === highlight}>
 						<button
 							type="button"
@@ -226,6 +291,9 @@
 						</button>
 					</li>
 				{/each}
+				{#if hasMore}
+					<li class="ms-empty" role="presentation">Scroll for more…</li>
+				{/if}
 			{/if}
 		</ul>
 	{/if}

@@ -1,13 +1,15 @@
 <script>
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { browser } from '$app/environment';
 	import { getMe, logout } from '$lib/api';
 	import { user, isAdmin, isSuperuser, clearAuthState } from '$lib/stores';
 	import { LogOut } from 'lucide-svelte';
 
-	let loading = true;
+	/** Skip full-screen load when navigating within an already-authenticated session. */
+	let loading = !$user;
+	let bootError = '';
 
 	$: mfaBlocked = !!$user?.mfa_enforced && !$user?.mfa_enabled;
 	$: path = $page.url.pathname;
@@ -17,13 +19,15 @@
 	}
 
 	onMount(async () => {
+		bootError = '';
 		try {
 			const me = await getMe();
 			user.set(me);
-			isSuperuser.set(me.is_superuser || false);
-			isAdmin.set(me.is_admin || false);
-		} catch {
+			isSuperuser.set(!!me.is_superuser);
+			isAdmin.set(!!me.is_admin);
+		} catch (e) {
 			clearAuthState();
+			bootError = e instanceof Error ? e.message : 'Session expired';
 			goto('/');
 		}
 		loading = false;
@@ -39,8 +43,8 @@
 </script>
 
 {#if loading}
-	<div class="container-base max-w-md mx-auto pt-32 text-center text-muted">
-		<p>Loading...</p>
+	<div class="container-base max-w-md mx-auto pt-32 text-center text-muted" aria-live="polite">
+		<p>Loading session…</p>
 	</div>
 {:else if $user}
 	<nav class="navbar">
@@ -80,10 +84,15 @@
 		</div>
 	</nav>
 	{#if mfaBlocked && !path.startsWith('/mfa')}
-		<div class="container-base max-w-md mx-auto pt-32 text-center text-muted">
-			<p>Redirecting to MFA setup...</p>
+		<div class="container-base max-w-md mx-auto pt-32 text-center text-muted" aria-live="polite">
+			<p>Redirecting to MFA setup…</p>
 		</div>
 	{:else}
 		<slot />
 	{/if}
+{:else if bootError}
+	<div class="container-base max-w-md mx-auto pt-32 text-center">
+		<p class="error">{bootError}</p>
+		<a href="/" class="btn-secondary mt-4 inline-flex">Sign in</a>
+	</div>
 {/if}

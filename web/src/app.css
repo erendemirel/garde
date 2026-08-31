@@ -250,8 +250,12 @@ a {
 		@apply mt-4 flex items-center justify-center gap-3 text-sm text-muted;
 	}
 
+	.table-scroll {
+		@apply w-full overflow-x-auto -mx-1 px-1;
+	}
+
 	.table-base {
-		@apply w-full border-collapse overflow-hidden rounded-xl bg-input text-sm;
+		@apply w-full min-w-[36rem] border-collapse overflow-hidden rounded-xl bg-input text-sm;
 	}
 
 	.table-base th {
@@ -334,11 +338,19 @@ a {
 	}
 
 	.modal-content {
-		@apply bg-card border-2 border-borderc rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto;
+		@apply flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border-2 border-borderc bg-card p-6 mx-4;
 	}
 
 	.modal-content.modal-content-wide {
-		@apply max-w-2xl;
+		@apply max-w-2xl min-h-[min(36rem,85vh)];
+	}
+
+	.modal-body {
+		@apply flex min-h-0 flex-1 flex-col overflow-y-auto pt-1;
+	}
+
+	.modal-footer {
+		@apply mt-auto flex shrink-0 justify-end gap-3 border-t border-borderc pt-4;
 	}
 
 	.btn-primary,

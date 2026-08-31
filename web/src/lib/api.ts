@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
+import { ApiError } from './apiError';
 import { clearAuthState } from './stores';
 
 // Use environment variable in production, fallback to /api for development
@@ -40,7 +41,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 		if (res.status === 401 && !CREDENTIAL_401_ENDPOINTS.has(path)) {
 			handleExpiredSession();
 		}
-		throw new Error(res.ok ? 'Invalid response from server' : `Request failed (${res.status})`);
+		throw new ApiError(
+			res.ok ? 'Invalid response from server' : `Request failed (${res.status})`,
+			res.status
+		);
 	}
 
 	if (res.status === 401 && !CREDENTIAL_401_ENDPOINTS.has(path)) {
@@ -48,7 +52,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 	}
 
 	if ('error' in json) {
-		throw new Error(json.error.message);
+		throw new ApiError(json.error.message, res.status);
+	}
+
+	if (!res.ok) {
+		throw new ApiError(`Request failed (${res.status})`, res.status);
 	}
 
 	return json.data;

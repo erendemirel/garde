@@ -3,12 +3,16 @@
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { getUser, updateUser, revokeSessions, deleteUser, listPermissions, listGroups } from '$lib/api';
+	import { isForbidden } from '$lib/apiError';
+	import { showToast } from '$lib/toast';
 	import { user as currentUser, isSuperuser } from '$lib/stores';
-	import { CircleCheck, CircleX, CircleAlert, Save, ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from 'lucide-svelte';
+	import { ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from 'lucide-svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 	import ShieldLock from '$lib/components/ShieldLock.svelte';
+	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
 	const STATUS_OK = 'ok';
 	const STATUS_PENDING = 'pending admin approval';
@@ -23,9 +27,6 @@
 	let loading = true;
 	let saving = false;
 	let accessDenied = false;
-	let showToast = false;
-	let toastMessage = '';
-	let toastType = 'success';
 	let showDeleteConfirm = false;
 	let showSaveConfirm = false;
 	let showMfaEnforceConfirm = false;
@@ -139,16 +140,6 @@
 		showLeaveConfirm = true;
 	});
 
-	function formatStatus(value) {
-		const v = (value || '').toLowerCase();
-		if (v === STATUS_OK) return 'OK';
-		if (v === STATUS_PENDING) return 'Pending approval by an admin';
-		if (v === STATUS_REJECTED) return 'Approval rejected by an admin';
-		if (v === STATUS_LOCKED_ADMIN) return 'Locked by an admin';
-		if (v === STATUS_LOCKED_SECURITY) return 'Locked by security';
-		return value || 'Unknown';
-	}
-
 	function permissionLabel(key) {
 		return availablePermissions.find((p) => p.key === key)?.name || key;
 	}
@@ -261,15 +252,10 @@
 			availableGroups = grps || [];
 			applyUser(user);
 		} catch (e) {
-			const msg = e instanceof Error ? e.message : '';
-			if (
-				msg.toLowerCase().includes('unauthorized') ||
-				msg.toLowerCase().includes('forbidden') ||
-				msg.toLowerCase().includes('permission')
-			) {
+			if (isForbidden(e)) {
 				accessDenied = true;
 			} else {
-				error = msg || 'Failed to load user';
+				error = e instanceof Error ? e.message : 'Failed to load user';
 			}
 		}
 		loading = false;
@@ -279,18 +265,9 @@
 		};
 	});
 
-	function showToastMessage(message, type = 'success') {
-		toastMessage = message;
-		toastType = type;
-		showToast = true;
-		setTimeout(() => {
-			showToast = false;
-		}, 5000);
-	}
-
 	function requestSave() {
 		if (!hasChanges) {
-			showToastMessage('No changes to save', 'error');
+			showToast('No changes to save', 'error');
 			return;
 		}
 		if (accessChanged) {
@@ -307,7 +284,7 @@
 		try {
 			const { permissions, groups } = buildAccessMaps();
 			const updatedUser = await updateUser(userId, { permissions, groups });
-			showToastMessage(summary ? `Updated: ${summary}` : 'User updated!', 'success');
+			showToast(summary ? `Updated: ${summary}` : 'User updated!', 'success');
 			if (updatedUser) {
 				applyUser(updatedUser);
 			} else {
@@ -315,7 +292,7 @@
 				if (fresh) applyUser(fresh);
 			}
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Update failed', 'error');
+			showToast(e instanceof Error ? e.message : 'Update failed', 'error');
 		}
 		saving = false;
 	}
@@ -333,7 +310,7 @@
 		showApproveUpdateConfirm = false;
 		try {
 			const updatedUser = await updateUser(userId, { approve_update: true });
-			showToastMessage('Update approved!', 'success');
+			showToast('Update approved!', 'success');
 			if (updatedUser) {
 				applyUser(updatedUser);
 			} else {
@@ -341,7 +318,7 @@
 				if (fresh) applyUser(fresh);
 			}
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Approval failed', 'error');
+			showToast(e instanceof Error ? e.message : 'Approval failed', 'error');
 		}
 		saving = false;
 	}
@@ -351,7 +328,7 @@
 		showRejectUpdateConfirm = false;
 		try {
 			const updatedUser = await updateUser(userId, { reject_update: true });
-			showToastMessage('Update rejected!', 'success');
+			showToast('Update rejected!', 'success');
 			if (updatedUser) {
 				applyUser(updatedUser);
 			} else {
@@ -359,14 +336,14 @@
 				if (fresh) applyUser(fresh);
 			}
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Rejection failed', 'error');
+			showToast(e instanceof Error ? e.message : 'Rejection failed', 'error');
 		}
 		saving = false;
 	}
 
 	function requestRevokeSessions() {
 		if ($currentUser?.mfa_enabled && !mfaCode.trim()) {
-			showToastMessage('Enter your MFA code to revoke sessions', 'error');
+			showToast('Enter your MFA code to revoke sessions', 'error');
 			return;
 		}
 		showRevokeConfirm = true;
@@ -377,9 +354,9 @@
 		showRevokeConfirm = false;
 		try {
 			await revokeSessions(userId, $currentUser?.mfa_enabled ? mfaCode : undefined);
-			showToastMessage('Sessions revoked!', 'success');
+			showToast('Sessions revoked!', 'success');
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Failed to revoke sessions', 'error');
+			showToast(e instanceof Error ? e.message : 'Failed to revoke sessions', 'error');
 		}
 		saving = false;
 	}
@@ -413,7 +390,7 @@
 		showApproveConfirm = false;
 		try {
 			const updatedUser = await updateUser(userId, { status: STATUS_OK });
-			showToastMessage('Account approved', 'success');
+			showToast('Account approved', 'success');
 			if (updatedUser) {
 				applyUser(updatedUser);
 			} else {
@@ -421,7 +398,7 @@
 				if (fresh) applyUser(fresh);
 			}
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Failed to approve account', 'error');
+			showToast(e instanceof Error ? e.message : 'Failed to approve account', 'error');
 		}
 		saving = false;
 	}
@@ -431,7 +408,7 @@
 		showRejectAccountConfirm = false;
 		try {
 			const updatedUser = await updateUser(userId, { status: STATUS_REJECTED });
-			showToastMessage('Account approval rejected', 'success');
+			showToast('Account approval rejected', 'success');
 			if (updatedUser) {
 				applyUser(updatedUser);
 			} else {
@@ -439,7 +416,7 @@
 				if (fresh) applyUser(fresh);
 			}
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Failed to reject account', 'error');
+			showToast(e instanceof Error ? e.message : 'Failed to reject account', 'error');
 		}
 		saving = false;
 	}
@@ -451,7 +428,7 @@
 			const updatedUser = await updateUser(userId, {
 				status: pendingLock ? STATUS_LOCKED_ADMIN : STATUS_OK
 			});
-			showToastMessage(pendingLock ? 'Account locked by admin' : 'Account unlocked', 'success');
+			showToast(pendingLock ? 'Account locked by admin' : 'Account unlocked', 'success');
 			if (updatedUser) {
 				applyUser(updatedUser);
 			} else {
@@ -459,7 +436,7 @@
 				if (fresh) applyUser(fresh);
 			}
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Failed to update lock status', 'error');
+			showToast(e instanceof Error ? e.message : 'Failed to update lock status', 'error');
 		}
 		saving = false;
 	}
@@ -469,7 +446,7 @@
 		showMfaEnforceConfirm = false;
 		try {
 			const updatedUser = await updateUser(userId, { mfa_enforced: pendingMfaEnforced });
-			showToastMessage(
+			showToast(
 				pendingMfaEnforced ? 'MFA enforcement enabled' : 'MFA enforcement removed',
 				'success'
 			);
@@ -480,7 +457,7 @@
 				if (fresh) userData = fresh;
 			}
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Failed to update MFA enforcement', 'error');
+			showToast(e instanceof Error ? e.message : 'Failed to update MFA enforcement', 'error');
 		}
 		saving = false;
 	}
@@ -494,23 +471,15 @@
 		showDeleteConfirm = false;
 		try {
 			await deleteUser(userId);
-			showToastMessage('User deleted successfully!', 'success');
+			showToast('User deleted successfully!', 'success');
 			allowNextNavigation = true;
 			setTimeout(() => {
 				goto(usersListHref);
 			}, 1500);
 		} catch (e) {
-			showToastMessage(e instanceof Error ? e.message : 'Failed to delete user', 'error');
+			showToast(e instanceof Error ? e.message : 'Failed to delete user', 'error');
 			saving = false;
 		}
-	}
-
-	function getStatusClass(s) {
-		const v = s.toLowerCase();
-		if (v === 'ok') return 'ok';
-		if (v.includes('locked') || v.includes('disabled') || v.includes('rejected')) return 'locked';
-		if (v.includes('pending')) return 'pending';
-		return 'pending';
 	}
 </script>
 
@@ -554,32 +523,13 @@
 				<div class="info-card">
 					<p class="info-label">Status</p>
 					<p class="info-value">
-						<span class="status-display status-{getStatusClass(userData.status)}">
-							<span class="status-icon">
-								{#if getStatusClass(userData.status) === 'ok'}
-									<CircleCheck size={18} />
-								{:else if getStatusClass(userData.status) === 'locked'}
-									<CircleX size={18} />
-								{:else}
-									<CircleAlert size={18} />
-								{/if}
-							</span>
-							<span class="status-text">{formatStatus(userData.status)}</span>
-						</span>
+						<StatusBadge status={userData.status} />
 					</p>
 				</div>
 				<div class="info-card">
 					<p class="info-label">MFA</p>
 					<p class="info-value">
-						{#if userData.mfa_enabled && userData.mfa_enforced}
-							<span class="text-blue-600">Enforced and set up</span>
-						{:else if userData.mfa_enabled}
-							<span class="text-green-700">Set up although not enforced</span>
-						{:else if userData.mfa_enforced}
-							<span class="text-red-600">Enforced but not set up</span>
-						{:else}
-							<span class="text-orange-500">Not enforced and not set up</span>
-						{/if}
+						<MfaLabel enabled={userData.mfa_enabled} enforced={userData.mfa_enforced} />
 					</p>
 				</div>
 				<div class="info-card">
@@ -714,9 +664,9 @@
 			<div class="card-muted space-y-4 mt-6">
 				<h2 class="section-title">Edit User</h2>
 				<p class="text-xs text-muted">
-					Search to add access. Selected items appear as chips — remove with ×. Newly added chips are yellow
-					with +; removed ones stay yellow with − until you restore them or save. Save activates only when
-					something has changed. Click a summary item to undo.
+					Permissions control what this user can do. Groups control which admins can manage them and which
+					permissions are visible. As an admin you can only grant permissions visible to your groups, and
+					only add groups you belong to.
 				</p>
 				<form class="space-y-4" on:submit|preventDefault={requestSave}>
 					{#if availablePermissions.length > 0}
@@ -755,7 +705,6 @@
 					/>
 
 					<button class="btn-secondary min-w-[9rem]" type="submit" disabled={saving || !hasChanges}>
-						<Save size={18} />
 						{saving ? 'Saving...' : hasChanges ? 'Save Changes' : 'No changes'}
 					</button>
 				</form>
@@ -904,12 +853,6 @@
 		</div>
 	{/if}
 </div>
-
-{#if showToast}
-	<div class="toast toast-{toastType}">
-		{toastMessage}
-	</div>
-{/if}
 
 <ConfirmModal
 	bind:open={showSaveConfirm}
