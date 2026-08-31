@@ -1,10 +1,11 @@
 import { test, expect } from './helpers/fixtures';
 import { e2eAdmin } from './helpers/auth';
-import { waitForUsersList } from './helpers/waits';
+import { waitForPageShell, waitForUsersList } from './helpers/waits';
 
 test.describe('Admin users list', () => {
 	test('opens Admin from nav and shows the users list', async ({ adminPage: page }) => {
 		await page.goto('/dashboard');
+		await waitForPageShell(page, 'dashboard-page');
 		await page.getByTestId('nav-admin').click();
 		await expect(page).toHaveURL(/\/admin/);
 		await expect(page.getByTestId('admin-page')).toBeVisible();
@@ -16,6 +17,7 @@ test.describe('Admin users list', () => {
 
 	test('search filters users by email', async ({ adminPage: page }) => {
 		await page.goto('/admin');
+		await waitForPageShell(page, 'admin-page');
 		await waitForUsersList(page);
 
 		const usersResponse = page.waitForResponse(

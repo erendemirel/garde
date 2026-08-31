@@ -1,10 +1,11 @@
 import { test, expect } from './helpers/fixtures';
 import { e2eAdmin, loginAs } from './helpers/auth';
+import { waitForPageShell } from './helpers/waits';
 
 test.describe('Dashboard account overview', () => {
 	test('shows account summary and self-service links', async ({ adminPage: page }) => {
 		await page.goto('/dashboard');
-		await expect(page.getByTestId('dashboard-page')).toBeVisible();
+		await waitForPageShell(page, 'dashboard-page');
 		await expect(page.getByTestId('dashboard-email')).toHaveText(e2eAdmin.email);
 		await expect(page.getByTestId('dashboard-status')).toBeVisible();
 		await expect(page.getByTestId('dashboard-mfa')).toBeVisible();
@@ -25,6 +26,7 @@ test.describe('Dashboard account overview', () => {
 
 	test('opens change-password from the dashboard', async ({ adminPage: page }) => {
 		await page.goto('/dashboard');
+		await waitForPageShell(page, 'dashboard-page');
 		await page.getByTestId('dashboard-link-password').click();
 		await expect(page).toHaveURL(/\/password/);
 		await expect(page.getByTestId('password-page')).toBeVisible();
@@ -32,6 +34,7 @@ test.describe('Dashboard account overview', () => {
 
 	test('opens MFA from the dashboard', async ({ adminPage: page }) => {
 		await page.goto('/dashboard');
+		await waitForPageShell(page, 'dashboard-page');
 		await page.getByTestId('dashboard-link-mfa').click();
 		await expect(page).toHaveURL(/\/mfa/);
 		await expect(page.getByTestId('mfa-page')).toBeVisible();
@@ -41,6 +44,7 @@ test.describe('Dashboard account overview', () => {
 test.describe('Change password page', () => {
 	test('shows the form with stable locators', async ({ adminPage: page }) => {
 		await page.goto('/password');
+		await waitForPageShell(page, 'password-page');
 		await expect(page.getByTestId('password-current')).toBeVisible();
 		await expect(page.getByTestId('password-new')).toBeVisible();
 		await expect(page.getByTestId('password-confirm')).toBeVisible();
@@ -50,6 +54,7 @@ test.describe('Change password page', () => {
 
 	test('client-side mismatch shows an error without confirming', async ({ adminPage: page }) => {
 		await page.goto('/password');
+		await waitForPageShell(page, 'password-page');
 		await page.getByTestId('password-current').fill(e2eAdmin.password);
 		await page.getByTestId('password-new').fill('NewPassword123!');
 		await page.getByTestId('password-confirm').fill('DifferentPass123!');
@@ -60,15 +65,17 @@ test.describe('Change password page', () => {
 
 	test('back link returns to the dashboard', async ({ adminPage: page }) => {
 		await page.goto('/password');
+		await waitForPageShell(page, 'password-page');
 		await page.getByTestId('password-back').click();
 		await expect(page).toHaveURL(/\/dashboard/);
-		await expect(page.getByTestId('dashboard-page')).toBeVisible();
+		await waitForPageShell(page, 'dashboard-page');
 	});
 });
 
 test.describe('MFA page', () => {
 	test('shows disabled MFA choice for the seed admin', async ({ adminPage: page }) => {
 		await page.goto('/mfa');
+		await waitForPageShell(page, 'mfa-page');
 		await expect(page.getByTestId('mfa-page')).toHaveAttribute('data-step', 'choice');
 		await expect(page.getByTestId('mfa-status')).toContainText('disabled');
 		await expect(page.getByTestId('mfa-setup')).toBeEnabled();
@@ -82,6 +89,7 @@ test.describe('MFA page', () => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
 		await loginAs(page, ephemeralUser);
+		await waitForPageShell(page, 'dashboard-page');
 		await page.getByTestId('dashboard-link-mfa').click();
 
 		const setupResponse = page.waitForResponse(

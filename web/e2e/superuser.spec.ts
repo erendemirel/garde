@@ -1,6 +1,7 @@
 import { test, expect } from './helpers/fixtures';
 import {
 	waitForAdminManagement,
+	waitForPageShell,
 	waitForSuperuserCatalog,
 	waitForUsersList,
 	waitForVisibilityPanel
@@ -9,6 +10,7 @@ import {
 test.describe('Superuser console', () => {
 	test('opens Superuser from nav and shows users by default', async ({ superuserPage: page }) => {
 		await page.goto('/dashboard');
+		await waitForPageShell(page, 'dashboard-page');
 		await page.getByTestId('nav-superuser').click();
 		await expect(page).toHaveURL(/\/superuser/);
 		await expect(page.getByTestId('superuser-page')).toBeVisible();
@@ -18,6 +20,7 @@ test.describe('Superuser console', () => {
 
 	test('switches through catalog and management tabs', async ({ superuserPage: page }) => {
 		await page.goto('/superuser');
+		await waitForPageShell(page, 'superuser-page');
 		await page.getByTestId('superuser-tab-permissions').click();
 		await expect(page.getByTestId('superuser-catalog')).toHaveAttribute('data-mode', 'permissions');
 		await waitForSuperuserCatalog(page);

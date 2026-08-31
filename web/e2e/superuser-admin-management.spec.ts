@@ -5,7 +5,7 @@ import {
 	deleteUserById,
 	restoreSeedAdminAccess
 } from './helpers/userApi';
-import { waitForAdminManagement } from './helpers/waits';
+import { waitForAdminManagement, waitForPageShell } from './helpers/waits';
 
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
@@ -13,7 +13,7 @@ async function waitForToastGone(page: import('@playwright/test').Page) {
 
 async function openAdminManagement(page: import('@playwright/test').Page) {
 	await page.goto('/superuser?tab=admin-management');
-	await expect(page.getByTestId('superuser-admin-management-panel')).toBeVisible();
+	await waitForPageShell(page, 'superuser-admin-management-panel');
 	await waitForAdminManagement(page);
 }
 

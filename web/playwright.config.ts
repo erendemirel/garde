@@ -18,7 +18,11 @@ export default defineConfig({
 	retries: process.env.CI ? 2 : 0,
 	// Local: Playwright default (CPU cores). CI: modest parallelism.
 	workers: process.env.CI ? 2 : undefined,
-	timeout: 45_000,
+	timeout: 60_000,
+	expect: {
+		// Protected routes wait on /api/me before mounting shells; 5s flakes under high worker load.
+		timeout: 15_000
+	},
 	reporter: [['list'], ['html', { open: 'never' }]],
 	use: {
 		baseURL,

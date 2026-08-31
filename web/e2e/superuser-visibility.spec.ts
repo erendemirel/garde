@@ -1,12 +1,13 @@
 import { test, expect } from './helpers/fixtures';
-import { waitForSuperuserCatalog, waitForVisibilityPanel } from './helpers/waits';
+import type { APIRequestContext, Page } from '@playwright/test';
+import { waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from './helpers/waits';
 
-async function waitForToastGone(page: import('@playwright/test').Page) {
+async function waitForToastGone(page: Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
 }
 
 async function createCatalogItem(
-	page: import('@playwright/test').Page,
+	page: Page,
 	tab: 'permissions' | 'groups',
 	name: string,
 	definition: string
@@ -22,19 +23,18 @@ async function createCatalogItem(
 	await expect(page.getByTestId('superuser-catalog-item-modal')).toHaveCount(0);
 }
 
-async function deleteCatalogItemIfPresent(
-	page: import('@playwright/test').Page,
-	tab: 'permissions' | 'groups',
-	name: string
+/** Prefer API cleanup so finally blocks do not burn the test timeout under load. */
+async function cleanupCatalog(
+	suRequest: APIRequestContext,
+	permissionName: string,
+	groupName: string
 ) {
-	await page.getByTestId(`superuser-tab-${tab}`).click();
-	await waitForSuperuserCatalog(page);
-	await page.getByTestId('superuser-catalog-search').fill(name);
-	const row = page.locator(`[data-testid="superuser-catalog-row"][data-item-name="${name}"]`);
-	if ((await row.count()) === 0) return;
-	await row.getByTestId('superuser-catalog-delete').click();
-	await page.getByTestId('confirm-modal-confirm').click();
-	await expect(row).toHaveCount(0);
+	await suRequest
+		.delete(`/api/admin/permissions/${encodeURIComponent(permissionName)}`)
+		.catch(() => undefined);
+	await suRequest
+		.delete(`/api/admin/groups/${encodeURIComponent(groupName)}`)
+		.catch(() => undefined);
 }
 
 /**
@@ -43,6 +43,7 @@ async function deleteCatalogItemIfPresent(
 test.describe('Superuser permission visibility', () => {
 	test('adds then removes a visibility mapping in matrix view', async ({
 		superuserPage: page,
+		suRequest,
 		uniqueSuffix
 	}) => {
 		const permissionName = `e2e_vis_perm_${uniqueSuffix}`;
@@ -50,6 +51,7 @@ test.describe('Superuser permission visibility', () => {
 
 		try {
 			await page.goto('/superuser');
+			await waitForPageShell(page, 'superuser-page');
 			await createCatalogItem(page, 'permissions', permissionName, 'E2E visibility permission');
 			await createCatalogItem(page, 'groups', groupName, 'E2E visibility group');
 
@@ -78,17 +80,13 @@ test.describe('Superuser permission visibility', () => {
 			await waitForToastGone(page);
 			await expect(cell).toHaveAttribute('aria-pressed', 'false');
 		} finally {
-			try {
-				await deleteCatalogItemIfPresent(page, 'permissions', permissionName);
-				await deleteCatalogItemIfPresent(page, 'groups', groupName);
-			} catch {
-				/* ignore */
-			}
+			await cleanupCatalog(suRequest, permissionName, groupName);
 		}
 	});
 
 	test('list view manage adds and removes group visibility', async ({
 		superuserPage: page,
+		suRequest,
 		uniqueSuffix
 	}) => {
 		const permissionName = `e2e_vis_list_${uniqueSuffix}`;
@@ -96,6 +94,7 @@ test.describe('Superuser permission visibility', () => {
 
 		try {
 			await page.goto('/superuser');
+			await waitForPageShell(page, 'superuser-page');
 			await createCatalogItem(page, 'permissions', permissionName, 'E2E list visibility permission');
 			await createCatalogItem(page, 'groups', groupName, 'E2E list visibility group');
 
@@ -156,18 +155,13 @@ test.describe('Superuser permission visibility', () => {
 			);
 			await expect(cell).toHaveAttribute('aria-pressed', 'false');
 		} finally {
-			try {
-				await deleteCatalogItemIfPresent(page, 'permissions', permissionName);
-				await deleteCatalogItemIfPresent(page, 'groups', groupName);
-			} catch {
-				/* ignore */
-			}
+			await cleanupCatalog(suRequest, permissionName, groupName);
 		}
 	});
 
 	test('switches between list and matrix views', async ({ superuserPage: page }) => {
 		await page.goto('/superuser?tab=visibility');
-		await expect(page.getByTestId('superuser-visibility-panel')).toBeVisible();
+		await waitForPageShell(page, 'superuser-visibility-panel');
 		await waitForVisibilityPanel(page);
 
 		await expect(page.getByTestId('superuser-visibility-view-list')).toHaveAttribute(

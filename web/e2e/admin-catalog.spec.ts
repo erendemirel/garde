@@ -1,5 +1,5 @@
 import { test, expect } from './helpers/fixtures';
-import { waitForAdminCatalog } from './helpers/waits';
+import { waitForAdminCatalog, waitForPageShell } from './helpers/waits';
 
 /**
  * Admin permissions / groups catalog tabs (read-only against seed admin).
@@ -7,7 +7,7 @@ import { waitForAdminCatalog } from './helpers/waits';
 test.describe('Admin catalog tabs', () => {
 	test.beforeEach(async ({ adminPage: page }) => {
 		await page.goto('/admin');
-		await expect(page.getByTestId('admin-page')).toBeVisible();
+		await waitForPageShell(page, 'admin-page');
 	});
 
 	test('switches to Permissions and shows the catalog', async ({ adminPage: page }) => {

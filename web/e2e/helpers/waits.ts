@@ -4,7 +4,7 @@ const DEFAULT_TIMEOUT = 20_000;
 
 /**
  * Panels that swap a loading testid for a ready marker after fetch.
- * Under high worker load those fetches routinely exceed Playwright's 5s default.
+ * Under high worker load those fetches routinely exceed Playwright's default expect timeout.
  */
 async function waitOutOfLoading(
 	page: Page,
@@ -18,8 +18,23 @@ async function waitOutOfLoading(
 	await expect(ready).toBeVisible({ timeout });
 }
 
+/**
+ * Protected layout boots via /api/me before any page shell mounts.
+ * Under heavy parallelism that call often takes longer than a few seconds.
+ */
+export async function waitForSessionReady(page: Page, timeout = DEFAULT_TIMEOUT) {
+	await waitOutOfLoading(page, 'session-loading', page.getByTestId('app-nav'), timeout);
+}
+
+/** After goto/nav into a protected route — session + page shell. */
+export async function waitForPageShell(page: Page, testId: string, timeout = DEFAULT_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
+	await expect(page.getByTestId(testId)).toBeVisible({ timeout });
+}
+
 /** UsersListPanel — `users-list` mounts only after the first fetch. */
 export async function waitForUsersList(page: Page, timeout = DEFAULT_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
 		'users-list-loading',
@@ -30,6 +45,7 @@ export async function waitForUsersList(page: Page, timeout = DEFAULT_TIMEOUT) {
 
 /** Admin permissions/groups catalog table. */
 export async function waitForAdminCatalog(page: Page, timeout = DEFAULT_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
 		'admin-catalog-loading',
@@ -40,6 +56,7 @@ export async function waitForAdminCatalog(page: Page, timeout = DEFAULT_TIMEOUT)
 
 /** Superuser permissions/groups catalog table. */
 export async function waitForSuperuserCatalog(page: Page, timeout = DEFAULT_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
 		'superuser-catalog-loading',
@@ -50,6 +67,7 @@ export async function waitForSuperuserCatalog(page: Page, timeout = DEFAULT_TIME
 
 /** Permission visibility — search (list/matrix) or empty-prereq when catalog is empty. */
 export async function waitForVisibilityPanel(page: Page, timeout = DEFAULT_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
 	const ready = page
 		.getByTestId('superuser-visibility-search')
 		.or(page.getByTestId('superuser-visibility-empty-prereq'));
@@ -58,6 +76,7 @@ export async function waitForVisibilityPanel(page: Page, timeout = DEFAULT_TIMEO
 
 /** Admin-User Management table. */
 export async function waitForAdminManagement(page: Page, timeout = DEFAULT_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
 		'admin-mgmt-loading',
@@ -68,6 +87,7 @@ export async function waitForAdminManagement(page: Page, timeout = DEFAULT_TIMEO
 
 /** User detail — email is present once the user payload has loaded. */
 export async function waitForUserDetail(page: Page, timeout = DEFAULT_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
 		'user-detail-loading',
