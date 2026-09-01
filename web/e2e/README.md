@@ -137,8 +137,8 @@ PLAYWRIGHT_FRESH_AUTH=1 bun run test:e2e
 GitHub Actions (`.github/workflows/e2e.yml`) runs on push and pull request:
 
 - Starts the dev Docker stack (`docker compose --profile dev`)
-- Installs web deps with Bun and runs `bun run test:e2e:focused`
-- Uses **2 workers + 2 retries** (`playwright.config.ts` when `CI=true`)
+- Installs web deps with Bun and runs `bun run test:e2e` (full suite, including `@epic`)
+- Uses **4 workers + 2 retries** (`playwright.config.ts` when `CI=true`)
 - Uploads the HTML report on failure
 
 The 32-worker command above is for local stress only.

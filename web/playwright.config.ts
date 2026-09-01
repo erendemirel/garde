@@ -17,7 +17,7 @@ export default defineConfig({
 	forbidOnly: !!process.env.CI,
 	retries: Number(process.env.PLAYWRIGHT_RETRIES ?? (process.env.CI ? 2 : 0)),
 	// Local: Playwright default (CPU cores). CI: modest parallelism.
-	workers: process.env.CI ? 2 : undefined,
+	workers: process.env.CI ? 4 : undefined,
 	// Multi-actor journeys + slow /api/me under many workers need headroom.
 	timeout: Number(process.env.PLAYWRIGHT_TEST_TIMEOUT || 120_000),
 	expect: {
