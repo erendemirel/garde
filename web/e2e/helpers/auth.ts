@@ -121,6 +121,7 @@ export async function waitForRegisterFormReady(page: Page, timeout = REDIRECT_TI
 
 /** Open login — domcontentloaded + interactive form (no networkidle). */
 export async function openLogin(page: Page) {
+	await page.bringToFront();
 	await page.goto('/', { waitUntil: 'domcontentloaded' });
 	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 	await waitForLoginFormReady(page);
@@ -128,6 +129,7 @@ export async function openLogin(page: Page) {
 
 /** Open register — domcontentloaded + interactive form. */
 export async function openRegister(page: Page) {
+	await page.bringToFront();
 	await page.goto('/register', { waitUntil: 'domcontentloaded' });
 	await expect(page.getByTestId('register-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 	await waitForRegisterFormReady(page);
@@ -135,6 +137,7 @@ export async function openRegister(page: Page) {
 
 /** Open forgot-password email step. */
 export async function openForgotPassword(page: Page) {
+	await page.bringToFront();
 	await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
 	await expect(page.getByTestId('forgot-password-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 	await expect(page.getByTestId('forgot-password-page')).toHaveAttribute('data-step', 'email');
@@ -249,6 +252,7 @@ export async function expectLoginRejected(
 	creds: { email: string; password: string },
 	opts?: { message?: string | RegExp }
 ) {
+	await page.bringToFront();
 	await loginAs(page, creds, { expectSuccess: false });
 	await expect(page.getByTestId('login-error')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 	if (opts?.message) {

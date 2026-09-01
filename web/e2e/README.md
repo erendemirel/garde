@@ -171,7 +171,7 @@ Focused journey files (`registration`, `request-update`, `active-session`) keep 
 - **`startUserSession`** / **`loginViaRequest`** — preferred for any test that is not exercising the login form. Avoids Svelte hydration flakes.
 - **`loginAs`** / **`expectLoginRejected`** — only for login-page specs, MFA second step after logout, and blocked-account messages.
 - Worker **`suRequest`** validates `/api/users/me` and re-authenticates when cached cookies are stale (`ensureApiAuth`).
-- Login/register forms expose `data-ready="true"` after mount; sign-in uses `type="button"` + click handler so Playwright clicks always fire the handler.
+- Login/register forms expose `data-ready="true"` after mount and stay disabled until then; sign-in uses `type="button"` + click handler so Playwright clicks always fire the handler.
 - **`openLogin` / `openRegister` / `openForgotPassword`** — navigate public auth pages without `networkidle` (waits for testids + `data-ready` where applicable).
 - **`waitForToastGone`** — centralized in `helpers/waits.ts` (toast auto-hides after 5s).
 - **Timeout tiers:** `REDIRECT_TIMEOUT` (15s) for login/redirect assertions; `LOAD_TIMEOUT` (45s, env override) for session boot and API-backed panels only.

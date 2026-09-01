@@ -16,6 +16,7 @@
 	});
 
 	async function handleRegister() {
+		if (!formReady || loading) return;
 		error = '';
 		if (password !== confirmPassword) {
 			error = 'Passwords do not match';
@@ -37,6 +38,7 @@
 	}
 
 	function onRegisterKeydown(e) {
+		if (!formReady || loading) return;
 		if (e.key === 'Enter') {
 			e.preventDefault();
 			void handleRegister();
@@ -60,6 +62,7 @@
 				class="space-y-4"
 				data-testid="register-form"
 				data-ready={formReady ? 'true' : 'false'}
+				aria-busy={!formReady}
 				on:keydown={onRegisterKeydown}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -71,6 +74,7 @@
 						bind:value={email}
 						required
 						autocomplete="email"
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -83,6 +87,7 @@
 						required
 						minlength="8"
 						autocomplete="new-password"
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -94,6 +99,7 @@
 						bind:value={confirmPassword}
 						required
 						autocomplete="new-password"
+						disabled={!formReady}
 					/>
 				</label>
 				{#if error}
@@ -103,10 +109,10 @@
 					class="btn-secondary w-full justify-center"
 					type="button"
 					data-testid="register-submit"
-					disabled={loading}
+					disabled={!formReady || loading}
 					on:click={handleRegister}
 				>
-					{loading ? 'Creating...' : 'Create Account'}
+					{loading ? 'Creating...' : formReady ? 'Create Account' : 'Loading...'}
 				</button>
 			</form>
 		{/if}

@@ -19,6 +19,7 @@
 	});
 
 	async function handleRequestOtp() {
+		if (!formReady || loading) return;
 		error = '';
 		loading = true;
 		try {
@@ -32,6 +33,7 @@
 	}
 
 	async function handleReset() {
+		if (!formReady || loading) return;
 		error = '';
 		if (newPassword !== confirmPassword) {
 			error = 'Passwords do not match';
@@ -62,6 +64,7 @@
 				class="space-y-4"
 				data-testid="forgot-email-form"
 				data-ready={formReady ? 'true' : 'false'}
+				aria-busy={!formReady}
 				method="post"
 				action="#"
 				onsubmit="return false;"
@@ -75,6 +78,7 @@
 						data-testid="forgot-email"
 						bind:value={email}
 						required
+						disabled={!formReady}
 					/>
 				</label>
 				{#if error}
@@ -87,9 +91,9 @@
 					class="btn-secondary w-full justify-center"
 					type="submit"
 					data-testid="forgot-send-otp"
-					disabled={loading}
+					disabled={!formReady || loading}
 				>
-					{loading ? 'Sending...' : 'Send OTP'}
+					{loading ? 'Sending...' : formReady ? 'Send OTP' : 'Loading...'}
 				</button>
 			</form>
 		{:else}
@@ -97,6 +101,7 @@
 				class="space-y-4"
 				data-testid="forgot-reset-form"
 				data-ready={formReady ? 'true' : 'false'}
+				aria-busy={!formReady}
 				method="post"
 				action="#"
 				onsubmit="return false;"
@@ -110,6 +115,7 @@
 						data-testid="forgot-email"
 						bind:value={email}
 						required
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -121,6 +127,7 @@
 						bind:value={otp}
 						required
 						placeholder="8-character code from email"
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -132,6 +139,7 @@
 						bind:value={newPassword}
 						required
 						minlength="8"
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -142,6 +150,7 @@
 						data-testid="forgot-confirm"
 						bind:value={confirmPassword}
 						required
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -152,6 +161,7 @@
 						data-testid="forgot-mfa"
 						bind:value={mfaCode}
 						placeholder="Optional"
+						disabled={!formReady}
 					/>
 				</label>
 				{#if error}
@@ -164,7 +174,7 @@
 					class="btn-secondary w-full justify-center"
 					type="submit"
 					data-testid="forgot-reset-submit"
-					disabled={loading}
+					disabled={!formReady || loading}
 				>
 					{loading ? 'Resetting...' : 'Reset Password'}
 				</button>
