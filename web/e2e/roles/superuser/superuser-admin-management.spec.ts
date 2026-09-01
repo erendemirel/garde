@@ -6,7 +6,7 @@ import {
 	deleteUserById,
 	restoreSeedAdminAccess
 } from '../../helpers/userApi';
-import { waitForAdminManagement, waitForPageShell } from '../../helpers/waits';
+import { waitForAdminManagement, waitForAdminManagementRow, waitForPageShell } from '../../helpers/waits';
 
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
@@ -36,8 +36,7 @@ test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG
 		await openAdminManagement(page);
 
 		await page.getByTestId('admin-mgmt-search').fill(e2eAdmin.email);
-		const row = adminRow(page, e2eAdmin.email);
-		await expect(row).toBeVisible();
+		const row = await waitForAdminManagementRow(page, e2eAdmin.email);
 		await expect(row.getByTestId('admin-mgmt-row-email')).toHaveText(e2eAdmin.email);
 		await expect(row.getByTestId('admin-mgmt-row-count')).toBeVisible();
 
@@ -76,8 +75,7 @@ test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG
 
 			await openAdminManagement(page);
 			await page.getByTestId('admin-mgmt-search').fill(e2eAdmin.email);
-			const row = adminRow(page, e2eAdmin.email);
-			await expect(row).toBeVisible();
+			const row = await waitForAdminManagementRow(page, e2eAdmin.email);
 
 			await row.getByTestId('admin-mgmt-edit-groups').click();
 			await expect(page.getByTestId('admin-mgmt-groups-modal')).toBeVisible();
@@ -97,8 +95,8 @@ test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG
 			await expect(page.getByTestId('admin-mgmt-groups-modal')).toHaveCount(0);
 
 			await page.getByTestId('admin-mgmt-search').fill(e2eAdmin.email);
-			await expect(adminRow(page, e2eAdmin.email)).toBeVisible();
-			await adminRow(page, e2eAdmin.email).getByTestId('admin-mgmt-view-users').click();
+			const rowAfterSave = await waitForAdminManagementRow(page, e2eAdmin.email);
+			await rowAfterSave.getByTestId('admin-mgmt-view-users').click();
 			await expect(page.getByTestId('admin-mgmt-users-modal')).toBeVisible();
 			await page.getByTestId('admin-mgmt-users-search').fill(target.email);
 			await expect(

@@ -147,6 +147,20 @@ export async function waitForAdminManagement(page: Page, timeout = LOAD_TIMEOUT)
 	);
 }
 
+/** Wait until a specific admin row is rendered (users cache + management map settled). */
+export async function waitForAdminManagementRow(
+	page: Page,
+	adminEmail: string,
+	timeout = LOAD_TIMEOUT
+) {
+	await waitForAdminManagement(page, timeout);
+	const row = page.locator(
+		`[data-testid="admin-mgmt-row"][data-admin-email="${adminEmail}"]`
+	);
+	await expect(row).toBeVisible({ timeout });
+	return row;
+}
+
 /** User detail — email is present once the user payload has loaded. */
 export async function waitForUserDetail(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);

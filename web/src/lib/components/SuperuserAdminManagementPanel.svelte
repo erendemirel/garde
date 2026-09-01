@@ -116,10 +116,7 @@
 		: 'Manage groups';
 
 	onMount(() => {
-		void (async () => {
-			await loadAdminData();
-			ensureUsersLoaded();
-		})();
+		void loadAdminData();
 	});
 
 	async function loadAdminData() {
@@ -132,6 +129,8 @@
 			]);
 			adminUserManagement = mgmt || {};
 			groups = grps || [];
+			// Admins with no manageable users only appear once usersCache is populated.
+			await ensureUsersLoaded();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
 			adminUserManagement = {};
