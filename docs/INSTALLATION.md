@@ -43,7 +43,7 @@
 
 5. **Web UI (Optional)**   
 
-   - Navigate to `web/` directory and run `bun start` (or `npm start`). No configuration needed, everything is set up. It automatically proxies `/api` requests to `http://localhost:8443` via Vite dev server.
+   - Navigate to `web/` directory and run `bun start`. No configuration needed, everything is set up. It automatically proxies `/api` requests to `http://localhost:8443` via Vite dev server.
 
 ### What happens automatically
 - Vault starts in development mode
@@ -289,7 +289,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 - **Other deployments:** Build the UI with the API URL, then serve the built files yourself (e.g. nginx, CDN). Set `PUBLIC_API_URL` at build time:
   ```bash
   export PUBLIC_API_URL=https://your-api-domain.com
-  cd web && npm run build
+  cd web && bun run build
   ```
   Or add `PUBLIC_API_URL=https://your-api-domain.com` to a `.env` file in `web/` before building.
 

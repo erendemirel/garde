@@ -22,6 +22,19 @@ There are two main ways to contribute to this project:
 
 ## Testing
 
+### Playwright E2E (web UI)
+
+GitHub Actions runs focused e2e tests on every push and pull request (see `.github/workflows/e2e.yml`). Locally:
+
+```bash
+docker compose --profile dev up --build -d   # API on :8443
+cd web
+bun install
+bun run test:e2e:focused
+```
+
+See [web/e2e/README.md](../web/e2e/README.md) for layout, tags, and conventions.
+
 #### Tests That Require mTLS (API-key auth flow)
 
 For tests that require mTLS, you need to use TLS - mTLS and generate the necessary certificates. The project includes a standalone script for generating TLS certificates for testing purposes:

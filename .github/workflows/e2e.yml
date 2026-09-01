@@ -1,0 +1,70 @@
+name: E2E
+
+on:
+  push:
+    branches: [master, main, development]
+  pull_request:
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install web dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: bunx playwright install --with-deps chromium
+
+      - name: Prepare runtime directories
+        run: mkdir -p certs data
+
+      - name: Start API stack
+        run: docker compose --profile dev up --build -d
+
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:8443/health; then
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/120)"
+            sleep 5
+          done
+          echo "API failed to become healthy"
+          docker compose --profile dev logs
+          exit 1
+
+      - name: Run focused e2e tests
+        working-directory: web
+        env:
+          CI: true
+        run: bun run test:e2e:focused
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7
+
+      - name: Stop API stack
+        if: always()
+        run: docker compose --profile dev down -v

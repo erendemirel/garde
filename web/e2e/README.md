@@ -110,24 +110,38 @@ e2e/
 
 
 
+Requires the API running (Vite dev server proxies `/api` to garde on `:8443`):
+
 ```bash
-
+docker compose --profile dev up --build -d   # from repo root
 cd web
+bun install
+```
 
-npm run test:e2e              # default workers (CPU cores)
+```bash
+bun run test:e2e              # default workers (CPU cores)
 
-npm run test:e2e -- --workers=8
+bun run test:e2e -- --workers=8
 
 # Stress / low-resource simulation (optional env overrides):
 
-PLAYWRIGHT_LOAD_TIMEOUT=60000 PLAYWRIGHT_TEST_TIMEOUT=180000 PLAYWRIGHT_RETRIES=1 npm run test:e2e -- --workers=32
+PLAYWRIGHT_LOAD_TIMEOUT=60000 PLAYWRIGHT_TEST_TIMEOUT=180000 PLAYWRIGHT_RETRIES=1 bun run test:e2e -- --workers=32
 
 # Force fresh worker auth cookies (default reuses playwright/.auth when present):
 
-PLAYWRIGHT_FRESH_AUTH=1 npm run test:e2e
+PLAYWRIGHT_FRESH_AUTH=1 bun run test:e2e
 ```
 
-CI uses **2 workers + 2 retries** (`playwright.config.ts`). The 32-worker command above is for local stress only.
+### CI
+
+GitHub Actions (`.github/workflows/e2e.yml`) runs on push and pull request:
+
+- Starts the dev Docker stack (`docker compose --profile dev`)
+- Installs web deps with Bun and runs `bun run test:e2e:focused`
+- Uses **2 workers + 2 retries** (`playwright.config.ts` when `CI=true`)
+- Uploads the HTML report on failure
+
+The 32-worker command above is for local stress only.
 
 ### Tags
 
@@ -141,9 +155,9 @@ Tests use Playwright [`tag`](https://playwright.dev/docs/test-annotations#tag-te
 | `@auth`, `@registration`, `@request-update`, … | Domain filter |
 
 ```bash
-npm run test:e2e:focused   # all except @epic (~165 tests)
-npm run test:e2e:epic      # integration epics only (4 tests)
-npm run test:e2e -- --grep @registration
+bun run test:e2e:focused   # all except @epic (~165 tests)
+bun run test:e2e:epic      # integration epics only (4 tests)
+bun run test:e2e -- --grep @registration
 ```
 
 **Epic vs focused overlap:** `@epic` specs use `outcomesOnly` journey helpers — they verify chain **outcomes** (chips, signed-in/out, URLs). Toast copy, error messages, and form validation stay in `@focused` / `@journey` specs. If only an epic fails, re-run the matching domain tag before debugging the full chain.
@@ -158,5 +172,3 @@ Focused journey files (`registration`, `request-update`, `active-session`) keep 
 - **`loginAs`** / **`expectLoginRejected`** — only for login-page specs, MFA second step after logout, and blocked-account messages.
 - Worker **`suRequest`** validates `/api/users/me` and re-authenticates when cached cookies are stale (`ensureApiAuth`).
 - Login/register forms expose `data-ready="true"` after mount; sign-in uses `type="button"` + click handler so Playwright clicks always fire the handler.
-
-Requires the API running (Vite dev server proxies `/api` to garde on `:8443`).

@@ -33,8 +33,8 @@ vendor/
 .env.*.local
 .env.production
 .env.development
-dev.secrets
 *.secrets
+!dev.secrets
 
 # Node.js / Bun
 node_modules/
