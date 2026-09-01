@@ -83,31 +83,21 @@ export async function restoreSeedAdminAccess(api: RequestLike) {
 	const summary = await findUserByEmail(api, e2eAdmin.email);
 	if (!summary?.id) return;
 
-	const getRes = await api.get(`/api/users/${summary.id}`);
-	if (!getRes.ok()) return;
-	const user = await apiData<{ permissions?: BoolMap; groups?: BoolMap }>(getRes);
-
-	const groups: BoolMap = { ...(user.groups || {}) };
-	for (const key of Object.keys(groups)) groups[key] = false;
-	groups.asdfasdf = true;
-	groups.group_a = true;
-
-	const permissions: BoolMap = {};
-	for (const key of Object.keys(user.permissions || {})) {
-		if (key.startsWith('e2e_access_')) continue;
-		permissions[key] = false;
-	}
-	permissions.a_permission = true;
-	permissions.another_permission = true;
-	permissions.permission_b = true;
-	permissions.some_permission = true;
-
+	// Only send enabled keys so stale/deleted catalog entries are not referenced.
 	const putRes = await api.put(`/api/users/${summary.id}`, {
 		data: {
 			status: 'ok',
 			mfa_enforced: false,
-			groups,
-			permissions
+			groups: {
+				asdfasdf: true,
+				group_a: true
+			},
+			permissions: {
+				a_permission: true,
+				another_permission: true,
+				permission_b: true,
+				some_permission: true
+			}
 		}
 	});
 	if (!putRes.ok()) {

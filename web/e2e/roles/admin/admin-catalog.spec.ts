@@ -1,10 +1,11 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { waitForAdminCatalog, waitForPageShell } from '../../helpers/waits';
 
 /**
  * Admin permissions / groups catalog tabs (read-only against seed admin).
  */
-test.describe('Admin catalog tabs', () => {
+test.describe('Admin catalog tabs', describeTags(TAG.admin, TAG.catalog, TAG.focused), () => {
 	test.beforeEach(async ({ adminPage: page }) => {
 		await page.goto('/admin');
 		await waitForPageShell(page, 'admin-page');

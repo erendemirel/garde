@@ -1,11 +1,12 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { createEphemeralUser, deleteUserById } from '../../helpers/userApi';
 
 /**
  * Admin scope — seed admin can only manage users in shared groups.
  * API returns 401 for out-of-scope GET /users/:id; the client treats that as session expiry.
  */
-test.describe('User detail admin scope', () => {
+test.describe('User detail admin scope', describeTags(TAG.userDetail, TAG.admin, TAG.focused), () => {
 	test('admin is signed out when opening a user outside their groups', async ({
 		adminPage: page,
 		suRequest,

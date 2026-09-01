@@ -1,7 +1,8 @@
 import { test, expect } from '../helpers/fixtures';
 import { deleteUserByEmail } from '../helpers/userApi';
+import { describeTags, TAG } from '../helpers/tags';
 
-test.describe('Register page', () => {
+test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focused), () => {
 	test.describe('happy path', () => {
 		test('shows the register form with stable locators', async ({ page }) => {
 			await page.goto('/register');

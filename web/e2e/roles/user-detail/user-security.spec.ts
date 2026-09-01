@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { expectLoginRejected } from '../../helpers/auth';
 import { openUserDetailFromSuperuser, patchUserMaps } from '../../helpers/userApi';
 
@@ -19,7 +20,7 @@ async function confirmSecurityAction(
 /**
  * Lock/MFA on ephemeral users — seed admin stays untouched for parallel admin specs.
  */
-test.describe('User security actions', () => {
+test.describe('User security actions', describeTags(TAG.userDetail, TAG.security, TAG.focused), () => {
 	test('locks then unlocks the account', async ({ superuserPage: page, ephemeralUser }) => {
 		await page.goto('/superuser');
 		await openUserDetailFromSuperuser(page, ephemeralUser.email);

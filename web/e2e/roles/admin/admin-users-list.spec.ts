@@ -1,8 +1,9 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromAdmin } from '../../helpers/userApi';
 import { waitForPageShell, waitForUserDetail, waitForUsersList } from '../../helpers/waits';
 
-test.describe('Admin users list interactions', () => {
+test.describe('Admin users list interactions', describeTags(TAG.admin, TAG.focused), () => {
 	test('column sort toggles active sort button state', async ({ adminPage: page }) => {
 		await page.goto('/admin');
 		await waitForPageShell(page, 'admin-page');
@@ -107,7 +108,7 @@ test.describe('Admin users list interactions', () => {
 	});
 });
 
-test.describe('Admin console navigation', () => {
+test.describe('Admin console navigation', describeTags(TAG.admin, TAG.nav, TAG.focused), () => {
 	test('switches between users, permissions, and groups tabs', async ({ adminPage: page }) => {
 		await page.goto('/admin');
 		await waitForPageShell(page, 'admin-page');

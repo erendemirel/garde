@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import type { Page } from '@playwright/test';
 import { waitForAdminCatalog } from '../../helpers/waits';
 
@@ -39,7 +40,7 @@ async function removeUserChip(page: Page, userId: string) {
  * Admin catalog Manage Users — grant/revoke within admin scope.
  * Ephemeral user shares group_a with seed admin, so they appear as manageable.
  */
-test.describe('Admin catalog members', () => {
+test.describe('Admin catalog members', describeTags(TAG.admin, TAG.catalog, TAG.focused), () => {
 	test('adds then removes a manageable user on a seed group', async ({
 		adminPage: page,
 		ephemeralUser

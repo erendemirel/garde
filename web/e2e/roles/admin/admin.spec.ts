@@ -1,8 +1,9 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { e2eAdmin } from '../../helpers/auth';
 import { waitForPageShell, waitForUsersList } from '../../helpers/waits';
 
-test.describe('Admin users list', () => {
+test.describe('Admin users list', describeTags(TAG.admin, TAG.focused), () => {
 	test('opens Admin from nav and shows the users list', async ({ adminPage: page }) => {
 		await page.goto('/dashboard');
 		await waitForPageShell(page, 'dashboard-page');

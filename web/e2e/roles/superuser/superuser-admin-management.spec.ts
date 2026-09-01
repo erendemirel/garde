@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { e2eAdmin } from '../../helpers/auth';
 import {
 	createEphemeralUser,
@@ -25,7 +26,7 @@ function adminRow(page: import('@playwright/test').Page, email: string) {
  * Admin-User Management. Admins come from config (seed admin only in e2e).
  * Scope mutation adds/removes a unique group on seed admin, then restores seed groups.
  */
-test.describe('Superuser admin-user management', () => {
+test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG.admin, TAG.focused), () => {
 	// Serial: mutate seed admin group membership; avoid racing other workers on that map.
 	test.describe.configure({ mode: 'serial' });
 

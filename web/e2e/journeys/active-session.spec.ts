@@ -7,6 +7,7 @@ import {
 	openUserDetailFromSuperuser
 } from '../helpers/userApi';
 import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT } from '../helpers/waits';
+import { describeTags, TAG } from '../helpers/tags';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -17,7 +18,7 @@ async function waitForToastGone(page: import('@playwright/test').Page) {
 /**
  * Admin/superuser actions against a user who already has an active session.
  */
-test.describe('Active session security', () => {
+test.describe('Active session security', describeTags(TAG.journey, TAG.activeSession, TAG.security), () => {
 	test.describe('lock', () => {
 		test('locking an in-scope user signs them out on reload', async ({
 			browser,

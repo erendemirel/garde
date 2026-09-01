@@ -1,4 +1,5 @@
 import { test, expect } from '../helpers/fixtures';
+import { describeTags, TAG } from '../helpers/tags';
 
 async function stubOtpRoute(page: import('@playwright/test').Page) {
 	await page.route('**/api/users/password/otp', async (route) => {
@@ -12,7 +13,7 @@ async function stubOtpRoute(page: import('@playwright/test').Page) {
 	});
 }
 
-test.describe('Forgot password page', () => {
+test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () => {
 	test.describe('happy path', () => {
 		test('shows the email step with stable locators', async ({ page }) => {
 			await page.goto('/forgot-password');

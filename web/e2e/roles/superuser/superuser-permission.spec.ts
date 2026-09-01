@@ -1,11 +1,12 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { waitForSuperuserCatalog } from '../../helpers/waits';
 
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
 }
 
-test.describe('Superuser permission CRUD', () => {
+test.describe('Superuser permission CRUD', describeTags(TAG.superuser, TAG.catalog, TAG.focused), () => {
 	test('creates a permission then deletes it', async ({ superuserPage: page, uniqueSuffix }) => {
 		const permissionName = `e2e_perm_${uniqueSuffix}`;
 

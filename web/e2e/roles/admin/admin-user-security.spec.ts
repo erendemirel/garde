@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { expectLoginRejected } from '../../helpers/auth';
 import {
 	createEphemeralUser,
@@ -20,7 +21,7 @@ async function confirmSecurityAction(
 	await waitForToastGone(page);
 }
 
-test.describe('Admin user security actions', () => {
+test.describe('Admin user security actions', describeTags(TAG.admin, TAG.userDetail, TAG.security, TAG.focused), () => {
 	test('locks then unlocks an in-scope user', async ({ adminPage: page, ephemeralUser }) => {
 		await page.goto('/admin');
 		await openUserDetailFromAdmin(page, ephemeralUser.email);

@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import {
 	waitForAdminManagement,
 	waitForPageShell,
@@ -7,7 +8,7 @@ import {
 	waitForVisibilityPanel
 } from '../../helpers/waits';
 
-test.describe('Superuser console', () => {
+test.describe('Superuser console', describeTags(TAG.superuser, TAG.focused), () => {
 	test('opens Superuser from nav and shows users by default', async ({ superuserPage: page }) => {
 		await page.goto('/dashboard');
 		await waitForPageShell(page, 'dashboard-page');

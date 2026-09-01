@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { startUserSession } from '../../helpers/auth';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
 
@@ -9,7 +10,7 @@ async function waitForToastGone(page: import('@playwright/test').Page) {
 /**
  * Revoke sessions on an ephemeral user — does not kill seed admin sessions used by other workers.
  */
-test.describe('Revoke user sessions', () => {
+test.describe('Revoke user sessions', describeTags(TAG.userDetail, TAG.activeSession, TAG.focused), () => {
 	test('shows revoke and delete controls on user detail', async ({
 		superuserPage: page,
 		ephemeralUser

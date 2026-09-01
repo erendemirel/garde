@@ -1,8 +1,9 @@
 import { test, expect } from '../helpers/fixtures';
+import { describeTags, TAG } from '../helpers/tags';
 import { e2eAdmin, e2eSuperuser } from '../helpers/auth';
 import { waitForPageShell, waitForUsersList } from '../helpers/waits';
 
-test.describe('Navigation by role', () => {
+test.describe('Navigation by role', describeTags(TAG.nav, TAG.focused), () => {
 	test('admin nav shows Admin but not Superuser', async ({ adminPage: page }) => {
 		await page.goto('/dashboard');
 		await waitForPageShell(page, 'dashboard-page');

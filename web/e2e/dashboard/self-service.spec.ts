@@ -4,8 +4,9 @@ import { enableMfaViaUi, startMfaSetup } from '../helpers/mfa';
 import { totpCode } from '../helpers/totp';
 import { createEphemeralUser, deleteUserById } from '../helpers/userApi';
 import { waitForPageShell, LOAD_TIMEOUT } from '../helpers/waits';
+import { describeTags, TAG } from '../helpers/tags';
 
-test.describe('Dashboard account overview', () => {
+test.describe('Dashboard account overview', describeTags(TAG.dashboard, TAG.focused), () => {
 	test('shows account summary and self-service links', async ({ adminPage: page }) => {
 		await page.goto('/dashboard');
 		await waitForPageShell(page, 'dashboard-page');
@@ -44,7 +45,7 @@ test.describe('Dashboard account overview', () => {
 	});
 });
 
-test.describe('Change password page', () => {
+test.describe('Change password page', describeTags(TAG.dashboard, TAG.selfService, TAG.focused), () => {
 	test.describe('happy path', () => {
 		test('shows the form with stable locators', async ({ adminPage: page }) => {
 			await page.goto('/password');
@@ -214,7 +215,7 @@ test.describe('Change password page', () => {
 	});
 });
 
-test.describe('MFA page', () => {
+test.describe('MFA page', describeTags(TAG.dashboard, TAG.selfService, TAG.security, TAG.focused), () => {
 	test.describe('setup', () => {
 		test('shows disabled MFA choice for the seed admin', async ({ adminPage: page }) => {
 			await page.goto('/mfa');

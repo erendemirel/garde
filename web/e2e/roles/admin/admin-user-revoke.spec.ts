@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { loginAs, startUserSession } from '../../helpers/auth';
 import {
 	createEphemeralUser,
@@ -10,7 +11,7 @@ async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
 }
 
-test.describe('Admin revoke and delete', () => {
+test.describe('Admin revoke and delete', describeTags(TAG.admin, TAG.userDetail, TAG.activeSession, TAG.focused), () => {
 	test('revoking sessions signs the target user out', async ({
 		browser,
 		adminPage,

@@ -1,7 +1,8 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { startUserSession } from '../../helpers/auth';
 
-test.describe('Regular user access control', () => {
+test.describe('Regular user access control', describeTags(TAG.regular, TAG.focused), () => {
 	test('non-admin cannot open admin or superuser', async ({ browser, ephemeralUser }) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();

@@ -8,6 +8,7 @@ import {
 	openUserDetailFromSuperuser
 } from '../helpers/userApi';
 import { matchUserUpdate, waitForPageShell, LOAD_TIMEOUT } from '../helpers/waits';
+import { describeTags, TAG } from '../helpers/tags';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -59,7 +60,7 @@ async function submitRegisterForm(page: import('@playwright/test').Page, email: 
  * Pending-account approval journeys. Registration UI is covered in auth/register;
  * pending users are API-created here for parallel-safe speed.
  */
-test.describe('Registration approval', () => {
+test.describe('Registration approval', describeTags(TAG.journey, TAG.registration), () => {
 	test.describe('superuser', () => {
 		test('registers, gets approved, can sign in, then is deleted', async ({
 			page,

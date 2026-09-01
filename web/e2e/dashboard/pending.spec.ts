@@ -1,5 +1,6 @@
 import { test, expect } from '../helpers/fixtures';
 import { startUserSession } from '../helpers/auth';
+import { describeTags, TAG } from '../helpers/tags';
 
 async function stageAnyGroupChange(page: import('@playwright/test').Page) {
 	const groupSection = page.getByTestId('request-update-groups');
@@ -21,7 +22,7 @@ async function stageAnyGroupChange(page: import('@playwright/test').Page) {
 	await expect(ms.getByTestId('multiselect-dropdown')).toHaveCount(0);
 }
 
-test.describe('Dashboard pending update', () => {
+test.describe('Dashboard pending update', describeTags(TAG.dashboard, TAG.requestUpdate, TAG.focused), () => {
 	test('shows pending banner after reload once me is refetched', async ({ browser, ephemeralUser }) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();

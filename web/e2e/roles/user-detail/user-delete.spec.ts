@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
 import { waitForUsersList } from '../../helpers/waits';
 
@@ -9,7 +10,7 @@ async function waitForToastGone(page: import('@playwright/test').Page) {
 /**
  * Delete ephemeral user from the UI (fixture cleanup is a no-op after delete).
  */
-test.describe('Delete user', () => {
+test.describe('Delete user', describeTags(TAG.userDetail, TAG.superuser, TAG.focused), () => {
 	test('deletes an ephemeral user from user detail', async ({
 		superuserPage: page,
 		ephemeralUser

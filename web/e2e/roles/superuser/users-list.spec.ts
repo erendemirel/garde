@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import {
 	matchUsersListRequest,
 	waitForPageShell,
@@ -6,7 +7,7 @@ import {
 	waitForUsersList
 } from '../../helpers/waits';
 
-test.describe('Users list interactions', () => {
+test.describe('Users list interactions', describeTags(TAG.superuser, TAG.focused), () => {
 	test('search with no matches shows empty state', async ({ superuserPage: page }) => {
 		await page.goto('/superuser');
 		await waitForPageShell(page, 'superuser-page');

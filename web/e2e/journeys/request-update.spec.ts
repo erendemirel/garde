@@ -9,6 +9,7 @@ import {
 	patchUserMaps
 } from '../helpers/userApi';
 import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT } from '../helpers/waits';
+import { describeTags, TAG } from '../helpers/tags';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -191,7 +192,7 @@ async function superuserApproveUpdate(suPage: Page, email: string) {
  * Request-update journeys: form UX, admin/superuser decisions, user dashboard outcomes,
  * actor handoffs, and users-list integration.
  */
-test.describe('Request update', () => {
+test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), () => {
 	test.describe('form', () => {
 		test('shows the request-update form from the dashboard', async ({ adminPage: page }) => {
 			await page.goto('/dashboard');

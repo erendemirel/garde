@@ -54,6 +54,14 @@ e2e/
 
     active-session.spec.ts # Lock, delete, MFA enforce while user is online
 
+    epic-lifecycle.spec.ts       # @epic — register → reject → approve → access → password → delete
+
+    epic-catalog-to-access.spec.ts # @epic — catalog, visibility, scope, safeguard
+
+    epic-scope-alignment.spec.ts   # @epic — admin scope expansion + lock cycle
+
+    epic-security-hardening.spec.ts # @epic — MFA enforce, TOTP login, revoke
+
   helpers/                 # Fixtures, auth, API helpers, waits
 
   auth.setup.ts            # Seed admin access restore (setup project)
@@ -71,6 +79,8 @@ e2e/
   - Single page or feature → file under `auth/`, `dashboard/`, or the relevant `roles/` folder.
 
   - Multi-actor flow → `journeys/`, in the file for that **domain** (`registration`, `request-update`, `active-session`).
+
+  - Long cross-feature epics → `journeys/epic-*.spec.ts` (tagged `@epic`; run with `--grep @epic`).
 
   - Use nested `test.describe` blocks for story type (`form`, `actor handoffs`, `user dashboard outcomes`, etc.).
 
@@ -118,6 +128,29 @@ PLAYWRIGHT_FRESH_AUTH=1 npm run test:e2e
 ```
 
 CI uses **2 workers + 2 retries** (`playwright.config.ts`). The 32-worker command above is for local stress only.
+
+### Tags
+
+Tests use Playwright [`tag`](https://playwright.dev/docs/test-annotations#tag-tests) annotations via `helpers/tags.ts`:
+
+| Tag | Meaning |
+|-----|---------|
+| `@focused` | Single-feature / role spec (default CI signal) |
+| `@journey` | Multi-actor domain journey (focused cases) |
+| `@epic` | Long integration story (outcome assertions only) |
+| `@auth`, `@registration`, `@request-update`, … | Domain filter |
+
+```bash
+npm run test:e2e:focused   # all except @epic (~165 tests)
+npm run test:e2e:epic      # integration epics only (4 tests)
+npm run test:e2e -- --grep @registration
+```
+
+**Epic vs focused overlap:** `@epic` specs use `outcomesOnly` journey helpers — they verify chain **outcomes** (chips, signed-in/out, URLs). Toast copy, error messages, and form validation stay in `@focused` / `@journey` specs. If only an epic fails, re-run the matching domain tag before debugging the full chain.
+
+### Epics vs focused journeys
+
+Focused journey files (`registration`, `request-update`, `active-session`) keep fast, parallel-safe cases. **`epic-*.spec.ts`** adds four long integration stories (one test each) that chain multiple actors and negative branches. They are additive — nothing replaces the focused specs.
 
 ### Auth helpers under load
 

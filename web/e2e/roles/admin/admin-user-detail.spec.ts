@@ -1,8 +1,9 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { e2eAdmin } from '../../helpers/auth';
 import { waitForUsersList } from '../../helpers/waits';
 
-test.describe('Admin user detail', () => {
+test.describe('Admin user detail', describeTags(TAG.admin, TAG.userDetail, TAG.focused), () => {
 	test.beforeEach(async ({ adminPage: page }) => {
 		await page.goto('/admin');
 		await waitForUsersList(page);

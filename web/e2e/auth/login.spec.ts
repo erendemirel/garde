@@ -1,5 +1,6 @@
 import { test, expect } from '../helpers/fixtures';
 import { e2eAdmin, expectLoginRejected, fillLoginForm, loginAs, openLogin, submitLogin } from '../helpers/auth';
+import { describeTags, TAG } from '../helpers/tags';
 import { LOAD_TIMEOUT } from '../helpers/waits';
 import { enableMfaViaUi } from '../helpers/mfa';
 import {
@@ -9,7 +10,7 @@ import {
 	patchUserMaps
 } from '../helpers/userApi';
 
-test.describe('Login page', () => {
+test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 	test.describe('UI', () => {
 		test('shows the login form with stable locators', async ({ page }) => {
 			await page.goto('/');

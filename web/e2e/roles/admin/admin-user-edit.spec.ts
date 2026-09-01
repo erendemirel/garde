@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { loginAs, startUserSession } from '../../helpers/auth';
 import { openUserDetailFromAdmin } from '../../helpers/userApi';
 
@@ -26,7 +27,7 @@ async function stageGroupAddByName(page: import('@playwright/test').Page, groupN
 /**
  * Admin user detail writes — scoped to shared groups + visibility rules.
  */
-test.describe('Admin user detail edits', () => {
+test.describe('Admin user detail edits', describeTags(TAG.admin, TAG.userDetail, TAG.focused), () => {
 	test('grants then revokes a visibility-scoped permission', async ({
 		adminPage: page,
 		ephemeralUser,

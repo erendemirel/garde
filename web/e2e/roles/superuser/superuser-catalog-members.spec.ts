@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import type { Page } from '@playwright/test';
 import { waitForSuperuserCatalog } from '../../helpers/waits';
 
@@ -41,7 +42,7 @@ async function saveMembership(page: Page, saveTestId: string, toastMatch: string
 /**
  * Superuser catalog Manage Users — assign/remove membership on a temporary group.
  */
-test.describe('Superuser catalog members', () => {
+test.describe('Superuser catalog members', describeTags(TAG.superuser, TAG.catalog, TAG.focused), () => {
 	test('assigns a user to a group then removes them', async ({
 		superuserPage: page,
 		ephemeralUser,

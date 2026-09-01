@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
 import { waitForSuperuserCatalog } from '../../helpers/waits';
 
@@ -9,7 +10,7 @@ async function waitForToastGone(page: import('@playwright/test').Page) {
 /**
  * Grant/revoke access on an ephemeral user (never mutates seed admin).
  */
-test.describe('User access mutate and revert', () => {
+test.describe('User access mutate and revert', describeTags(TAG.userDetail, TAG.superuser, TAG.focused), () => {
 	test('grants a permission then revokes it', async ({
 		superuserPage: page,
 		suRequest,

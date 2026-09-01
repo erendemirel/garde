@@ -1,4 +1,5 @@
 import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from '../../helpers/waits';
 
@@ -40,7 +41,7 @@ async function cleanupCatalog(
 /**
  * Permission Visibility tab — matrix + list manage flows with unique catalog fixtures.
  */
-test.describe('Superuser permission visibility', () => {
+test.describe('Superuser permission visibility', describeTags(TAG.superuser, TAG.catalog, TAG.focused), () => {
 	test('adds then removes a visibility mapping in matrix view', async ({
 		superuserPage: page,
 		suRequest,
