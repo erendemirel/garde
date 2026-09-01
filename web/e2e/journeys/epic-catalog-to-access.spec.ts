@@ -8,7 +8,7 @@ import {
 	createCatalogItem,
 	openRequestUpdate,
 	patchUserMaps,
-	reloadDashboardWithMe,
+	gotoDashboardFresh,
 	removeVisibilityInMatrix,
 	stagePermissionAddByName,
 	stagePermissionRemoveByName,
@@ -64,11 +64,11 @@ test.describe(
 				await openRequestUpdate(userPage);
 				await stagePermissionAddByName(userPage, permissionName, epic);
 				await submitRequestUpdate(userPage, epic);
-				await reloadDashboardWithMe(userPage);
+				await gotoDashboardFresh(userPage);
 				await expect(userPage.getByTestId('dashboard-pending-update')).toBeVisible();
 
 				await adminRejectUpdate(adminPage, mainUser.email, epic);
-				await reloadDashboardWithMe(userPage);
+				await gotoDashboardFresh(userPage);
 				await expect(
 					userPage.locator(`[data-testid="dashboard-permission-chip"][data-key="${permissionName}"]`)
 				).toHaveCount(0);
@@ -77,7 +77,7 @@ test.describe(
 				await stagePermissionAddByName(userPage, permissionName, epic);
 				await submitRequestUpdate(userPage, epic);
 				await adminApproveUpdate(adminPage, mainUser.email, epic);
-				await reloadDashboardWithMe(userPage);
+				await gotoDashboardFresh(userPage);
 				await expect(
 					userPage.locator(`[data-testid="dashboard-permission-chip"][data-key="${permissionName}"]`)
 				).toBeVisible();

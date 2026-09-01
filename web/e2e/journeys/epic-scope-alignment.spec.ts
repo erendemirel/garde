@@ -3,7 +3,7 @@ import { e2eAdmin, startUserSession } from '../helpers/auth';
 import {
 	adminApproveUpdate,
 	openRequestUpdate,
-	reloadDashboardWithMe,
+	gotoDashboardFresh,
 	SCOPE_GROUP,
 	stageGroupAddByName,
 	submitRequestUpdate,
@@ -98,7 +98,7 @@ test.describe(
 				await startUserSession(scopedAdmin, e2eAdmin);
 
 				await adminApproveUpdate(scopedAdmin, user.email, { ...epic, userId: user.id });
-				await reloadDashboardWithMe(userPage);
+				await gotoDashboardFresh(userPage);
 				await expect(
 					userPage.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
 				).toBeVisible();
