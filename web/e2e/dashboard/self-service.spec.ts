@@ -3,7 +3,7 @@ import { loginAs, loginViaRequest, startUserSession, e2eAdmin } from '../helpers
 import { enableMfaViaUi, startMfaSetup } from '../helpers/mfa';
 import { totpCode } from '../helpers/totp';
 import { createEphemeralUser, deleteUserById } from '../helpers/userApi';
-import { waitForPageShell, LOAD_TIMEOUT } from '../helpers/waits';
+import { waitForPageShell, waitForPasswordChangeSignOut, LOAD_TIMEOUT } from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe('Dashboard account overview', describeTags(TAG.dashboard, TAG.focused), () => {
@@ -83,18 +83,7 @@ test.describe('Change password page', describeTags(TAG.dashboard, TAG.selfServic
 
 			await page.getByTestId('password-submit').click();
 			await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
-
-			const changeResponse = page.waitForResponse(
-				(res) =>
-					res.url().includes('/api/users/password/change') &&
-					res.request().method() === 'POST'
-			);
-			await page.getByTestId('confirm-modal-confirm').click();
-			const res = await changeResponse;
-			expect(res.ok()).toBeTruthy();
-
-			await expect(page.getByTestId('password-success')).toContainText('Password changed');
-			await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 15_000 });
+			await waitForPasswordChangeSignOut(page);
 
 			await loginAs(page, { email: ephemeralUser.email, password: newPassword });
 			await expect(page.getByTestId('dashboard-email')).toHaveText(ephemeralUser.email);
@@ -123,18 +112,7 @@ test.describe('Change password page', describeTags(TAG.dashboard, TAG.selfServic
 			await page.getByTestId('password-mfa').fill(totpCode(secret));
 			await page.getByTestId('password-submit').click();
 			await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
-
-			const changeResponse = page.waitForResponse(
-				(res) =>
-					res.url().includes('/api/users/password/change') &&
-					res.request().method() === 'POST'
-			);
-			await page.getByTestId('confirm-modal-confirm').click();
-			const res = await changeResponse;
-			expect(res.ok()).toBeTruthy();
-
-			await expect(page.getByTestId('password-success')).toContainText('Password changed');
-			await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 15_000 });
+			await waitForPasswordChangeSignOut(page);
 
 			await loginAs(page, {
 				email: ephemeralUser.email,

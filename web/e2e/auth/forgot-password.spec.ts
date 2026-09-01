@@ -1,5 +1,6 @@
 import { test, expect } from '../helpers/fixtures';
 import { describeTags, TAG } from '../helpers/tags';
+import { LOAD_TIMEOUT } from '../helpers/waits';
 
 async function stubOtpRoute(page: import('@playwright/test').Page) {
 	await page.route('**/api/users/password/otp', async (route) => {
@@ -95,7 +96,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 			await page.getByTestId('forgot-reset-submit').click();
 
 			await expect(page.getByTestId('forgot-success')).toContainText('Password reset successful');
-			await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 10_000 });
+			await expect(page.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
 		});
 
 		test('reset step exposes MFA field for accounts with MFA enabled', async ({ page }) => {

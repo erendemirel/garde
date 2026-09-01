@@ -167,7 +167,7 @@ func CORSMiddleware() gin.HandlerFunc {
 func SecurityMiddleware(securityAnalyzer *service.SecurityAnalyzer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if rapid request check or rate limiting is disabled
-		if session.IsRapidRequestCheckDisabled() || config.Get("RATE_LIMIT") == "0" {
+		if session.IsRapidRequestCheckDisabled() || IsRateLimitDisabled() {
 			c.Next()
 			return
 		}

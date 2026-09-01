@@ -247,8 +247,8 @@ export async function openUserDetailById(page: Page, userId: string, expectedEma
 export async function openUserDetailFromAdmin(page: Page, email: string) {
 	if (!page.url().includes('/admin')) {
 		await page.goto('/admin');
-		await waitForPageShell(page, 'admin-page');
 	}
+	await waitForPageShell(page, 'admin-page');
 	await waitForUsersList(page);
 
 	const usersResponse = page.waitForResponse((res) => matchUsersListRequest(res, { q: email }));
@@ -266,8 +266,8 @@ export async function openUserDetailFromAdmin(page: Page, email: string) {
 export async function openUserDetailFromSuperuser(page: Page, email: string) {
 	if (!page.url().includes('/superuser')) {
 		await page.getByTestId('nav-superuser').click();
-		await waitForPageShell(page, 'superuser-page');
 	}
+	await waitForPageShell(page, 'superuser-page');
 	await page.getByTestId('superuser-tab-users').click();
 	await waitForUsersList(page);
 
