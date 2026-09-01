@@ -11,11 +11,9 @@ import {
 } from '../helpers/userApi';
 import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT } from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
+import { SCOPE_GROUP, VISIBILITY_GROUP } from '../helpers/catalog';
 
 test.describe.configure({ timeout: 120_000 });
-
-const SCOPE_GROUP = 'asdfasdf';
-const VISIBILITY_GROUP = 'group_a';
 
 async function waitForToastGone(page: Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });

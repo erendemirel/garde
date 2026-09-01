@@ -15,8 +15,9 @@ import {
 	patchUserMaps
 } from './userApi';
 
-export const VISIBILITY_GROUP = 'group_a';
-export const SCOPE_GROUP = 'asdfasdf';
+import { VISIBILITY_GROUP, SCOPE_GROUP } from './catalog';
+
+export { VISIBILITY_GROUP, SCOPE_GROUP };
 
 /** When true, act helpers wait for API/UI completion without toast copy assertions (for @epic specs). */
 export type JourneyActOptions = { outcomesOnly?: boolean };

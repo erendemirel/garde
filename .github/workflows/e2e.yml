@@ -1,12 +1,12 @@
 name: E2E
 
 on:
-  push:
-    branches: [master, main, development]
   pull_request:
+  push:
+    branches: [master, main]
 
 concurrency:
-  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  group: e2e-${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:

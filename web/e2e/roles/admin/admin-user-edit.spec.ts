@@ -6,12 +6,12 @@ import {
 	openRequestUpdate,
 	stageGroupAddByName,
 	submitRequestUpdate,
-	waitForToastGone
+	waitForToastGone,
+	VISIBILITY_GROUP,
+	SCOPE_GROUP
 } from '../../helpers/journeys';
 
-const VISIBILITY_GROUP = 'group_a';
 /** Seed group shared by admin and manageable users — safe for admin approve of group add. */
-const SCOPE_GROUP = 'asdfasdf';
 
 async function submitGroupAddRequest(page: import('@playwright/test').Page, groupName: string) {
 	await openRequestUpdate(page, { requireGroups: true });
