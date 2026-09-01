@@ -10,7 +10,8 @@ import {
 	waitForRequestUpdateGroups,
 	waitForSuperuserCatalog,
 	waitForVisibilityPanel,
-	waitForToastGone
+	assertToast,
+	dismissToast as clearToast
 } from './waits';
 import {
 	openUserDetailById,
@@ -21,23 +22,21 @@ import {
 
 import { VISIBILITY_GROUP, SCOPE_GROUP } from './catalog';
 
-export { VISIBILITY_GROUP, SCOPE_GROUP, waitForToastGone };
+export { VISIBILITY_GROUP, SCOPE_GROUP, assertToast, clearToast as dismissToast };
 
 /** When true, act helpers wait for API/UI completion without toast copy assertions (for @epic specs). */
 export type JourneyActOptions = { outcomesOnly?: boolean; userId?: string };
 
-async function dismissToast(page: Page, pattern?: string | RegExp, opts?: JourneyActOptions) {
+async function dismissToastAfterAction(page: Page, pattern?: string | RegExp, opts?: JourneyActOptions) {
 	if (opts?.outcomesOnly) {
-		const toast = page.getByTestId('toast');
-		if (await toast.isVisible().catch(() => false)) {
-			await waitForToastGone(page);
-		}
+		await clearToast(page);
 		return;
 	}
 	if (pattern) {
-		await expect(page.getByTestId('toast')).toContainText(pattern, { timeout: REDIRECT_TIMEOUT });
+		await assertToast(page, pattern);
+	} else {
+		await clearToast(page);
 	}
-	await waitForToastGone(page);
 }
 
 /** Navigate to dashboard and wait for a fresh /api/users/me (dashboard refetches on mount). */
@@ -100,7 +99,7 @@ export async function createCatalogItem(
 	);
 	await page.getByTestId('superuser-catalog-item-save').click();
 	await saveResponse;
-	await dismissToast(page, name, opts);
+	await dismissToastAfterAction(page, name, opts);
 	if (opts?.outcomesOnly) {
 		await expect(page.getByTestId('superuser-catalog-item-modal')).toHaveCount(0);
 	}
@@ -128,7 +127,7 @@ export async function addVisibilityInMatrix(
 	);
 	await cell.click();
 	await visibilityResponse;
-	await dismissToast(page, /Visibility/i, opts);
+	await dismissToastAfterAction(page, /Visibility/i, opts);
 	if (!opts?.outcomesOnly) {
 		await expect(cell).toHaveAttribute('aria-pressed', 'true');
 	}
@@ -157,7 +156,7 @@ export async function removeVisibilityInMatrix(
 	await cell.click();
 	await page.getByTestId('confirm-modal-confirm').click();
 	await visibilityResponse;
-	await dismissToast(page, /removed/i, opts);
+	await dismissToastAfterAction(page, /removed/i, opts);
 }
 
 export async function cleanupCatalog(
@@ -191,7 +190,7 @@ export async function adminApproveAccount(
 	await adminPage.getByTestId('user-detail-approve-account').click();
 	await adminPage.getByTestId('confirm-modal-confirm').click();
 	await updateResponse;
-	await dismissToast(adminPage, 'Account approved', opts);
+	await dismissToastAfterAction(adminPage, 'Account approved', opts);
 }
 
 export async function adminRejectAccount(
@@ -205,7 +204,7 @@ export async function adminRejectAccount(
 	await adminPage.getByTestId('user-detail-reject-account').click();
 	await adminPage.getByTestId('confirm-modal-confirm').click();
 	await updateResponse;
-	await dismissToast(adminPage, 'rejected', opts);
+	await dismissToastAfterAction(adminPage, 'rejected', opts);
 }
 
 export async function superuserApproveAccountAnyway(
@@ -219,7 +218,7 @@ export async function superuserApproveAccountAnyway(
 	await suPage.getByTestId('user-detail-approve-account').click();
 	await suPage.getByTestId('confirm-modal-confirm').click();
 	await updateResponse;
-	await dismissToast(suPage, 'Account approved', opts);
+	await dismissToastAfterAction(suPage, 'Account approved', opts);
 }
 
 export async function adminApproveUpdate(
@@ -241,7 +240,7 @@ export async function adminApproveUpdate(
 	await adminPage.getByTestId('user-detail-approve-update').click();
 	await adminPage.getByTestId('confirm-modal-confirm').click();
 	await updateResponse;
-	await dismissToast(adminPage, 'Update approved', opts);
+	await dismissToastAfterAction(adminPage, 'Update approved', opts);
 }
 
 export async function adminRejectUpdate(
@@ -259,7 +258,7 @@ export async function adminRejectUpdate(
 	await adminPage.getByTestId('user-detail-reject-update').click();
 	await adminPage.getByTestId('confirm-modal-confirm').click();
 	await updateResponse;
-	await dismissToast(adminPage, 'Update rejected', opts);
+	await dismissToastAfterAction(adminPage, 'Update rejected', opts);
 }
 
 export async function stageGroupAddByName(page: Page, groupName: string, opts?: JourneyActOptions) {
@@ -305,7 +304,9 @@ export async function submitRequestUpdate(page: Page, opts?: JourneyActOptions) 
 	await page.getByTestId('request-update-submit').click();
 	await submitResponse;
 	if (!opts?.outcomesOnly) {
-		await expect(page.getByTestId('toast')).toContainText('Request submitted');
+		await assertToast(page, 'Request submitted');
+	} else {
+		await clearToast(page);
 	}
 	await waitForPageShell(page, 'dashboard-page');
 }

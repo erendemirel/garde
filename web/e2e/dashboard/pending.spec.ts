@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { startUserSession } from '../helpers/auth';
 import { describeTags, TAG } from '../helpers/tags';
-import { waitForRequestUpdateCatalog } from '../helpers/waits';
+import { waitForRequestUpdateCatalog, assertToast, dismissToast } from '../helpers/waits';
 
 async function stageAnyGroupChange(page: import('@playwright/test').Page) {
 	const groupSection = page.getByTestId('request-update-groups');
@@ -37,7 +37,7 @@ test.describe('Dashboard pending update', describeTags(TAG.dashboard, TAG.reques
 
 		await stageAnyGroupChange(page);
 		await page.getByTestId('request-update-submit').click();
-		await expect(page.getByTestId('toast')).toContainText('Request submitted');
+		await assertToast(page, 'Request submitted');
 		await page.waitForURL(/\/dashboard/);
 
 		await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();

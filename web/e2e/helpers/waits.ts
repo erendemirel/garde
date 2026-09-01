@@ -6,11 +6,28 @@ export const LOAD_TIMEOUT = Number(process.env.PLAYWRIGHT_LOAD_TIMEOUT || 30_000
 /** Redirects, login page, and other public-route navigation. */
 export const REDIRECT_TIMEOUT = 15_000;
 
-/** Toast auto-hides after 5s — deadline timer in app resists background-tab throttling. */
-export const TOAST_DISMISS_TIMEOUT = Number(process.env.PLAYWRIGHT_TOAST_TIMEOUT || 8_000);
+/** Clear a visible toast (click dismiss). Use between steps — do not wait for the 5s auto-hide. */
+export async function dismissToast(page: Page, timeout = REDIRECT_TIMEOUT) {
+	const toast = page.getByTestId('toast');
+	if (await toast.isVisible().catch(() => false)) {
+		await page.getByTestId('toast-dismiss').click();
+	}
+	await expect(toast).toBeHidden({ timeout });
+}
 
-export async function waitForToastGone(page: Page, timeout = TOAST_DISMISS_TIMEOUT) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout });
+/** Assert toast copy (when that is what the spec tests), then dismiss immediately. */
+export async function assertToast(
+	page: Page,
+	pattern: string | RegExp,
+	timeout = REDIRECT_TIMEOUT
+) {
+	await expect(page.getByTestId('toast')).toContainText(pattern, { timeout });
+	await dismissToast(page);
+}
+
+/** @deprecated Prefer {@link dismissToast} or {@link assertToast}. */
+export async function waitForToastGone(page: Page, timeout = REDIRECT_TIMEOUT) {
+	await dismissToast(page, timeout);
 }
 
 type UsersListRequestParams = {

@@ -176,5 +176,7 @@ Focused journey files (`registration`, `request-update`, `active-session`) keep 
 - Request-update waits for `data-ready="true"` on the form (catalog fetch complete) before interacting with multiselects.
 - **`waitForOutOfScopeDenied`** — admin opens `/admin/users/:id` for a user outside their groups: API returns 401 `unauthorized`, UI shows `user-detail-access-denied`, session stays signed in (not a login redirect).
 - **`gotoDashboardFresh`** — navigate to `/dashboard` and wait for `/api/users/me` (dashboard refetches on mount).
-- **`waitForToastGone`** — centralized in `helpers/waits.ts` (toast uses deadline-based auto-hide resilient to background-tab timer throttling).
+- **`assertToast`** — assert toast copy when the spec tests messaging, then click **`toast-dismiss`** (do not wait for auto-hide).
+- **`dismissToast`** — clear a visible toast without re-asserting copy (use between steps in journeys/epics).
+- **`waitForToastGone`** — alias for `dismissToast` (legacy). Production toasts still auto-hide after 5s; tests dismiss immediately.
 - **Timeout tiers:** `REDIRECT_TIMEOUT` (15s) for login/redirect assertions; `LOAD_TIMEOUT` (30s default, env override) for session boot and API-backed panels. CI uses 4 workers; very high local worker counts can saturate the dev stack — use default parallelism for routine runs.
