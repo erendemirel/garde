@@ -6,7 +6,11 @@
 	export let status = '';
 </script>
 
-<span class="status-display status-{getStatusClass(status)}">
+<span
+	class="status-display status-{getStatusClass(status)}"
+	data-testid="status-badge"
+	data-status={(status || '').toLowerCase()}
+>
 	<span class="status-icon">
 		{#if getStatusClass(status) === 'ok'}
 			<CircleCheck size={18} />

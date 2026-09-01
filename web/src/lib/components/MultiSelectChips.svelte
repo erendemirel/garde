@@ -103,7 +103,7 @@
 		const next = new Set(selected);
 		next.delete(key);
 		emit(next);
-		inputEl?.focus();
+		closeList();
 	}
 
 	function restore(/** @type {string} */ key) {
@@ -204,7 +204,7 @@
 	});
 </script>
 
-<div class="ms-root" bind:this={rootEl} data-variant={variant}>
+<div class="ms-root" bind:this={rootEl} data-variant={variant} data-testid="multiselect" data-label={label || variant}>
 	{#if label}
 		<span class="sr-only">{label}</span>
 	{/if}
@@ -215,11 +215,13 @@
 		aria-expanded={open}
 		aria-haspopup="listbox"
 		aria-controls={open ? listId : undefined}
+		data-testid="multiselect-field"
 	>
 		<input
 			bind:this={inputEl}
 			class="ms-input"
 			type="text"
+			data-testid="multiselect-input"
 			{placeholder}
 			bind:value={query}
 			autocomplete="off"
@@ -230,11 +232,14 @@
 			on:keydown={onKeydown}
 		/>
 		{#if trayItems.length > 0}
-			<div class="ms-tray">
+			<div class="ms-tray" data-testid="multiselect-tray">
 				{#each trayItems as item (item.key + item.state)}
 					<button
 						type="button"
 						class={chipClass(item.state)}
+						data-testid="multiselect-chip"
+						data-key={item.key}
+						data-state={item.state}
 						title={item.description || (item.state === 'removed' ? 'Restore' : 'Remove')}
 						on:click={() => onChipAction(item)}
 					>
@@ -258,13 +263,14 @@
 			class="ms-dropdown"
 			id={listId}
 			role="listbox"
+			data-testid="multiselect-dropdown"
 			bind:this={listEl}
 			on:scroll={onListScroll}
 		>
 			{#if remote && query.trim().length > 0 && query.trim().length < 2}
 				<li class="ms-empty" role="presentation">{remoteHint}</li>
 			{:else if filtered.length === 0}
-				<li class="ms-empty" role="presentation">
+				<li class="ms-empty" role="presentation" data-testid="multiselect-empty">
 					{remote
 						? query.trim().length >= 2
 							? 'No matches'
@@ -280,6 +286,8 @@
 							type="button"
 							class="ms-option"
 							class:ms-option-active={i === highlight}
+							data-testid="multiselect-option"
+							data-key={opt.key}
 							title={opt.description}
 							on:click={() => add(opt.key)}
 							on:mouseenter={() => (highlight = i)}

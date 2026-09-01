@@ -10,6 +10,8 @@
 		role="status"
 		aria-live={$toast.type === 'error' ? 'assertive' : 'polite'}
 		aria-atomic="true"
+		data-testid="toast"
+		data-toast-type={$toast.type}
 	>
 		{$toast.message}
 	</div>

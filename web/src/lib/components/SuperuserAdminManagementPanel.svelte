@@ -302,7 +302,7 @@
 	}
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="superuser-admin-management-panel">
 	<div>
 		<h2 class="section-title">Admin-User Management</h2>
 		<p class="text-sm text-muted mt-1">
@@ -312,9 +312,9 @@
 	</div>
 
 	{#if loading}
-		<p class="text-muted">Loading...</p>
+		<p class="text-muted" data-testid="admin-mgmt-loading">Loading...</p>
 	{:else if error}
-		<p class="error">{error}</p>
+		<p class="error" data-testid="admin-mgmt-error">{error}</p>
 	{:else}
 		<label class="form-label max-w-md">
 			<span>Search</span>
@@ -322,11 +322,12 @@
 				class="input"
 				type="search"
 				placeholder="Search by admin or user email..."
+				data-testid="admin-mgmt-search"
 				bind:value={adminManagementSearch}
 			/>
 		</label>
 
-		<div class="table-scroll">
+		<div class="table-scroll" data-testid="admin-mgmt-table">
 			<table class="table-base">
 				<thead>
 					<tr>
@@ -338,19 +339,30 @@
 				<tbody>
 					{#if adminManagementRows.length === 0}
 						<tr>
-							<td colspan="3" class="text-center text-muted py-4">
+							<td colspan="3" class="text-center text-muted py-4" data-testid="admin-mgmt-empty">
 								No admin-user management relationships found.
 							</td>
 						</tr>
 					{:else if filteredAdminManagementRows.length === 0}
 						<tr>
-							<td colspan="3" class="text-center text-muted py-4">No admins match your search.</td>
+							<td
+								colspan="3"
+								class="text-center text-muted py-4"
+								data-testid="admin-mgmt-no-match"
+							>
+								No admins match your search.
+							</td>
 						</tr>
 					{:else}
 						{#each pagedAdminManagementRows as row}
-							<tr>
-								<td class="font-medium whitespace-nowrap">{row.adminEmail}</td>
-								<td class="tabular-nums">{row.userEmails.length}</td>
+							<tr data-testid="admin-mgmt-row" data-admin-email={row.adminEmail}>
+								<td
+									class="font-medium whitespace-nowrap"
+									data-testid="admin-mgmt-row-email">{row.adminEmail}</td
+								>
+								<td class="tabular-nums" data-testid="admin-mgmt-row-count"
+									>{row.userEmails.length}</td
+								>
 								<td>
 									<div class="flex flex-nowrap gap-0.5">
 										<button
@@ -358,6 +370,7 @@
 											type="button"
 											title="View manageable users"
 											aria-label="View manageable users for admin {row.adminEmail}"
+											data-testid="admin-mgmt-view-users"
 											on:click={() => openManageableUsersModal(row)}
 										>
 											<Eye size={20} />
@@ -367,6 +380,7 @@
 											type="button"
 											title="Manage groups of the admin"
 											aria-label="Manage groups of the admin {row.adminEmail}"
+											data-testid="admin-mgmt-edit-groups"
 											on:click={() => openManageAdminGroups(row.adminEmail)}
 										>
 											<UserPen size={20} />
@@ -407,8 +421,8 @@
 		<X size={20} />
 	</button>
 	{#if viewingManageableUsers}
-		<div class="space-y-4">
-			<p class="text-sm text-muted">
+		<div class="space-y-4" data-testid="admin-mgmt-users-modal">
+			<p class="text-sm text-muted" data-testid="admin-mgmt-users-summary">
 				{viewingManageableUsers.userEmails.length} user{viewingManageableUsers.userEmails.length ===
 				1
 					? ''
@@ -421,24 +435,39 @@
 						class="input"
 						type="search"
 						placeholder="Filter by email..."
+						data-testid="admin-mgmt-users-search"
 						bind:value={manageableUsersSearch}
 					/>
 				</label>
 				{#if filteredManageableUserEmails.length === 0}
-					<p class="text-sm text-muted">No users match your search.</p>
+					<p class="text-sm text-muted" data-testid="admin-mgmt-users-no-match"
+						>No users match your search.</p
+					>
 				{:else}
-					<ul class="max-h-80 overflow-y-auto divide-y divide-borderc rounded-md border border-borderc">
+					<ul
+						class="max-h-80 overflow-y-auto divide-y divide-borderc rounded-md border border-borderc"
+						data-testid="admin-mgmt-users-list"
+					>
 						{#each filteredManageableUserEmails as email}
-							<li class="px-3 py-2 text-sm text-gray-600">{email}</li>
+							<li
+								class="px-3 py-2 text-sm text-gray-600"
+								data-testid="admin-mgmt-users-item"
+								data-user-email={email}>{email}</li
+							>
 						{/each}
 					</ul>
 				{/if}
 			{:else}
-				<p class="text-sm text-muted">This admin cannot manage any users yet.</p>
+				<p class="text-sm text-muted" data-testid="admin-mgmt-users-empty"
+					>This admin cannot manage any users yet.</p
+				>
 			{/if}
 			<div class="form-actions">
-				<button type="button" class="btn-secondary" on:click={closeManageableUsersModal}
-					>Close</button
+				<button
+					type="button"
+					class="btn-secondary"
+					data-testid="admin-mgmt-users-close"
+					on:click={closeManageableUsersModal}>Close</button
 				>
 			</div>
 		</div>
@@ -463,13 +492,13 @@
 		<X size={20} />
 	</button>
 	{#if managingMembership}
-		<div class="space-y-4">
+		<div class="space-y-4" data-testid="admin-mgmt-groups-modal">
 			<p class="text-xs text-muted">
 				An admin can manage users who share at least one of these groups. Changing membership
 				changes that admin’s management scope.
 			</p>
 			{#if groupNameOptions.length === 0}
-				<p class="text-sm text-muted">No groups available.</p>
+				<p class="text-sm text-muted" data-testid="admin-mgmt-groups-empty">No groups available.</p>
 			{:else}
 				<MultiSelectChips
 					options={groupNameOptions}
@@ -494,12 +523,14 @@
 			<button
 				type="button"
 				class="btn-secondary"
+				data-testid="admin-mgmt-groups-cancel"
 				on:click={closeManageUsersModal}
 				disabled={membershipSaving}>Cancel</button
 			>
 			<button
 				type="button"
 				class="btn-primary"
+				data-testid="admin-mgmt-groups-save"
 				on:click={requestMembershipSave}
 				disabled={membershipSaving || !membershipDirty}
 			>

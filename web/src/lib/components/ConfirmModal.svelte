@@ -23,12 +23,12 @@
 </script>
 
 <Modal bind:open {title} on:close={handleCancel}>
-	<p class="text-text mb-6 whitespace-pre-line">{message}</p>
+	<p class="text-text mb-6 whitespace-pre-line" data-testid="confirm-modal-message">{message}</p>
 	<div class="flex gap-3 justify-end">
-		<button type="button" class="btn-secondary" on:click={handleCancel}>
+		<button type="button" class="btn-secondary" data-testid="confirm-modal-cancel" on:click={handleCancel}>
 			{cancelText}
 		</button>
-		<button type="button" class={confirmClass} on:click={handleConfirm}>
+		<button type="button" class={confirmClass} data-testid="confirm-modal-confirm" on:click={handleConfirm}>
 			{confirmText}
 		</button>
 	</div>

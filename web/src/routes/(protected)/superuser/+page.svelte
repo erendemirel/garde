@@ -43,16 +43,16 @@
 	<title>Superuser | garde</title>
 </svelte:head>
 
-<div class="container-wide">
+<div class="container-wide" data-testid="superuser-page">
 	<div class="card space-y-4">
 		{#if checking}
-			<p class="text-muted">Loading...</p>
+			<p class="text-muted" data-testid="superuser-loading">Loading...</p>
 		{:else if accessDenied}
-			<h1 class="text-xl font-bold text-error">Access Denied</h1>
+			<h1 class="text-xl font-bold text-error" data-testid="superuser-access-denied">Access Denied</h1>
 			<p class="text-muted mb-4">
 				You don't have permission to access this page. Superuser privileges are required.
 			</p>
-			<a href="/dashboard" class="btn-secondary">Back to Dashboard</a>
+			<a href="/dashboard" class="btn-secondary" data-testid="superuser-back-dashboard">Back to Dashboard</a>
 		{:else}
 			<div>
 				<h1 class="page-title">Superuser</h1>
@@ -61,9 +61,12 @@
 				</p>
 			</div>
 
-			<div class="flex gap-2 border-b border-borderc flex-wrap">
+			<div class="flex gap-2 border-b border-borderc flex-wrap" data-testid="superuser-tabs" role="tablist">
 				<button
 					type="button"
+					role="tab"
+					data-testid="superuser-tab-users"
+					aria-selected={activeTab === 'users'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'users'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
@@ -74,6 +77,9 @@
 				</button>
 				<button
 					type="button"
+					role="tab"
+					data-testid="superuser-tab-permissions"
+					aria-selected={activeTab === 'permissions'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'permissions'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
@@ -84,6 +90,9 @@
 				</button>
 				<button
 					type="button"
+					role="tab"
+					data-testid="superuser-tab-groups"
+					aria-selected={activeTab === 'groups'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'groups'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
@@ -94,6 +103,9 @@
 				</button>
 				<button
 					type="button"
+					role="tab"
+					data-testid="superuser-tab-visibility"
+					aria-selected={activeTab === 'visibility'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'visibility'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
@@ -104,6 +116,9 @@
 				</button>
 				<button
 					type="button"
+					role="tab"
+					data-testid="superuser-tab-admin-management"
+					aria-selected={activeTab === 'admin-management'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'admin-management'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
@@ -115,7 +130,7 @@
 			</div>
 
 			{#if activeTab === 'users'}
-				<div class="space-y-4">
+				<div class="space-y-4" data-testid="superuser-users-panel">
 					<div>
 						<h2 class="section-title">Users</h2>
 						<p class="text-sm text-muted mt-1">

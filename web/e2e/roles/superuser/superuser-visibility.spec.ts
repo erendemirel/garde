@@ -1,0 +1,185 @@
+import { test, expect } from '../../helpers/fixtures';
+import { describeTags, TAG } from '../../helpers/tags';
+import type { APIRequestContext, Page } from '@playwright/test';
+import { waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from '../../helpers/waits';
+
+async function waitForToastGone(page: Page) {
+	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
+}
+
+async function createCatalogItem(
+	page: Page,
+	tab: 'permissions' | 'groups',
+	name: string,
+	definition: string
+) {
+	await page.getByTestId(`superuser-tab-${tab}`).click();
+	await waitForSuperuserCatalog(page);
+	await page.getByTestId('superuser-catalog-create').click();
+	await page.getByTestId('superuser-catalog-item-name').fill(name);
+	await page.getByTestId('superuser-catalog-item-definition').fill(definition);
+	await page.getByTestId('superuser-catalog-item-save').click();
+	await expect(page.getByTestId('toast')).toContainText(name);
+	await waitForToastGone(page);
+	await expect(page.getByTestId('superuser-catalog-item-modal')).toHaveCount(0);
+}
+
+/** Prefer API cleanup so finally blocks do not burn the test timeout under load. */
+async function cleanupCatalog(
+	suRequest: APIRequestContext,
+	permissionName: string,
+	groupName: string
+) {
+	await suRequest
+		.delete(`/api/admin/permissions/${encodeURIComponent(permissionName)}`)
+		.catch(() => undefined);
+	await suRequest
+		.delete(`/api/admin/groups/${encodeURIComponent(groupName)}`)
+		.catch(() => undefined);
+}
+
+/**
+ * Permission Visibility tab — matrix + list manage flows with unique catalog fixtures.
+ */
+test.describe('Superuser permission visibility', describeTags(TAG.superuser, TAG.catalog, TAG.focused), () => {
+	test('adds then removes a visibility mapping in matrix view', async ({
+		superuserPage: page,
+		suRequest,
+		uniqueSuffix
+	}) => {
+		const permissionName = `e2e_vis_perm_${uniqueSuffix}`;
+		const groupName = `e2e_vis_group_${uniqueSuffix}`;
+
+		try {
+			await page.goto('/superuser');
+			await waitForPageShell(page, 'superuser-page');
+			await createCatalogItem(page, 'permissions', permissionName, 'E2E visibility permission');
+			await createCatalogItem(page, 'groups', groupName, 'E2E visibility group');
+
+			await page.getByTestId('superuser-tab-visibility').click();
+			await expect(page.getByTestId('superuser-visibility-panel')).toBeVisible();
+			await waitForVisibilityPanel(page);
+			await page.getByTestId('superuser-visibility-view-matrix').click();
+			await expect(page.getByTestId('superuser-visibility-matrix')).toBeVisible();
+
+			await page.getByTestId('superuser-visibility-search').fill(permissionName);
+			const cell = page.locator(
+				`[data-testid="superuser-visibility-cell"][data-permission-name="${permissionName}"][data-group-name="${groupName}"]`
+			);
+			await expect(cell).toBeVisible();
+			await expect(cell).toHaveAttribute('aria-pressed', 'false');
+
+			await cell.click();
+			await expect(page.getByTestId('toast')).toContainText(/Visibility/i);
+			await waitForToastGone(page);
+			await expect(cell).toHaveAttribute('aria-pressed', 'true');
+
+			await cell.click();
+			await expect(page.getByTestId('confirm-modal-message')).toContainText(permissionName);
+			await page.getByTestId('confirm-modal-confirm').click();
+			await expect(page.getByTestId('toast')).toContainText(/removed/i);
+			await waitForToastGone(page);
+			await expect(cell).toHaveAttribute('aria-pressed', 'false');
+		} finally {
+			await cleanupCatalog(suRequest, permissionName, groupName);
+		}
+	});
+
+	test('list view manage adds and removes group visibility', async ({
+		superuserPage: page,
+		suRequest,
+		uniqueSuffix
+	}) => {
+		const permissionName = `e2e_vis_list_${uniqueSuffix}`;
+		const groupName = `e2e_vis_lg_${uniqueSuffix}`;
+
+		try {
+			await page.goto('/superuser');
+			await waitForPageShell(page, 'superuser-page');
+			await createCatalogItem(page, 'permissions', permissionName, 'E2E list visibility permission');
+			await createCatalogItem(page, 'groups', groupName, 'E2E list visibility group');
+
+			await page.getByTestId('superuser-tab-visibility').click();
+			await expect(page.getByTestId('superuser-visibility-panel')).toBeVisible();
+			await waitForVisibilityPanel(page);
+			await page.getByTestId('superuser-visibility-view-list').click();
+			await expect(page.getByTestId('superuser-visibility-list-table')).toBeVisible();
+
+			await page.getByTestId('superuser-visibility-search').fill(permissionName);
+			const row = page.locator(
+				`[data-testid="superuser-visibility-list-row"][data-permission-name="${permissionName}"]`
+			);
+			await expect(row).toBeVisible();
+			await expect(row.getByTestId('superuser-visibility-count')).toHaveText('0');
+
+			await row.getByTestId('superuser-visibility-manage').click();
+			await expect(page.getByTestId('superuser-visibility-manage-modal')).toBeVisible();
+
+			const ms = page.locator('[data-testid="multiselect"][data-label="Groups"]');
+			await ms.getByTestId('multiselect-input').fill(groupName);
+			await ms.locator(`[data-testid="multiselect-option"][data-key="${groupName}"]`).click();
+			await expect(
+				ms.locator(`[data-testid="multiselect-chip"][data-key="${groupName}"]`)
+			).toHaveAttribute('data-state', 'added');
+
+			await page.getByTestId('superuser-visibility-manage-save').click();
+			await expect(page.getByTestId('confirm-modal-message')).toContainText(permissionName);
+			await page.getByTestId('confirm-modal-confirm').click();
+			await expect(page.getByTestId('toast')).toContainText(
+				`Updated visibility of permission "${permissionName}"`
+			);
+			await waitForToastGone(page);
+			await expect(page.getByTestId('superuser-visibility-manage-modal')).toHaveCount(0);
+			await expect(row.getByTestId('superuser-visibility-count')).toHaveText('1');
+
+			await row.getByTestId('superuser-visibility-manage').click();
+			await expect(page.getByTestId('superuser-visibility-manage-modal')).toBeVisible();
+			await ms
+				.locator(
+					`[data-testid="multiselect-chip"][data-key="${groupName}"][data-state="selected"]`
+				)
+				.click();
+			await expect(page.getByTestId('change-summary-removed')).toBeVisible();
+			await page.getByTestId('superuser-visibility-manage-save').click();
+			await page.getByTestId('confirm-modal-confirm').click();
+			await expect(page.getByTestId('toast')).toContainText(
+				`Updated visibility of permission "${permissionName}"`
+			);
+			await waitForToastGone(page);
+			await expect(row.getByTestId('superuser-visibility-count')).toHaveText('0');
+
+			// Matrix reflects the same mapping state after list edits.
+			await page.getByTestId('superuser-visibility-view-matrix').click();
+			await page.getByTestId('superuser-visibility-search').fill(permissionName);
+			const cell = page.locator(
+				`[data-testid="superuser-visibility-cell"][data-permission-name="${permissionName}"][data-group-name="${groupName}"]`
+			);
+			await expect(cell).toHaveAttribute('aria-pressed', 'false');
+		} finally {
+			await cleanupCatalog(suRequest, permissionName, groupName);
+		}
+	});
+
+	test('switches between list and matrix views', async ({ superuserPage: page }) => {
+		await page.goto('/superuser?tab=visibility');
+		await waitForPageShell(page, 'superuser-visibility-panel');
+		await waitForVisibilityPanel(page);
+
+		await expect(page.getByTestId('superuser-visibility-view-list')).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+		await expect(page.getByTestId('superuser-visibility-list-table')).toBeVisible();
+
+		await page.getByTestId('superuser-visibility-view-matrix').click();
+		await expect(page.getByTestId('superuser-visibility-view-matrix')).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+		await expect(page.getByTestId('superuser-visibility-matrix')).toBeVisible();
+		await expect(page.getByTestId('superuser-visibility-list-table')).toHaveCount(0);
+
+		await page.getByTestId('superuser-visibility-view-list').click();
+		await expect(page.getByTestId('superuser-visibility-list-table')).toBeVisible();
+	});
+});

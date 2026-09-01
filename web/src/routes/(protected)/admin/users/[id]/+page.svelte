@@ -210,25 +210,18 @@
 	}
 
 	function buildAccessMaps() {
-		const permissionKeys = new Set([
-			...availablePermissions.map((p) => p.key),
-			...initialPermissions,
-			...selectedPermissions
-		]);
-		const groupKeys = new Set([
-			...availableGroups.map((g) => g.key),
-			...initialGroups,
-			...selectedGroups
-		]);
+		// PUT replaces the whole maps — send only enabled keys.
+		// Including every catalog key as false races with parallel catalog deletes
+		// ("invalid permission/group requested" for a name that disappeared mid-edit).
 		/** @type {Record<string, boolean>} */
 		const permissions = {};
-		for (const key of permissionKeys) {
-			permissions[key] = selectedPermissions.has(key);
+		for (const key of selectedPermissions) {
+			permissions[key] = true;
 		}
 		/** @type {Record<string, boolean>} */
 		const groups = {};
-		for (const key of groupKeys) {
-			groups[key] = selectedGroups.has(key);
+		for (const key of selectedGroups) {
+			groups[key] = true;
 		}
 		return { permissions, groups };
 	}
@@ -487,20 +480,22 @@
 	<title>User Details | garde</title>
 </svelte:head>
 
-<div class="container-medium space-y-4">
+<div class="container-medium space-y-4" data-testid="user-detail-page">
 	<div class="card space-y-4">
 		{#if loading}
-			<p class="text-muted">Loading...</p>
+			<p class="text-muted" data-testid="user-detail-loading">Loading...</p>
 		{:else if accessDenied}
-			<h1 class="page-title text-error">Access Denied</h1>
+			<h1 class="page-title text-error" data-testid="user-detail-access-denied">Access Denied</h1>
 			<p class="text-muted mb-4">
 				You don't have permission to view this user. Admin privileges are required.
 			</p>
-			<a href="/dashboard" class="btn-secondary"><ArrowLeft size={18} />Back to Dashboard</a>
+			<a href="/dashboard" class="btn-secondary" data-testid="user-detail-back-dashboard"
+				><ArrowLeft size={18} />Back to Dashboard</a
+			>
 		{:else if error && !userData}
-			<p class="error">{error}</p>
+			<p class="error" data-testid="user-detail-error">{error}</p>
 			<div class="links">
-				<a href={usersListHref}>Back to users</a>
+				<a href={usersListHref} data-testid="user-detail-back">Back to users</a>
 			</div>
 		{:else if userData}
 			<div class="flex items-start justify-between gap-3">
@@ -508,27 +503,32 @@
 					<h1 class="page-title">User Details</h1>
 					<p class="section-subtitle">Review and edit user access</p>
 				</div>
-				<a href={usersListHref} class="btn-secondary w-full sm:w-auto sm:ml-auto"><ArrowLeft size={18} />Back to users</a>
+				<a
+					href={usersListHref}
+					class="btn-secondary w-full sm:w-auto sm:ml-auto"
+					data-testid="user-detail-back"
+					><ArrowLeft size={18} />Back to users</a
+				>
 			</div>
 
 			<div class="info-grid">
 				<div class="info-card">
 					<p class="info-label">ID</p>
-					<p class="info-value font-mono text-[13px]">{userData.id}</p>
+					<p class="info-value font-mono text-[13px]" data-testid="user-detail-id">{userData.id}</p>
 				</div>
 				<div class="info-card">
 					<p class="info-label">Email</p>
-					<p class="info-value">{userData.email}</p>
+					<p class="info-value" data-testid="user-detail-email">{userData.email}</p>
 				</div>
 				<div class="info-card">
 					<p class="info-label">Status</p>
-					<p class="info-value">
+					<p class="info-value" data-testid="user-detail-status">
 						<StatusBadge status={userData.status} />
 					</p>
 				</div>
 				<div class="info-card">
 					<p class="info-label">MFA</p>
-					<p class="info-value">
+					<p class="info-value" data-testid="user-detail-mfa">
 						<MfaLabel enabled={userData.mfa_enabled} enforced={userData.mfa_enforced} />
 					</p>
 				</div>
@@ -549,6 +549,8 @@
 					class="card-muted space-y-3 my-6 border {isApprovalRejected
 						? 'border-red-200/80 bg-red-50/40'
 						: 'border-orange-200/80 bg-orange-50/50'}"
+					data-testid="user-detail-account-approval"
+					data-approval-state={isApprovalRejected ? 'rejected' : 'pending'}
 				>
 					<div class="flex flex-col sm:flex-row sm:items-center gap-3">
 						<div class="flex-1 min-w-0">
@@ -571,6 +573,7 @@
 							<button
 								class="btn-secondary min-w-[11.5rem] justify-center"
 								type="button"
+								data-testid="user-detail-approve-account"
 								on:click={requestApproveAccount}
 								disabled={saving}
 							>
@@ -581,6 +584,7 @@
 								<button
 									class="btn-danger min-w-[11.5rem] justify-center"
 									type="button"
+									data-testid="user-detail-reject-account"
 									on:click={requestRejectAccount}
 									disabled={saving}
 								>
@@ -618,18 +622,23 @@
 					return changes;
 				})()}
 
-				<div class="card-muted space-y-4 my-6">
+				<div class="card-muted space-y-4 my-6" data-testid="user-detail-pending-update">
 					<h2 class="section-title text-warning">Pending Update Request</h2>
 					<p class="text-xs text-muted">
 						Requested: {new Date(userData.pending_updates.requested_at).toLocaleString()}
 					</p>
 
 					{#if permissionChanges.length > 0}
-						<div class="space-y-3">
+						<div class="space-y-3" data-testid="user-detail-pending-permissions">
 							<p class="text-sm font-semibold text-text">Permissions:</p>
 							<div class="flex flex-wrap gap-2">
 								{#each permissionChanges as { perm, isAdd }}
-									<span class="badge {isAdd ? 'badge-permission' : 'badge-locked'}">
+									<span
+										class="badge {isAdd ? 'badge-permission' : 'badge-locked'}"
+										data-testid="user-detail-pending-perm"
+										data-key={perm}
+										data-kind={isAdd ? 'add' : 'remove'}
+									>
 										{isAdd ? 'Add' : 'Remove'}: {perm}
 									</span>
 								{/each}
@@ -638,11 +647,16 @@
 					{/if}
 
 					{#if groupChanges.length > 0}
-						<div class="space-y-3">
+						<div class="space-y-3" data-testid="user-detail-pending-groups">
 							<p class="text-sm font-semibold text-text">Groups:</p>
 							<div class="flex flex-wrap gap-2">
 								{#each groupChanges as { group, isAdd }}
-									<span class="badge {isAdd ? 'badge-group' : 'badge-locked'}">
+									<span
+										class="badge {isAdd ? 'badge-group' : 'badge-locked'}"
+										data-testid="user-detail-pending-group"
+										data-key={group}
+										data-kind={isAdd ? 'add' : 'remove'}
+									>
 										{isAdd ? 'Join' : 'Leave'}: {group}
 									</span>
 								{/each}
@@ -651,10 +665,20 @@
 					{/if}
 
 					<div class="flex flex-wrap gap-3 mt-4">
-						<button class="btn-secondary" type="button" on:click={requestApproveUpdate} disabled={saving}
+						<button
+							class="btn-secondary"
+							type="button"
+							data-testid="user-detail-approve-update"
+							on:click={requestApproveUpdate}
+							disabled={saving}
 							><Check size={18} />Approve</button
 						>
-						<button class="btn-danger" type="button" on:click={requestRejectUpdate} disabled={saving}
+						<button
+							class="btn-danger"
+							type="button"
+							data-testid="user-detail-reject-update"
+							on:click={requestRejectUpdate}
+							disabled={saving}
 							><X size={18} />Reject</button
 						>
 					</div>
@@ -668,9 +692,16 @@
 					permissions are visible. As an admin you can only grant permissions visible to your groups, and
 					only add groups you belong to.
 				</p>
-				<form class="space-y-4" on:submit|preventDefault={requestSave}>
+				<form
+					class="space-y-4"
+					data-testid="user-detail-access-form"
+					method="post"
+					action="#"
+					onsubmit="return false;"
+					on:submit|preventDefault={requestSave}
+				>
 					{#if availablePermissions.length > 0}
-						<div class="edit-section">
+						<div class="edit-section" data-testid="user-detail-permissions">
 							<h3>Permissions</h3>
 							<MultiSelectChips
 								options={availablePermissions}
@@ -684,7 +715,7 @@
 					{/if}
 
 					{#if availableGroups.length > 0}
-						<div class="edit-section">
+						<div class="edit-section" data-testid="user-detail-groups">
 							<h3>Groups</h3>
 							<MultiSelectChips
 								options={availableGroups}
@@ -704,7 +735,12 @@
 						on:revert={revertChange}
 					/>
 
-					<button class="btn-secondary min-w-[9rem]" type="submit" disabled={saving || !hasChanges}>
+					<button
+						class="btn-secondary min-w-[9rem]"
+						type="submit"
+						data-testid="user-detail-save"
+						disabled={saving || !hasChanges}
+					>
 						{saving ? 'Saving...' : hasChanges ? 'Save Changes' : 'No changes'}
 					</button>
 				</form>
@@ -713,7 +749,7 @@
 	</div>
 
 	{#if userData && !loading && !accessDenied}
-		<div class="card space-y-4">
+		<div class="card space-y-4" data-testid="user-detail-security">
 			<div>
 				<h1 class="page-title">Security Actions</h1>
 				<p class="section-subtitle">Manage lock state, MFA policy, sessions, and account removal of this user.</p>
@@ -722,25 +758,39 @@
 			{#if $currentUser?.mfa_enabled}
 				<label class="flex flex-col gap-1.5 text-sm text-muted max-w-xs">
 					<span>Your MFA code</span>
-					<input class="input" type="text" bind:value={mfaCode} placeholder="Required for revoke" />
+					<input
+						class="input"
+						type="text"
+						data-testid="user-detail-mfa-code"
+						bind:value={mfaCode}
+						placeholder="Required for revoke"
+					/>
 				</label>
 			{/if}
 
 			<div class="rounded-lg border border-borderc divide-y divide-borderc overflow-hidden bg-input/40">
-				<div class="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
+				<div
+					class="flex flex-col sm:flex-row sm:items-center gap-3 p-4"
+					data-testid="user-detail-lock-row"
+					data-lock-state={isLockedBySecurity
+						? 'locked-security'
+						: isLockedByAdmin
+							? 'locked-admin'
+							: 'unlocked'}
+				>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm font-semibold text-text">
 							Account lock
 							{#if isLockedBySecurity}
-								<span class="ml-2 text-xs font-medium text-muted"
+								<span class="ml-2 text-xs font-medium text-muted" data-testid="user-detail-lock-status"
 									>Current status: <span class="text-red-600">locked by security</span></span
 								>
 							{:else if isLockedByAdmin}
-								<span class="ml-2 text-xs font-medium text-muted"
+								<span class="ml-2 text-xs font-medium text-muted" data-testid="user-detail-lock-status"
 									>Current status: <span class="text-red-600">locked by an admin</span></span
 								>
 							{:else}
-								<span class="ml-2 text-xs font-medium text-muted"
+								<span class="ml-2 text-xs font-medium text-muted" data-testid="user-detail-lock-status"
 									>Current status: <span class="text-green-700">not locked</span></span
 								>
 							{/if}
@@ -762,6 +812,8 @@
 						<button
 							class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/50 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 							type="button"
+							data-testid="user-detail-lock-btn"
+							data-action="unlock"
 							on:click={requestLockToggle}
 							disabled={saving}
 						>
@@ -772,6 +824,8 @@
 						<button
 							class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/50 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 							type="button"
+							data-testid="user-detail-lock-btn"
+							data-action="lock"
 							on:click={requestLockToggle}
 							disabled={saving}
 						>
@@ -780,16 +834,24 @@
 						</button>
 					{/if}
 				</div>
-				<div class="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
+				<div
+					class="flex flex-col sm:flex-row sm:items-center gap-3 p-4"
+					data-testid="user-detail-mfa-enforce-row"
+					data-enforced={userData.mfa_enforced ? 'true' : 'false'}
+				>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm font-semibold text-text">
 							Enforce MFA
 							{#if userData.mfa_enforced}
-								<span class="ml-2 text-xs font-medium text-muted"
+								<span
+									class="ml-2 text-xs font-medium text-muted"
+									data-testid="user-detail-mfa-enforce-status"
 									>Current status: <span class="text-green-700">enforced</span></span
 								>
 							{:else}
-								<span class="ml-2 text-xs font-medium text-muted"
+								<span
+									class="ml-2 text-xs font-medium text-muted"
+									data-testid="user-detail-mfa-enforce-status"
 									>Current status: <span class="text-orange-500">not enforced</span></span
 								>
 							{/if}
@@ -805,6 +867,8 @@
 					<button
 						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/50 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 						type="button"
+						data-testid="user-detail-mfa-enforce-btn"
+						data-action={userData.mfa_enforced ? 'stop' : 'enforce'}
 						on:click={requestMfaEnforceToggle}
 						disabled={saving}
 					>
@@ -815,7 +879,7 @@
 			</div>
 
 			<div class="rounded-lg border border-red-200/80 divide-y divide-red-100 overflow-hidden bg-red-50/40">
-				<div class="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
+				<div class="flex flex-col sm:flex-row sm:items-center gap-3 p-4" data-testid="user-detail-revoke-row">
 					<div class="flex-1 min-w-0">
 						<p class="text-sm font-semibold text-text">Revoke all sessions</p>
 						<p class="text-xs text-muted mt-0.5">
@@ -825,6 +889,7 @@
 					<button
 						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-red-700 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-red-700 shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 						type="button"
+						data-testid="user-detail-revoke-btn"
 						on:click={requestRevokeSessions}
 						disabled={saving}
 					>
@@ -832,7 +897,7 @@
 						Revoke All Sessions
 					</button>
 				</div>
-				<div class="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
+				<div class="flex flex-col sm:flex-row sm:items-center gap-3 p-4" data-testid="user-detail-delete-row">
 					<div class="flex-1 min-w-0">
 						<p class="text-sm font-semibold text-text">Delete user</p>
 						<p class="text-xs text-muted mt-0.5">
@@ -842,6 +907,7 @@
 					<button
 						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-red-700 bg-red-700 px-3.5 py-2.5 text-sm font-semibold text-white shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-800 hover:border-red-800 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 						type="button"
+						data-testid="user-detail-delete-btn"
 						on:click={requestDeleteConfirmation}
 						disabled={saving}
 					>

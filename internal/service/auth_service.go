@@ -1323,16 +1323,17 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*model
 	}
 
 	return &models.UserResponse{
-		ID:          user.ID,
-		Email:       user.Email,
-		LastLogin:   user.LastLogin,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
-		MFAEnabled:  user.MFAEnabled,
-		MFAEnforced: user.MFAEnforced,
-		Status:      user.Status,
-		Permissions: filteredPermissions,
-		Groups:      user.Groups,
+		ID:             user.ID,
+		Email:          user.Email,
+		LastLogin:      user.LastLogin,
+		CreatedAt:      user.CreatedAt,
+		UpdatedAt:      user.UpdatedAt,
+		MFAEnabled:     user.MFAEnabled,
+		MFAEnforced:    user.MFAEnforced,
+		Status:         user.Status,
+		Permissions:    filteredPermissions,
+		Groups:         user.Groups,
+		PendingUpdates: user.PendingUpdates,
 	}, nil
 }
 

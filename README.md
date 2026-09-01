@@ -143,7 +143,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 > The `dev` profile auto-creates the Vault Agent token during `init-vault.sh` (no host `vault/dev-token` file needed). Secrets are seeded from `dev.secrets`.
 
 > [!TIP]
-> A web UI is included in the `web/` directory. To run it, navigate to the `web/` folder and use `bun start` (or `npm start`). The UI connects to the API at `http://localhost:8443`.
+> A web UI is included in the `web/` directory. To run it, navigate to the `web/` folder and use `bun start`. The UI connects to the API at `http://localhost:8443`.
 
 ---
 

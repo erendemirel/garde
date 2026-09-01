@@ -28,16 +28,16 @@
 	<title>Admin | garde</title>
 </svelte:head>
 
-<div class="container-wide">
+<div class="container-wide" data-testid="admin-page">
 	<div class="card space-y-4">
 		{#if checking}
-			<p class="text-muted">Loading...</p>
+			<p class="text-muted" data-testid="admin-loading">Loading...</p>
 		{:else if accessDenied}
-			<h1 class="text-xl font-bold text-error">Access Denied</h1>
+			<h1 class="text-xl font-bold text-error" data-testid="admin-access-denied">Access Denied</h1>
 			<p class="text-muted mb-4">
 				You don't have permission to access this page. Admin privileges are required.
 			</p>
-			<a href="/dashboard" class="btn-secondary">Back to Dashboard</a>
+			<a href="/dashboard" class="btn-secondary" data-testid="admin-back-dashboard">Back to Dashboard</a>
 		{:else}
 			<div>
 				<h1 class="page-title">Admin</h1>
@@ -47,9 +47,12 @@
 				</p>
 			</div>
 
-			<div class="flex gap-1 border-b border-borderc">
+			<div class="flex gap-1 border-b border-borderc" data-testid="admin-tabs" role="tablist">
 				<button
 					type="button"
+					role="tab"
+					data-testid="admin-tab-users"
+					aria-selected={activeTab === 'users'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'users'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
@@ -60,6 +63,9 @@
 				</button>
 				<button
 					type="button"
+					role="tab"
+					data-testid="admin-tab-permissions"
+					aria-selected={activeTab === 'permissions'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'permissions'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
@@ -70,6 +76,9 @@
 				</button>
 				<button
 					type="button"
+					role="tab"
+					data-testid="admin-tab-groups"
+					aria-selected={activeTab === 'groups'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'groups'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
