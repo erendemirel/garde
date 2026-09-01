@@ -1,11 +1,11 @@
-import { test, expect } from './helpers/fixtures';
-import { e2eAdmin } from './helpers/auth';
+import { test, expect } from '../../helpers/fixtures';
+import { e2eAdmin } from '../../helpers/auth';
 import {
 	createEphemeralUser,
 	deleteUserById,
 	restoreSeedAdminAccess
-} from './helpers/userApi';
-import { waitForAdminManagement, waitForPageShell } from './helpers/waits';
+} from '../../helpers/userApi';
+import { waitForAdminManagement, waitForPageShell } from '../../helpers/waits';
 
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });

@@ -1,4 +1,7 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { LOAD_TIMEOUT, waitForPageShell, waitForSessionReady } from './waits';
 
 /** Dev bootstrap accounts from README / docker compose seed. Override via env. */
 export const e2eAdmin = {
@@ -11,54 +14,223 @@ export const e2eSuperuser = {
 	password: process.env.E2E_SUPERUSER_PASSWORD || 'DevAdminTest123!'
 };
 
-/** Wait until the login form is interactive (Svelte handlers attached). */
-export async function openLogin(page: Page) {
-	await page.goto('/');
-	await page.waitForLoadState('networkidle');
-	await expect(page.getByTestId('login-page')).toBeVisible();
+export type LoginCreds = { email: string; password: string; mfaCode?: string };
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Fast cookie-based login — used by worker fixtures and tests that do not exercise the login form. */
+export async function loginViaRequest(request: APIRequestContext, creds: LoginCreds) {
+	const body: Record<string, string> = {
+		email: creds.email,
+		password: creds.password
+	};
+	if (creds.mfaCode) body.mfa_code = creds.mfaCode;
+
+	let lastRes: Awaited<ReturnType<APIRequestContext['post']>> | undefined;
+	for (let attempt = 0; attempt < 4; attempt++) {
+		const res = await request.post('/api/login', { data: body });
+		const text = await res.text().catch(() => '');
+		lastRes = res;
+
+		if (res.ok()) return res;
+
+		const needsMfa = res.status() === 401 && text.toLowerCase().includes('mfa');
+		if (needsMfa && !creds.mfaCode) return res;
+
+		if (attempt < 3 && (res.status() >= 500 || res.status() === 429)) {
+			await sleep(400 * (attempt + 1));
+			continue;
+		}
+
+		expect(res.ok(), `API login failed: ${res.status()} ${text}`).toBeTruthy();
+		return res;
+	}
+
+	expect(lastRes?.ok(), 'API login failed after retries').toBeTruthy();
+	return lastRes!;
+}
+
+/**
+ * Return an API context authenticated as creds; refresh storageState when stale.
+ * Avoids 401 flakes when cached worker auth outlives server restarts.
+ */
+export async function ensureApiAuth(
+	playwright: import('@playwright/test').Playwright,
+	baseURL: string | undefined,
+	creds: LoginCreds,
+	statePath: string
+) {
+	const createContext = (storageState?: string) =>
+		playwright.request.newContext({
+			baseURL,
+			...(storageState ? { storageState } : {})
+		});
+
+	if (fs.existsSync(statePath)) {
+		const existing = await createContext(statePath);
+		const me = await existing.get('/api/users/me');
+		if (me.ok()) return existing;
+		await existing.dispose();
+	}
+
+	const ctx = await createContext();
+	await loginViaRequest(ctx, creds);
+	fs.mkdirSync(path.dirname(statePath), { recursive: true });
+	await ctx.storageState({ path: statePath });
+
+	const me = await ctx.get('/api/users/me');
+	expect(me.ok(), `Session verify failed after login: ${me.status()}`).toBeTruthy();
+	return ctx;
+}
+
+/** Open dashboard with an authenticated request context (shared cookies with page.request). */
+export async function openDashboardSession(page: Page) {
+	await page.goto('/dashboard');
+	await waitForPageShell(page, 'dashboard-page');
+}
+
+/**
+ * Authenticate via API and land on dashboard.
+ * Use instead of loginAs whenever the test is not specifically exercising the login form.
+ */
+export async function startUserSession(page: Page, creds: LoginCreds) {
+	await loginViaRequest(page.request, creds);
+	await openDashboardSession(page);
+}
+
+/** Sign in after account approval — API login avoids Svelte hydration flakes on the login form. */
+export async function signInApprovedUser(page: Page, creds: LoginCreds) {
+	await startUserSession(page, creds);
+}
+
+/** Wait until Svelte has mounted and the login form handlers are wired. */
+export async function waitForLoginFormReady(page: Page, timeout = LOAD_TIMEOUT) {
+	await expect(page.getByTestId('login-form')).toHaveAttribute('data-ready', 'true', { timeout });
 	await expect(page.getByTestId('login-submit')).toBeEnabled();
 }
 
+/** Fill login inputs; retry until hydration remount stops clearing values. */
+export async function fillLoginForm(page: Page, creds: Pick<LoginCreds, 'email' | 'password'>) {
+	await waitForLoginFormReady(page);
+	for (let attempt = 0; attempt < 10; attempt++) {
+		await page.getByTestId('login-email').fill(creds.email);
+		await page.getByTestId('login-password').fill(creds.password);
+		const email = await page.getByTestId('login-email').inputValue();
+		const password = await page.getByTestId('login-password').inputValue();
+		if (email === creds.email && password === creds.password) return;
+	}
+	throw new Error('login form inputs did not stabilize after hydration');
+}
+
+/** Wait until the login form is interactive (Svelte handlers attached). */
+export async function openLogin(page: Page) {
+	await page.goto('/', { waitUntil: 'domcontentloaded' });
+	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+	await waitForLoginFormReady(page);
+}
+
+async function submitLoginForm(page: Page, creds: LoginCreds, expectSuccess: boolean) {
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 5; attempt++) {
+		if (attempt > 0) {
+			await openLogin(page);
+		}
+		await fillLoginForm(page, creds);
+
+		const loginResponse = page.waitForResponse(
+			(res) => res.url().includes('/api/login') && res.request().method() === 'POST',
+			{ timeout: LOAD_TIMEOUT }
+		);
+		await page.getByTestId('login-submit').click();
+
+		try {
+			const res = await loginResponse;
+			if (expectSuccess && !res.ok()) {
+				const text = await res.text().catch(() => '');
+				const needsMfa = res.status() === 401 && text.toLowerCase().includes('mfa');
+				if (!needsMfa) {
+					expect(res.ok(), `login failed: ${res.status()} ${text}`).toBeTruthy();
+				}
+			}
+			return res;
+		} catch (err) {
+			lastError = err;
+			if (attempt < 4) {
+				const stillOnLogin = await page
+					.getByTestId('login-page')
+					.isVisible()
+					.catch(() => false);
+				if (stillOnLogin) continue;
+			}
+			throw err;
+		}
+	}
+	throw lastError;
+}
+
+/** Submit login form without assuming dashboard redirect (e.g. MFA enforcement). */
+export async function submitLogin(page: Page, creds: Pick<LoginCreds, 'email' | 'password'>) {
+	await openLogin(page);
+	await submitLoginForm(page, creds, true);
+}
+
+/** UI login — only for specs that explicitly test the login page or MFA login step. */
 export async function loginAs(
 	page: Page,
-	creds: { email: string; password: string; mfaCode?: string },
+	creds: LoginCreds,
 	opts?: { expectSuccess?: boolean }
 ) {
 	const expectSuccess = opts?.expectSuccess !== false;
 	await openLogin(page);
-	await page.getByTestId('login-email').fill(creds.email);
-	await page.getByTestId('login-password').fill(creds.password);
-	// Guard against SvelteKit hydration remount clearing inputs under load.
-	await expect(page.getByTestId('login-email')).toHaveValue(creds.email);
-	await expect(page.getByTestId('login-password')).toHaveValue(creds.password);
+	await submitLoginForm(page, creds, expectSuccess);
 
-	const loginResponse = page.waitForResponse(
-		(res) => res.url().includes('/api/login') && res.request().method() === 'POST'
-	);
-	await page.getByTestId('login-submit').click();
-	await loginResponse;
+	const needsMfaStep =
+		creds.mfaCode !== undefined ||
+		(await page.getByTestId('login-mfa').isVisible().catch(() => false));
 
-	if (creds.mfaCode) {
-		await expect(page.getByTestId('login-mfa')).toBeVisible();
+	if (needsMfaStep) {
+		if (!creds.mfaCode) {
+			throw new Error('login requires MFA code but none was provided');
+		}
+		await expect(page.getByTestId('login-mfa')).toBeVisible({ timeout: LOAD_TIMEOUT });
 		await page.getByTestId('login-mfa').fill(creds.mfaCode);
 		const mfaLogin = page.waitForResponse(
-			(res) => res.url().includes('/api/login') && res.request().method() === 'POST'
+			(res) => res.url().includes('/api/login') && res.request().method() === 'POST',
+			{ timeout: LOAD_TIMEOUT }
 		);
 		await page.getByTestId('login-submit').click();
-		await mfaLogin;
+		const mfaRes = await mfaLogin;
+		if (expectSuccess) {
+			expect(
+				mfaRes.ok(),
+				`MFA login failed: ${mfaRes.status()} ${await mfaRes.text().catch(() => '')}`
+			).toBeTruthy();
+		}
 	}
 
 	if (expectSuccess) {
-		await expect(page).toHaveURL(/\/dashboard/);
-		await expect(page.getByTestId('dashboard-page')).toBeVisible();
+		await expect(page).toHaveURL(/\/dashboard/, { timeout: LOAD_TIMEOUT });
+		await waitForSessionReady(page, LOAD_TIMEOUT);
+		await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
 	}
 }
 
 /** Attempt login and expect the UI error (e.g. pending/rejected account). */
 export async function expectLoginRejected(
 	page: Page,
-	creds: { email: string; password: string }
+	creds: { email: string; password: string },
+	opts?: { message?: string | RegExp }
 ) {
 	await loginAs(page, creds, { expectSuccess: false });
-	await expect(page.getByTestId('login-error')).toBeVisible();
+	await expect(page.getByTestId('login-error')).toBeVisible({ timeout: LOAD_TIMEOUT });
+	if (opts?.message) {
+		await expect(page.getByTestId('login-error')).toContainText(opts.message);
+	}
+}
+
+/** API login then open a route — for MFA-enforced users who should land on /mfa. */
+export async function startUserSessionAt(page: Page, creds: LoginCreds, path: string) {
+	await loginViaRequest(page.request, creds);
+	await page.goto(path);
+	await waitForSessionReady(page, LOAD_TIMEOUT);
 }

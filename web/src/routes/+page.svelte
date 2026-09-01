@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { login } from '$lib/api';
 	import { goto } from '$app/navigation';
 
@@ -8,9 +9,22 @@
 	let error = '';
 	let needsMfa = false;
 	let loading = false;
+	/** True after mount — e2e waits on this before submitting (avoids pre-hydration no-ops). */
+	let formReady = false;
+	let emailInput;
+	let passwordInput;
+
+	onMount(() => {
+		formReady = true;
+	});
 
 	async function handleLogin() {
 		error = '';
+		if (!emailInput?.checkValidity() || !passwordInput?.checkValidity()) {
+			emailInput?.reportValidity();
+			passwordInput?.reportValidity();
+			return;
+		}
 		loading = true;
 		try {
 			await login(email, password, mfaCode || undefined);
@@ -26,6 +40,13 @@
 		}
 		loading = false;
 	}
+
+	function onLoginKeydown(e) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			void handleLogin();
+		}
+	}
 </script>
 
 <svelte:head>
@@ -38,10 +59,8 @@
 		<form
 			class="space-y-4"
 			data-testid="login-form"
-			method="post"
-			action="#"
-			onsubmit="return false;"
-			on:submit|preventDefault={handleLogin}
+			data-ready={formReady ? 'true' : 'false'}
+			on:keydown={onLoginKeydown}
 		>
 			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
 				Email
@@ -49,6 +68,7 @@
 					class="input"
 					type="email"
 					data-testid="login-email"
+					bind:this={emailInput}
 					bind:value={email}
 					required
 					autocomplete="email"
@@ -60,6 +80,7 @@
 					class="input"
 					type="password"
 					data-testid="login-password"
+					bind:this={passwordInput}
 					bind:value={password}
 					required
 					autocomplete="current-password"
@@ -83,9 +104,10 @@
 			{/if}
 			<button
 				class="btn-secondary w-full justify-center font-bold"
-				type="submit"
+				type="button"
 				data-testid="login-submit"
 				disabled={loading}
+				on:click={handleLogin}
 			>
 				{loading ? 'Signing in...' : 'Sign In'}
 			</button>

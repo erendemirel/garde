@@ -1,7 +1,12 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import path from 'node:path';
 import { e2eAdmin, e2eSuperuser, loginAs } from './auth';
-import { waitForUserDetail, waitForUsersList } from './waits';
+import {
+	matchUsersListRequest,
+	waitForPageShell,
+	waitForUserDetail,
+	waitForUsersList
+} from './waits';
 
 export type BoolMap = Record<string, boolean>;
 
@@ -180,20 +185,35 @@ export async function deleteUserByEmail(api: RequestLike, email: string) {
 	await deleteUserById(api, user.id);
 }
 
+/** Open a user detail page from the admin users tab. */
+export async function openUserDetailFromAdmin(page: Page, email: string) {
+	if (!page.url().includes('/admin')) {
+		await page.goto('/admin');
+		await waitForPageShell(page, 'admin-page');
+	}
+	await waitForUsersList(page);
+
+	const usersResponse = page.waitForResponse((res) => matchUsersListRequest(res, { q: email }));
+	await page.getByTestId('users-list-search').fill(email);
+	await usersResponse;
+
+	const row = page.locator(`[data-testid="users-list-row"][data-user-email="${email}"]`);
+	await expect(row).toBeVisible();
+	await row.getByTestId('users-list-edit').click();
+	await waitForUserDetail(page);
+	await expect(page.getByTestId('user-detail-email')).toHaveText(email);
+}
+
 /** Open a user detail page from the superuser users tab. */
 export async function openUserDetailFromSuperuser(page: Page, email: string) {
 	if (!page.url().includes('/superuser')) {
 		await page.getByTestId('nav-superuser').click();
+		await waitForPageShell(page, 'superuser-page');
 	}
 	await page.getByTestId('superuser-tab-users').click();
 	await waitForUsersList(page);
 
-	const usersResponse = page.waitForResponse(
-		(res) =>
-			res.url().includes('/api/users') &&
-			res.url().includes('q=') &&
-			res.request().method() === 'GET'
-	);
+	const usersResponse = page.waitForResponse((res) => matchUsersListRequest(res, { q: email }));
 	await page.getByTestId('users-list-search').fill(email);
 	await usersResponse;
 

@@ -1,6 +1,6 @@
-import { test, expect } from './helpers/fixtures';
-import { expectLoginRejected } from './helpers/auth';
-import { openUserDetailFromSuperuser } from './helpers/userApi';
+import { test, expect } from '../../helpers/fixtures';
+import { expectLoginRejected } from '../../helpers/auth';
+import { openUserDetailFromSuperuser, patchUserMaps } from '../../helpers/userApi';
 
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
@@ -37,6 +37,28 @@ test.describe('User security actions', () => {
 
 		await page.getByTestId('user-detail-lock-btn').click();
 		await confirmSecurityAction(page, 'Account unlocked');
+		await expect(page.getByTestId('user-detail-lock-row')).toHaveAttribute(
+			'data-lock-state',
+			'unlocked'
+		);
+	});
+
+	test('lock confirmation cancel keeps account unlocked', async ({
+		superuserPage: page,
+		ephemeralUser
+	}) => {
+		await page.goto('/superuser');
+		await openUserDetailFromSuperuser(page, ephemeralUser.email);
+
+		await expect(page.getByTestId('user-detail-lock-row')).toHaveAttribute(
+			'data-lock-state',
+			'unlocked'
+		);
+		await page.getByTestId('user-detail-lock-btn').click();
+		await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
+		await page.getByTestId('confirm-modal-cancel').click();
+
+		await expect(page.getByTestId('confirm-modal-message')).toHaveCount(0);
 		await expect(page.getByTestId('user-detail-lock-row')).toHaveAttribute(
 			'data-lock-state',
 			'unlocked'
@@ -86,6 +108,52 @@ test.describe('User security actions', () => {
 		await expect(page.getByTestId('user-detail-mfa-enforce-row')).toHaveAttribute(
 			'data-enforced',
 			'false'
+		);
+	});
+
+	test('MFA enforce confirmation cancel keeps enforcement unchanged', async ({
+		superuserPage: page,
+		ephemeralUser
+	}) => {
+		await page.goto('/superuser');
+		await openUserDetailFromSuperuser(page, ephemeralUser.email);
+
+		await expect(page.getByTestId('user-detail-mfa-enforce-row')).toHaveAttribute(
+			'data-enforced',
+			'false'
+		);
+		await page.getByTestId('user-detail-mfa-enforce-btn').click();
+		await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
+		await page.getByTestId('confirm-modal-cancel').click();
+
+		await expect(page.getByTestId('confirm-modal-message')).toHaveCount(0);
+		await expect(page.getByTestId('user-detail-mfa-enforce-row')).toHaveAttribute(
+			'data-enforced',
+			'false'
+		);
+	});
+
+	test('unlocks a security-locked account', async ({
+		superuserPage: page,
+		suRequest,
+		ephemeralUser
+	}) => {
+		await patchUserMaps(suRequest, ephemeralUser.id, { status: 'locked by security' });
+
+		await page.goto('/superuser');
+		await openUserDetailFromSuperuser(page, ephemeralUser.email);
+
+		await expect(page.getByTestId('user-detail-lock-row')).toHaveAttribute(
+			'data-lock-state',
+			'locked-security'
+		);
+		await expect(page.getByTestId('user-detail-lock-btn')).toHaveAttribute('data-action', 'unlock');
+
+		await page.getByTestId('user-detail-lock-btn').click();
+		await confirmSecurityAction(page, 'Account unlocked');
+		await expect(page.getByTestId('user-detail-lock-row')).toHaveAttribute(
+			'data-lock-state',
+			'unlocked'
 		);
 	});
 });

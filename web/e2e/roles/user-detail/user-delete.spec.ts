@@ -1,6 +1,7 @@
-import { test, expect } from './helpers/fixtures';
-import { openUserDetailFromSuperuser } from './helpers/userApi';
-import { waitForUsersList } from './helpers/waits';
+import { test, expect } from '../../helpers/fixtures';
+import { openUserDetailFromSuperuser } from '../../helpers/userApi';
+import { waitForUsersList } from '../../helpers/waits';
+
 async function waitForToastGone(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
 }
@@ -36,5 +37,20 @@ test.describe('Delete user', () => {
 		await expect(
 			page.locator(`[data-testid="users-list-row"][data-user-email="${ephemeralUser.email}"]`)
 		).toHaveCount(0);
+	});
+
+	test('delete confirmation cancel keeps the user', async ({
+		superuserPage: page,
+		ephemeralUser
+	}) => {
+		await page.goto('/superuser');
+		await openUserDetailFromSuperuser(page, ephemeralUser.email);
+
+		await page.getByTestId('user-detail-delete-btn').click();
+		await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
+		await page.getByTestId('confirm-modal-cancel').click();
+
+		await expect(page.getByTestId('confirm-modal-message')).toHaveCount(0);
+		await expect(page.getByTestId('user-detail-email')).toHaveText(ephemeralUser.email);
 	});
 });

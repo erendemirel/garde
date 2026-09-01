@@ -82,7 +82,7 @@
 
 			{#if $user.pending_updates}
 				{@const fields = $user.pending_updates.fields || {}}
-				<div class="pill-card border-warning/40 space-y-3">
+				<div class="pill-card border-warning/40 space-y-3" data-testid="dashboard-pending-update">
 					<h2 class="section-title text-warning">Pending Update Request</h2>
 					<p class="text-sm text-muted">
 						Submitted: {new Date($user.pending_updates.requested_at).toLocaleString()}

@@ -1,5 +1,5 @@
-import { test, expect } from './helpers/fixtures';
-import { waitForAdminCatalog, waitForPageShell } from './helpers/waits';
+import { test, expect } from '../../helpers/fixtures';
+import { waitForAdminCatalog, waitForPageShell } from '../../helpers/waits';
 
 /**
  * Admin permissions / groups catalog tabs (read-only against seed admin).
@@ -34,5 +34,13 @@ test.describe('Admin catalog tabs', () => {
 		await expect(catalog).toHaveAttribute('data-mode', 'groups');
 		await expect(page.getByTestId('admin-catalog-title')).toHaveText('Groups');
 		await waitForAdminCatalog(page);
+	});
+
+	test('search with no matches shows empty catalog row', async ({ adminPage: page }) => {
+		await page.getByTestId('admin-tab-permissions').click();
+		await waitForAdminCatalog(page);
+
+		await page.getByTestId('admin-catalog-search').fill('e2e_no_such_permission_xyz');
+		await expect(page.getByTestId('admin-catalog-empty')).toBeVisible();
 	});
 });

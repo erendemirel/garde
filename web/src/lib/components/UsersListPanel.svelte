@@ -117,11 +117,15 @@
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
 								data-testid="users-list-sort-email"
+								data-sort-active={sortField === 'email' ? 'true' : 'false'}
+								data-sort-direction={sortField === 'email' ? sortDirection : ''}
 								on:click={() => handleSort('email')}
 							>
 								Email
 								{#if sortField === 'email'}
-									<span class="text-xs" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+									<span class="text-xs" data-testid="users-list-sort-indicator" aria-hidden="true"
+										>{sortDirection === 'asc' ? '↑' : '↓'}</span
+									>
 								{/if}
 							</button>
 						</th>
@@ -130,11 +134,15 @@
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
 								data-testid="users-list-sort-status"
+								data-sort-active={sortField === 'status' ? 'true' : 'false'}
+								data-sort-direction={sortField === 'status' ? sortDirection : ''}
 								on:click={() => handleSort('status')}
 							>
 								Status
 								{#if sortField === 'status'}
-									<span class="text-xs" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+									<span class="text-xs" data-testid="users-list-sort-indicator" aria-hidden="true"
+										>{sortDirection === 'asc' ? '↑' : '↓'}</span
+									>
 								{/if}
 							</button>
 						</th>
@@ -143,11 +151,15 @@
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
 								data-testid="users-list-sort-mfa"
+								data-sort-active={sortField === 'mfa' ? 'true' : 'false'}
+								data-sort-direction={sortField === 'mfa' ? sortDirection : ''}
 								on:click={() => handleSort('mfa')}
 							>
 								MFA
 								{#if sortField === 'mfa'}
-									<span class="text-xs" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+									<span class="text-xs" data-testid="users-list-sort-indicator" aria-hidden="true"
+										>{sortDirection === 'asc' ? '↑' : '↓'}</span
+									>
 								{/if}
 							</button>
 						</th>
@@ -156,11 +168,15 @@
 								type="button"
 								class="flex items-center gap-1 hover:text-accent transition-colors"
 								data-testid="users-list-sort-pending"
+								data-sort-active={sortField === 'pending' ? 'true' : 'false'}
+								data-sort-direction={sortField === 'pending' ? sortDirection : ''}
 								on:click={() => handleSort('pending')}
 							>
 								Pending
 								{#if sortField === 'pending'}
-									<span class="text-xs" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+									<span class="text-xs" data-testid="users-list-sort-indicator" aria-hidden="true"
+										>{sortDirection === 'asc' ? '↑' : '↓'}</span
+									>
 								{/if}
 							</button>
 						</th>
@@ -184,7 +200,9 @@
 								</td>
 								<td>
 									{#if u.pending_updates}
-										<span class="badge badge-pending">Update requested</span>
+										<span class="badge badge-pending" data-testid="users-list-row-pending"
+											>Update requested</span
+										>
 									{:else}
 										—
 									{/if}
@@ -228,7 +246,9 @@
 							<StatusBadge status={u.status} />
 							<MfaLabel enabled={u.mfa_enabled} enforced={u.mfa_enforced} compact />
 							{#if u.pending_updates}
-								<span class="badge badge-pending">Update requested</span>
+								<span class="badge badge-pending" data-testid="users-list-card-pending"
+									>Update requested</span
+								>
 							{/if}
 						</div>
 					</a>
@@ -236,6 +256,11 @@
 			{/if}
 		</div>
 
-		<TablePagination bind:page={currentPage} bind:pageSize={itemsPerPage} total={totalCount} />
+		<TablePagination
+			testIdPrefix="users-list"
+			bind:page={currentPage}
+			bind:pageSize={itemsPerPage}
+			total={totalCount}
+		/>
 	</div>
 {/if}

@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { register } from '$lib/api';
 	import { goto } from '$app/navigation';
 
@@ -8,6 +9,11 @@
 	let error = '';
 	let success = '';
 	let loading = false;
+	let formReady = false;
+
+	onMount(() => {
+		formReady = true;
+	});
 
 	async function handleRegister() {
 		error = '';
@@ -29,6 +35,13 @@
 		}
 		loading = false;
 	}
+
+	function onRegisterKeydown(e) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			void handleRegister();
+		}
+	}
 </script>
 
 <svelte:head>
@@ -39,15 +52,15 @@
 	<div class="card space-y-4 w-full">
 		<h1 class="text-xl font-bold text-accent">Create Account</h1>
 		{#if success}
-			<p class="success" data-testid="register-success">{success}</p>
+			<div data-testid="register-success-panel">
+				<p class="success" data-testid="register-success">{success}</p>
+			</div>
 		{:else}
 			<form
 				class="space-y-4"
 				data-testid="register-form"
-				method="post"
-				action="#"
-				onsubmit="return false;"
-				on:submit|preventDefault={handleRegister}
+				data-ready={formReady ? 'true' : 'false'}
+				on:keydown={onRegisterKeydown}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Email
@@ -88,9 +101,10 @@
 				{/if}
 				<button
 					class="btn-secondary w-full justify-center"
-					type="submit"
+					type="button"
 					data-testid="register-submit"
 					disabled={loading}
+					on:click={handleRegister}
 				>
 					{loading ? 'Creating...' : 'Create Account'}
 				</button>

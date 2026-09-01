@@ -1,6 +1,6 @@
-import { test, expect } from './helpers/fixtures';
-import { e2eAdmin } from './helpers/auth';
-import { waitForUsersList } from './helpers/waits';
+import { test, expect } from '../../helpers/fixtures';
+import { e2eAdmin } from '../../helpers/auth';
+import { waitForUsersList } from '../../helpers/waits';
 
 test.describe('Admin user detail', () => {
 	test.beforeEach(async ({ adminPage: page }) => {

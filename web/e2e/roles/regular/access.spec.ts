@@ -1,14 +1,11 @@
-import { test, expect } from './helpers/fixtures';
-import { loginAs } from './helpers/auth';
+import { test, expect } from '../../helpers/fixtures';
+import { startUserSession } from '../../helpers/auth';
 
-/**
- * Role gates — ephemeral (non-admin) users must not reach admin/superuser consoles.
- */
-test.describe('Access denied', () => {
+test.describe('Regular user access control', () => {
 	test('non-admin cannot open admin or superuser', async ({ browser, ephemeralUser }) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-		await loginAs(page, ephemeralUser);
+		await startUserSession(page, ephemeralUser);
 
 		await page.goto('/admin');
 		await expect(page.getByTestId('admin-access-denied')).toBeVisible();
@@ -22,5 +19,13 @@ test.describe('Access denied', () => {
 		);
 
 		await context.close();
+	});
+
+	test('cannot open admin console after signing in as a regular user', async ({
+		regularUserPage: page
+	}) => {
+		await page.goto('/admin');
+		await expect(page.getByTestId('admin-access-denied')).toBeVisible();
+		await expect(page.getByTestId('admin-back-dashboard')).toHaveAttribute('href', '/dashboard');
 	});
 });

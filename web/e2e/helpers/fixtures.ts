@@ -1,13 +1,17 @@
 import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { e2eAdmin, e2eSuperuser, loginAs } from './auth';
+import { e2eAdmin, e2eSuperuser, ensureApiAuth, loginViaRequest, openDashboardSession } from './auth';
 import {
 	AUTH_DIR,
 	createEphemeralUser,
 	deleteUserById,
 	type EphemeralUser
 } from './userApi';
+
+const e2eBaseURL =
+	process.env.PLAYWRIGHT_BASE_URL ||
+	`http://localhost:${Number(process.env.PLAYWRIGHT_PORT || 5173)}`;
 
 type WorkerFixtures = {
 	/** Per-worker admin session file (isolated login; safe under parallel workers). */
@@ -21,36 +25,38 @@ type Fixtures = {
 	suRequest: APIRequestContext;
 	adminPage: Page;
 	superuserPage: Page;
+	/** Logged-in ephemeral (regular) user — isolated per test. */
+	regularUserPage: Page;
 	ephemeralUser: EphemeralUser;
 };
 
-async function loginAndSaveState(
-	browser: import('@playwright/test').Browser,
+async function warmWorkerAuth(
+	playwright: import('@playwright/test').Playwright,
+	baseURL: string | undefined,
 	creds: { email: string; password: string },
 	statePath: string
 ) {
-	fs.mkdirSync(AUTH_DIR, { recursive: true });
-	const context = await browser.newContext();
-	const page = await context.newPage();
-	await loginAs(page, creds);
-	await context.storageState({ path: statePath });
-	await context.close();
+	if (process.env.PLAYWRIGHT_FRESH_AUTH && fs.existsSync(statePath)) {
+		fs.unlinkSync(statePath);
+	}
+	const ctx = await ensureApiAuth(playwright, baseURL, creds, statePath);
+	await ctx.dispose();
 }
 
 export const test = base.extend<Fixtures, WorkerFixtures>({
 	workerAdminState: [
-		async ({ browser }, use, workerInfo) => {
+		async ({ playwright }, use, workerInfo) => {
 			const statePath = path.join(AUTH_DIR, `admin-w${workerInfo.workerIndex}.json`);
-			await loginAndSaveState(browser, e2eAdmin, statePath);
+			await warmWorkerAuth(playwright, e2eBaseURL, e2eAdmin, statePath);
 			await use(statePath);
 		},
 		{ scope: 'worker' }
 	],
 
 	workerSuperuserState: [
-		async ({ browser }, use, workerInfo) => {
+		async ({ playwright }, use, workerInfo) => {
 			const statePath = path.join(AUTH_DIR, `superuser-w${workerInfo.workerIndex}.json`);
-			await loginAndSaveState(browser, e2eSuperuser, statePath);
+			await warmWorkerAuth(playwright, e2eBaseURL, e2eSuperuser, statePath);
 			await use(statePath);
 		},
 		{ scope: 'worker' }
@@ -67,10 +73,7 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 	},
 
 	suRequest: async ({ playwright, baseURL, workerSuperuserState }, use) => {
-		const ctx = await playwright.request.newContext({
-			baseURL,
-			storageState: workerSuperuserState
-		});
+		const ctx = await ensureApiAuth(playwright, baseURL, e2eSuperuser, workerSuperuserState);
 		await use(ctx);
 		await ctx.dispose();
 	},
@@ -85,6 +88,15 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 	superuserPage: async ({ browser, workerSuperuserState }, use) => {
 		const context = await browser.newContext({ storageState: workerSuperuserState });
 		const page = await context.newPage();
+		await use(page);
+		await context.close();
+	},
+
+	regularUserPage: async ({ browser, ephemeralUser }, use) => {
+		const context = await browser.newContext();
+		await loginViaRequest(context.request, ephemeralUser);
+		const page = await context.newPage();
+		await openDashboardSession(page);
 		await use(page);
 		await context.close();
 	},

@@ -1,5 +1,5 @@
 import { test as setup, expect } from '@playwright/test';
-import { e2eSuperuser, loginAs } from './helpers/auth';
+import { e2eSuperuser, loginViaRequest, openDashboardSession } from './helpers/auth';
 import { restoreSeedAdminAccess } from './helpers/userApi';
 
 /**
@@ -7,8 +7,8 @@ import { restoreSeedAdminAccess } from './helpers/userApi';
  * Does not share session cookies with workers (each worker logs in separately).
  */
 setup('restore seed admin access', async ({ page }) => {
-	await loginAs(page, e2eSuperuser);
-	await expect(page.getByTestId('dashboard-page')).toBeVisible();
+	await loginViaRequest(page.request, e2eSuperuser);
+	await openDashboardSession(page);
 	await restoreSeedAdminAccess(page.request);
 	await page.getByTestId('nav-logout').click();
 });

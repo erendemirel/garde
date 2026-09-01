@@ -163,8 +163,12 @@
 				<button
 					type="button"
 					class="btn-secondary w-full justify-center"
-					data-testid="forgot-back"
-					on:click={() => (step = 'email')}
+					data-testid="forgot-back-to-email"
+					on:click={() => {
+						step = 'email';
+						error = '';
+						success = '';
+					}}
 				>
 					Back
 				</button>

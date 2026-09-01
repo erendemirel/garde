@@ -1,6 +1,6 @@
-import { test, expect } from './helpers/fixtures';
-import { e2eAdmin } from './helpers/auth';
-import { waitForPageShell, waitForUsersList } from './helpers/waits';
+import { test, expect } from '../../helpers/fixtures';
+import { e2eAdmin } from '../../helpers/auth';
+import { waitForPageShell, waitForUsersList } from '../../helpers/waits';
 
 test.describe('Admin users list', () => {
 	test('opens Admin from nav and shows the users list', async ({ adminPage: page }) => {

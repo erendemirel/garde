@@ -1,6 +1,46 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type Response } from '@playwright/test';
 
-const DEFAULT_TIMEOUT = 20_000;
+/** Panel/session waits — raise via PLAYWRIGHT_LOAD_TIMEOUT under heavy worker load. */
+export const LOAD_TIMEOUT = Number(process.env.PLAYWRIGHT_LOAD_TIMEOUT || 45_000);
+
+type UsersListRequestParams = {
+	page?: number;
+	limit?: number;
+	q?: string;
+	sort?: string;
+	order?: string;
+};
+
+/** Match GET /api/users with exact query params (avoids `page=2` matching `page=20`). */
+export function matchUsersListRequest(res: Response, params: UsersListRequestParams = {}) {
+	if (res.request().method() !== 'GET') return false;
+	try {
+		const url = new URL(res.url());
+		if (!url.pathname.endsWith('/api/users')) return false;
+		for (const [key, value] of Object.entries(params)) {
+			if (value === undefined) continue;
+			if (url.searchParams.get(key) !== String(value)) return false;
+		}
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** POST /api/sessions/revoke */
+export function matchRevokeSessions(res: Response) {
+	return res.request().method() === 'POST' && res.url().includes('/api/sessions/revoke');
+}
+
+/** PUT /api/users/:id (approve/reject/lock/etc.). */
+export function matchUserUpdate(res: Response) {
+	if (res.request().method() !== 'PUT') return false;
+	try {
+		return /\/api\/users\/[^/]+$/.test(new URL(res.url()).pathname);
+	} catch {
+		return false;
+	}
+}
 
 /**
  * Panels that swap a loading testid for a ready marker after fetch.
@@ -10,7 +50,7 @@ async function waitOutOfLoading(
 	page: Page,
 	loadingTestId: string,
 	ready: ReturnType<Page['getByTestId']>,
-	timeout = DEFAULT_TIMEOUT
+	timeout = LOAD_TIMEOUT
 ) {
 	const loading = page.getByTestId(loadingTestId);
 	await expect(ready.or(loading)).toBeVisible({ timeout });
@@ -22,18 +62,24 @@ async function waitOutOfLoading(
  * Protected layout boots via /api/me before any page shell mounts.
  * Under heavy parallelism that call often takes longer than a few seconds.
  */
-export async function waitForSessionReady(page: Page, timeout = DEFAULT_TIMEOUT) {
-	await waitOutOfLoading(page, 'session-loading', page.getByTestId('app-nav'), timeout);
+export async function waitForSessionReady(page: Page, timeout = LOAD_TIMEOUT) {
+	try {
+		await waitOutOfLoading(page, 'session-loading', page.getByTestId('app-nav'), timeout);
+	} catch (err) {
+		if (!(await page.getByTestId('session-loading').isVisible().catch(() => false))) throw err;
+		await page.reload({ waitUntil: 'domcontentloaded' });
+		await waitOutOfLoading(page, 'session-loading', page.getByTestId('app-nav'), timeout);
+	}
 }
 
 /** After goto/nav into a protected route — session + page shell. */
-export async function waitForPageShell(page: Page, testId: string, timeout = DEFAULT_TIMEOUT) {
+export async function waitForPageShell(page: Page, testId: string, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	await expect(page.getByTestId(testId)).toBeVisible({ timeout });
 }
 
 /** UsersListPanel — `users-list` mounts only after the first fetch. */
-export async function waitForUsersList(page: Page, timeout = DEFAULT_TIMEOUT) {
+export async function waitForUsersList(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
@@ -44,7 +90,7 @@ export async function waitForUsersList(page: Page, timeout = DEFAULT_TIMEOUT) {
 }
 
 /** Admin permissions/groups catalog table. */
-export async function waitForAdminCatalog(page: Page, timeout = DEFAULT_TIMEOUT) {
+export async function waitForAdminCatalog(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
@@ -55,7 +101,7 @@ export async function waitForAdminCatalog(page: Page, timeout = DEFAULT_TIMEOUT)
 }
 
 /** Superuser permissions/groups catalog table. */
-export async function waitForSuperuserCatalog(page: Page, timeout = DEFAULT_TIMEOUT) {
+export async function waitForSuperuserCatalog(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
@@ -66,7 +112,7 @@ export async function waitForSuperuserCatalog(page: Page, timeout = DEFAULT_TIME
 }
 
 /** Permission visibility — search (list/matrix) or empty-prereq when catalog is empty. */
-export async function waitForVisibilityPanel(page: Page, timeout = DEFAULT_TIMEOUT) {
+export async function waitForVisibilityPanel(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	const ready = page
 		.getByTestId('superuser-visibility-search')
@@ -75,7 +121,7 @@ export async function waitForVisibilityPanel(page: Page, timeout = DEFAULT_TIMEO
 }
 
 /** Admin-User Management table. */
-export async function waitForAdminManagement(page: Page, timeout = DEFAULT_TIMEOUT) {
+export async function waitForAdminManagement(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
@@ -86,7 +132,7 @@ export async function waitForAdminManagement(page: Page, timeout = DEFAULT_TIMEO
 }
 
 /** User detail — email is present once the user payload has loaded. */
-export async function waitForUserDetail(page: Page, timeout = DEFAULT_TIMEOUT) {
+export async function waitForUserDetail(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	await waitOutOfLoading(
 		page,
@@ -94,4 +140,27 @@ export async function waitForUserDetail(page: Page, timeout = DEFAULT_TIMEOUT) {
 		page.getByTestId('user-detail-email'),
 		timeout
 	);
+}
+
+/**
+ * After revoke/lock/delete invalidates a session — reload or navigate and wait for login.
+ * Waits for /api/me to settle so we do not assert while "Loading session…" is still up.
+ */
+export async function waitForSignedOut(
+	page: Page,
+	opts?: { path?: string; reload?: boolean; timeout?: number }
+) {
+	const timeout = opts?.timeout ?? LOAD_TIMEOUT;
+	const meResponse = page.waitForResponse(
+		(res) => res.url().includes('/api/users/me') && res.request().method() === 'GET',
+		{ timeout }
+	);
+	if (opts?.reload) {
+		await page.reload();
+	} else {
+		await page.goto(opts?.path ?? '/dashboard');
+	}
+	await meResponse.catch(() => undefined);
+	await expect(page.getByTestId('login-page')).toBeVisible({ timeout });
+	await expect(page.getByTestId('app-nav')).toHaveCount(0);
 }

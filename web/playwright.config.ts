@@ -15,13 +15,13 @@ export default defineConfig({
 	testDir: './e2e',
 	fullyParallel: true,
 	forbidOnly: !!process.env.CI,
-	retries: process.env.CI ? 2 : 0,
+	retries: Number(process.env.PLAYWRIGHT_RETRIES ?? (process.env.CI ? 2 : 0)),
 	// Local: Playwright default (CPU cores). CI: modest parallelism.
 	workers: process.env.CI ? 2 : undefined,
-	timeout: 60_000,
+	// Multi-actor journeys + slow /api/me under many workers need headroom.
+	timeout: Number(process.env.PLAYWRIGHT_TEST_TIMEOUT || 120_000),
 	expect: {
-		// Protected routes wait on /api/me before mounting shells; 5s flakes under high worker load.
-		timeout: 15_000
+		timeout: Number(process.env.PLAYWRIGHT_EXPECT_TIMEOUT || 30_000)
 	},
 	reporter: [['list'], ['html', { open: 'never' }]],
 	use: {

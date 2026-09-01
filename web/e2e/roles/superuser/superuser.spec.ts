@@ -1,11 +1,11 @@
-import { test, expect } from './helpers/fixtures';
+import { test, expect } from '../../helpers/fixtures';
 import {
 	waitForAdminManagement,
 	waitForPageShell,
 	waitForSuperuserCatalog,
 	waitForUsersList,
 	waitForVisibilityPanel
-} from './helpers/waits';
+} from '../../helpers/waits';
 
 test.describe('Superuser console', () => {
 	test('opens Superuser from nav and shows users by default', async ({ superuserPage: page }) => {

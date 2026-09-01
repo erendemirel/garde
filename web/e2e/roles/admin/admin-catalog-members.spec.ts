@@ -1,6 +1,6 @@
-import { test, expect } from './helpers/fixtures';
+import { test, expect } from '../../helpers/fixtures';
 import type { Page } from '@playwright/test';
-import { waitForAdminCatalog } from './helpers/waits';
+import { waitForAdminCatalog } from '../../helpers/waits';
 
 /** Seed group the admin already belongs to; ephemeral users start in group_a only. */
 const SCOPE_GROUP = 'asdfasdf';

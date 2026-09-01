@@ -1,6 +1,6 @@
-import { test, expect } from './helpers/fixtures';
+import { test, expect } from '../../helpers/fixtures';
 import type { Page } from '@playwright/test';
-import { waitForSuperuserCatalog } from './helpers/waits';
+import { waitForSuperuserCatalog } from '../../helpers/waits';
 
 async function waitForToastGone(page: Page) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
