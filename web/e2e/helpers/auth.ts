@@ -122,7 +122,13 @@ export async function waitForRegisterFormReady(page: Page, timeout = REDIRECT_TI
 /** Open login — domcontentloaded + interactive form (no networkidle). */
 export async function openLogin(page: Page) {
 	await page.bringToFront();
-	await page.goto('/', { waitUntil: 'domcontentloaded' });
+	const alreadyOnLogin = await page
+		.getByTestId('login-page')
+		.isVisible()
+		.catch(() => false);
+	if (!alreadyOnLogin) {
+		await page.goto('/', { waitUntil: 'domcontentloaded' });
+	}
 	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 	await waitForLoginFormReady(page);
 }

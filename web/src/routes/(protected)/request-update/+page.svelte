@@ -4,11 +4,14 @@
 	import { showToast } from '$lib/toast';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
+	import { refreshSession } from '$lib/session';
 	import { ArrowLeft, Send } from 'lucide-svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 
 	let loading = false;
+	let catalogLoading = true;
+	let formReady = false;
 
 	let availablePermissions = [];
 	let availableGroups = [];
@@ -48,8 +51,10 @@
 		}))
 	];
 	$: hasChanges = changeItems.length > 0;
+	$: catalogReady = formReady && !catalogLoading;
 
 	onMount(async () => {
+		formReady = true;
 		try {
 			const [perms, grps] = await Promise.all([
 				listPermissions().catch(() => []),
@@ -81,6 +86,8 @@
 			}
 		} catch (e) {
 			console.error(e);
+		} finally {
+			catalogLoading = false;
 		}
 	});
 
@@ -113,10 +120,7 @@
 	}
 
 	async function handleSubmit() {
-		if (!hasChanges) {
-			showToast('No changes to request', 'error');
-			return;
-		}
+		if (!catalogReady || loading || !hasChanges) return;
 
 		loading = true;
 		try {
@@ -132,7 +136,8 @@
 			if (groupsAdd.length) parts.push(`+${groupsAdd.length} group`);
 			if (groupsRemove.length) parts.push(`−${groupsRemove.length} group`);
 			showToast(`Request submitted (${parts.join(', ')})`, 'success');
-			setTimeout(() => goto('/dashboard'), 2000);
+			await refreshSession();
+			await goto('/dashboard');
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'Request failed', 'error');
 		}
@@ -159,13 +164,20 @@
 			>
 		</div>
 
-		<div class="card-muted space-y-4" data-testid="request-update-form">
+		<div
+			class="card-muted space-y-4"
+			data-testid="request-update-form"
+			data-ready={catalogReady ? 'true' : 'false'}
+			aria-busy={!catalogReady}
+		>
 			<p class="text-xs text-muted">
 				Ask an admin to change your permissions or groups. You can only request permissions visible to your
 				groups. Changes take effect after an admin who shares a group with you approves the request.
 			</p>
 
-			{#if (availablePermissions || []).length === 0}
+			{#if catalogLoading}
+				<p class="text-muted text-sm" data-testid="request-update-catalog-loading">Loading options…</p>
+			{:else if (availablePermissions || []).length === 0}
 				<p class="text-muted text-sm" data-testid="request-update-permissions-empty">No permissions available.</p>
 			{:else}
 				<div class="edit-section" data-testid="request-update-permissions">
@@ -181,7 +193,9 @@
 				</div>
 			{/if}
 
-			{#if (availableGroups || []).length === 0}
+			{#if catalogLoading}
+				<!-- loading message shown above -->
+			{:else if (availableGroups || []).length === 0}
 				<p class="text-muted text-sm" data-testid="request-update-groups-empty">No groups available.</p>
 			{:else}
 				<div class="edit-section" data-testid="request-update-groups">
@@ -210,10 +224,10 @@
 					type="button"
 					data-testid="request-update-submit"
 					on:click={handleSubmit}
-					disabled={loading || !hasChanges}
+					disabled={!catalogReady || loading || !hasChanges}
 				>
 					<Send size={18} />
-					{loading ? 'Submitting...' : hasChanges ? 'Submit Request' : 'No changes'}
+					{loading ? 'Submitting...' : !catalogReady ? 'Loading...' : hasChanges ? 'Submit Request' : 'No changes'}
 				</button>
 			</div>
 		</div>

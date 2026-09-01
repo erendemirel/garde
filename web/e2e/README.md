@@ -173,5 +173,7 @@ Focused journey files (`registration`, `request-update`, `active-session`) keep 
 - Worker **`suRequest`** validates `/api/users/me` and re-authenticates when cached cookies are stale (`ensureApiAuth`).
 - Login/register forms expose `data-ready="true"` after mount and stay disabled until then; sign-in uses `type="button"` + click handler so Playwright clicks always fire the handler.
 - **`openLogin` / `openRegister` / `openForgotPassword`** — navigate public auth pages without `networkidle` (waits for testids + `data-ready` where applicable).
-- **`waitForToastGone`** — centralized in `helpers/waits.ts` (toast auto-hides after 5s).
+- Request-update waits for `data-ready="true"` on the form (catalog fetch complete) before interacting with multiselects.
+- **`gotoDashboardFresh`** / **`reloadDashboardWithMe`** — navigate to `/dashboard` and wait for `/api/users/me` (dashboard refetches on mount; reload no longer required).
+- **`waitForToastGone`** — centralized in `helpers/waits.ts` (toast uses deadline-based auto-hide resilient to background-tab timer throttling).
 - **Timeout tiers:** `REDIRECT_TIMEOUT` (15s) for login/redirect assertions; `LOAD_TIMEOUT` (45s, env override) for session boot and API-backed panels only.

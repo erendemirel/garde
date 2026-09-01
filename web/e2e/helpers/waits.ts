@@ -6,8 +6,8 @@ export const LOAD_TIMEOUT = Number(process.env.PLAYWRIGHT_LOAD_TIMEOUT || 45_000
 /** Redirects, login page, and other public-route navigation. */
 export const REDIRECT_TIMEOUT = 15_000;
 
-/** Toast auto-hides after 5s — under heavy worker load timers slip; allow extra headroom. */
-export const TOAST_DISMISS_TIMEOUT = Number(process.env.PLAYWRIGHT_TOAST_TIMEOUT || 12_000);
+/** Toast auto-hides after 5s — deadline timer in app resists background-tab throttling. */
+export const TOAST_DISMISS_TIMEOUT = Number(process.env.PLAYWRIGHT_TOAST_TIMEOUT || 8_000);
 
 export async function waitForToastGone(page: Page, timeout = TOAST_DISMISS_TIMEOUT) {
 	await expect(page.getByTestId('toast')).toBeHidden({ timeout });
@@ -90,35 +90,14 @@ async function waitOutOfLoading(
 
 /**
  * Protected layout boots via /api/users/me before any page shell mounts.
- * Under heavy parallelism that call often takes longer than a few seconds.
+ * Dashboard also refetches on mount after mutations that affect the signed-in user.
  */
 export async function waitForSessionReady(page: Page, timeout = LOAD_TIMEOUT) {
 	const nav = page.getByTestId('app-nav');
-	if (await nav.isVisible().catch(() => false)) return;
-
 	const loading = page.getByTestId('session-loading');
-	const bootMe = () =>
-		page.waitForResponse(matchMeGet, { timeout }).catch(() => undefined);
-
-	if (await loading.isVisible().catch(() => false)) {
-		// Catch in-flight boot; if still stuck, reload to re-trigger /api/users/me.
-		await bootMe();
-		if (await loading.isVisible().catch(() => false) && !(await nav.isVisible().catch(() => false))) {
-			const meRetry = bootMe();
-			await page.reload({ waitUntil: 'domcontentloaded' });
-			await meRetry;
-		}
-	}
-
-	try {
-		await waitOutOfLoading(page, 'session-loading', nav, timeout);
-	} catch (err) {
-		if (!(await loading.isVisible().catch(() => false))) throw err;
-		const meRetry = bootMe();
-		await page.reload({ waitUntil: 'domcontentloaded' });
-		await meRetry;
-		await waitOutOfLoading(page, 'session-loading', nav, timeout);
-	}
+	await expect(nav.or(loading)).toBeVisible({ timeout });
+	await expect(loading).toHaveCount(0, { timeout });
+	await expect(nav).toBeVisible({ timeout });
 }
 
 /** After goto/nav into a protected route — session + page shell. */
@@ -127,14 +106,13 @@ export async function waitForPageShell(page: Page, testId: string, timeout = LOA
 	await expect(page.getByTestId(testId)).toBeVisible({ timeout });
 }
 
-/** Request-update onMount fetches — groups section reflects API data (not initial empty placeholder). */
+/** Request-update catalog fetch — form exposes data-ready once options are loaded. */
 export async function waitForRequestUpdateCatalog(page: Page, timeout = LOAD_TIMEOUT) {
 	await expect(page.getByTestId('request-update-form')).toBeVisible({ timeout });
-	await expect(
-		page
-			.getByTestId('request-update-groups')
-			.or(page.getByTestId('request-update-groups-empty'))
-	).toBeVisible({ timeout });
+	await expect(page.getByTestId('request-update-form')).toHaveAttribute('data-ready', 'true', {
+		timeout
+	});
+	await expect(page.getByTestId('request-update-catalog-loading')).toHaveCount(0, { timeout });
 }
 
 /** Groups multiselect mounted and populated (ephemeral users with group_a should always have addable groups). */
@@ -210,30 +188,11 @@ export async function waitForAdminManagementRow(
 	return row;
 }
 
-function matchUserDetailGet(res: Response) {
-	if (res.request().method() !== 'GET') return false;
-	try {
-		return /\/api\/users\/[^/]+$/.test(new URL(res.url()).pathname);
-	} catch {
-		return false;
-	}
-}
 
 /** User detail — email is present once the user payload has loaded. */
 export async function waitForUserDetail(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
-	const ready = page.getByTestId('user-detail-email');
-	const loading = page.getByTestId('user-detail-loading');
-	try {
-		await waitOutOfLoading(page, 'user-detail-loading', ready, timeout);
-	} catch (err) {
-		if (await ready.isVisible().catch(() => false)) return;
-		if (!(await loading.isVisible().catch(() => false))) throw err;
-		const detailRetry = page.waitForResponse(matchUserDetailGet, { timeout });
-		await page.reload({ waitUntil: 'domcontentloaded' });
-		await detailRetry.catch(() => undefined);
-		await waitOutOfLoading(page, 'user-detail-loading', ready, timeout);
-	}
+	await waitOutOfLoading(page, 'user-detail-loading', page.getByTestId('user-detail-email'), timeout);
 }
 
 /**

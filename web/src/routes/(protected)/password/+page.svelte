@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { changePassword, logout } from '$lib/api';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
@@ -13,8 +14,14 @@
 	let success = '';
 	let loading = false;
 	let showConfirmModal = false;
+	let formReady = false;
+
+	onMount(() => {
+		formReady = true;
+	});
 
 	function requestConfirmation() {
+		if (!formReady || loading) return;
 		error = '';
 		if (newPassword !== confirmPassword) {
 			error = 'Passwords do not match';
@@ -28,6 +35,7 @@
 	}
 
 	async function handleChange() {
+		if (!formReady || loading) return;
 		error = '';
 		loading = true;
 		try {
@@ -67,6 +75,8 @@
 			<form
 				class="space-y-4"
 				data-testid="password-form"
+				data-ready={formReady ? 'true' : 'false'}
+				aria-busy={!formReady}
 				method="post"
 				action="#"
 				onsubmit="return false;"
@@ -80,6 +90,7 @@
 						data-testid="password-current"
 						bind:value={oldPassword}
 						required
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="form-label">
@@ -91,6 +102,7 @@
 						bind:value={newPassword}
 						required
 						minlength="8"
+						disabled={!formReady}
 					/>
 				</label>
 				<label class="form-label">
@@ -101,6 +113,7 @@
 						data-testid="password-confirm"
 						bind:value={confirmPassword}
 						required
+						disabled={!formReady}
 					/>
 				</label>
 				{#if $user?.mfa_enabled}
@@ -113,6 +126,7 @@
 							bind:value={mfaCode}
 							placeholder="6-digit code"
 							required
+							disabled={!formReady}
 						/>
 					</label>
 				{/if}
@@ -124,10 +138,10 @@
 						class="btn-secondary w-full md:w-auto"
 						type="submit"
 						data-testid="password-submit"
-						disabled={loading}
+						disabled={!formReady || loading}
 					>
 						<KeyRound size={18} />
-						{loading ? 'Changing...' : 'Change Password'}
+						{loading ? 'Changing...' : formReady ? 'Change Password' : 'Loading...'}
 					</button>
 				</div>
 			</form>
