@@ -3,7 +3,7 @@ import { loginAs, startUserSession } from '../helpers/auth';
 import {
 	completeMfaSetupFromChoice,
 	openRequestUpdate,
-	reloadDashboardWithMe,
+	gotoDashboardFresh,
 	SCOPE_GROUP,
 	stageGroupAddByName,
 	submitRequestUpdate,
@@ -72,7 +72,7 @@ test.describe(
 				await openRequestUpdate(userPage);
 				await stageGroupAddByName(userPage, SCOPE_GROUP, epic);
 				await submitRequestUpdate(userPage, epic);
-				await reloadDashboardWithMe(userPage);
+				await gotoDashboardFresh(userPage);
 				await expect(userPage.getByTestId('dashboard-pending-update')).toBeVisible();
 
 				await userPage.getByTestId('nav-logout').click();

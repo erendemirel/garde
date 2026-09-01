@@ -1,7 +1,7 @@
 import { expect, type Page, type Response } from '@playwright/test';
 
-/** Panel/session/API waits — raise via PLAYWRIGHT_LOAD_TIMEOUT under heavy worker load. */
-export const LOAD_TIMEOUT = Number(process.env.PLAYWRIGHT_LOAD_TIMEOUT || 45_000);
+/** Session boot and API-backed panel waits (override via PLAYWRIGHT_LOAD_TIMEOUT if needed). */
+export const LOAD_TIMEOUT = Number(process.env.PLAYWRIGHT_LOAD_TIMEOUT || 30_000);
 
 /** Redirects, login page, and other public-route navigation. */
 export const REDIRECT_TIMEOUT = 15_000;
@@ -114,10 +114,7 @@ export function matchPasswordChange(res: Response) {
 	}
 }
 
-/**
- * Panels that swap a loading testid for a ready marker after fetch.
- * Under high worker load those fetches routinely exceed Playwright's default expect timeout.
- */
+/** Panels that swap a loading testid for a ready marker after fetch. */
 async function waitOutOfLoading(
 	page: Page,
 	loadingTestId: string,

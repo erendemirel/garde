@@ -112,7 +112,7 @@ export async function ensureSeedAdminReady(
 	api: RequestLike,
 	opts?: { maxAttempts?: number; pauseMs?: number }
 ) {
-	const maxAttempts = opts?.maxAttempts ?? 12;
+	const maxAttempts = opts?.maxAttempts ?? 6;
 	const pauseMs = opts?.pauseMs ?? 500;
 	let lastError: Error | undefined;
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {

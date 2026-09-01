@@ -6,7 +6,7 @@ import {
 	adminRejectUpdate,
 	expectStillSignedOut,
 	openRequestUpdate,
-	reloadDashboardWithMe,
+	gotoDashboardFresh,
 	SCOPE_GROUP,
 	stageGroupAddByName,
 	submitRegisterForm,
@@ -66,11 +66,11 @@ test.describe(
 				await openRequestUpdate(page);
 				await stageGroupAddByName(page, SCOPE_GROUP, epic);
 				await submitRequestUpdate(page, epic);
-				await reloadDashboardWithMe(page);
+				await gotoDashboardFresh(page);
 				await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 
 				await adminRejectUpdate(adminPage, email, epic);
-				await reloadDashboardWithMe(page);
+				await gotoDashboardFresh(page);
 				await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
 				await expect(
 					page.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
@@ -80,7 +80,7 @@ test.describe(
 				await stageGroupAddByName(page, SCOPE_GROUP, epic);
 				await submitRequestUpdate(page, epic);
 				await adminApproveUpdate(adminPage, email, epic);
-				await reloadDashboardWithMe(page);
+				await gotoDashboardFresh(page);
 				await expect(
 					page.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
 				).toBeVisible();

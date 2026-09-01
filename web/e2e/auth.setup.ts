@@ -1,6 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import { e2eSuperuser, loginViaRequest, openDashboardSession } from './helpers/auth';
-import { restoreSeedAdminAccess, ensureSeedAdminReady, ensureE2eCatalog } from './helpers/userApi';
+import { ensureSeedAdminReady, ensureE2eCatalog } from './helpers/userApi';
 
 /**
  * Once before the suite: seed permission catalog (fresh CI SQLite) and restore seed admin groups/permissions.

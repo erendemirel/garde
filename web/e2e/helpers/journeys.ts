@@ -40,17 +40,12 @@ async function dismissToast(page: Page, pattern?: string | RegExp, opts?: Journe
 	await waitForToastGone(page);
 }
 
-/** Navigate to dashboard and wait for a fresh /api/users/me (no full reload). */
+/** Navigate to dashboard and wait for a fresh /api/users/me (dashboard refetches on mount). */
 export async function gotoDashboardFresh(page: Page) {
 	const meResponse = page.waitForResponse(matchMeGet, { timeout: LOAD_TIMEOUT });
 	await page.goto('/dashboard');
 	await meResponse;
 	await waitForPageShell(page, 'dashboard-page');
-}
-
-/** @deprecated Use {@link gotoDashboardFresh} — dashboard now refetches on mount. */
-export async function reloadDashboardWithMe(page: Page) {
-	await gotoDashboardFresh(page);
 }
 
 /** User still unauthenticated — outcome check for epics (details in auth/registration specs). */
