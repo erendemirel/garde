@@ -1,5 +1,5 @@
 import { test, expect } from '../helpers/fixtures';
-import { e2eAdmin, loginAs, startUserSession } from '../helpers/auth';
+import { e2eAdmin, startUserSession } from '../helpers/auth';
 import {
 	adminApproveUpdate,
 	openRequestUpdate,
@@ -109,7 +109,7 @@ test.describe(
 				await scopedAdmin.getByTestId('user-detail-lock-btn').click();
 				await scopedAdmin.getByTestId('confirm-modal-confirm').click();
 
-				await loginAs(userPage, user);
+				await startUserSession(userPage, user);
 				await expect(
 					userPage.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
 				).toBeVisible();

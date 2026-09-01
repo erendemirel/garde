@@ -42,6 +42,26 @@ export function matchUserUpdate(res: Response) {
 	}
 }
 
+/** GET /api/users/me — protected layout boot. */
+export function matchMeGet(res: Response) {
+	if (res.request().method() !== 'GET') return false;
+	try {
+		return new URL(res.url()).pathname.endsWith('/api/users/me');
+	} catch {
+		return false;
+	}
+}
+
+/** POST /api/users/password/change */
+export function matchPasswordChange(res: Response) {
+	if (res.request().method() !== 'POST') return false;
+	try {
+		return new URL(res.url()).pathname.endsWith('/api/users/password/change');
+	} catch {
+		return false;
+	}
+}
+
 /**
  * Panels that swap a loading testid for a ready marker after fetch.
  * Under high worker load those fetches routinely exceed Playwright's default expect timeout.
@@ -59,16 +79,35 @@ async function waitOutOfLoading(
 }
 
 /**
- * Protected layout boots via /api/me before any page shell mounts.
+ * Protected layout boots via /api/users/me before any page shell mounts.
  * Under heavy parallelism that call often takes longer than a few seconds.
  */
 export async function waitForSessionReady(page: Page, timeout = LOAD_TIMEOUT) {
+	const nav = page.getByTestId('app-nav');
+	if (await nav.isVisible().catch(() => false)) return;
+
+	const loading = page.getByTestId('session-loading');
+	const bootMe = () =>
+		page.waitForResponse(matchMeGet, { timeout }).catch(() => undefined);
+
+	if (await loading.isVisible().catch(() => false)) {
+		// Catch in-flight boot; if still stuck, reload to re-trigger /api/users/me.
+		await bootMe();
+		if (await loading.isVisible().catch(() => false) && !(await nav.isVisible().catch(() => false))) {
+			const meRetry = bootMe();
+			await page.reload({ waitUntil: 'domcontentloaded' });
+			await meRetry;
+		}
+	}
+
 	try {
-		await waitOutOfLoading(page, 'session-loading', page.getByTestId('app-nav'), timeout);
+		await waitOutOfLoading(page, 'session-loading', nav, timeout);
 	} catch (err) {
-		if (!(await page.getByTestId('session-loading').isVisible().catch(() => false))) throw err;
+		if (!(await loading.isVisible().catch(() => false))) throw err;
+		const meRetry = bootMe();
 		await page.reload({ waitUntil: 'domcontentloaded' });
-		await waitOutOfLoading(page, 'session-loading', page.getByTestId('app-nav'), timeout);
+		await meRetry;
+		await waitOutOfLoading(page, 'session-loading', nav, timeout);
 	}
 }
 
@@ -181,10 +220,7 @@ export async function waitForSignedOut(
 	opts?: { path?: string; reload?: boolean; timeout?: number }
 ) {
 	const timeout = opts?.timeout ?? LOAD_TIMEOUT;
-	const meResponse = page.waitForResponse(
-		(res) => res.url().includes('/api/users/me') && res.request().method() === 'GET',
-		{ timeout }
-	);
+	const meResponse = page.waitForResponse(matchMeGet, { timeout });
 	if (opts?.reload) {
 		await page.reload();
 	} else {
@@ -193,4 +229,14 @@ export async function waitForSignedOut(
 	await meResponse.catch(() => undefined);
 	await expect(page.getByTestId('login-page')).toBeVisible({ timeout });
 	await expect(page.getByTestId('app-nav')).toHaveCount(0);
+}
+
+/** Password change signs out after success toast + 2s delay — wait for API then login redirect. */
+export async function waitForPasswordChangeSignOut(page: Page, timeout = LOAD_TIMEOUT) {
+	const changeResponse = page.waitForResponse(matchPasswordChange, { timeout });
+	await page.getByTestId('confirm-modal-confirm').click();
+	const res = await changeResponse;
+	expect(res.ok()).toBeTruthy();
+	await expect(page.getByTestId('password-success')).toContainText('Password changed', { timeout });
+	await expect(page.getByTestId('login-page')).toBeVisible({ timeout });
 }

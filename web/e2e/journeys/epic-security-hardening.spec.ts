@@ -13,7 +13,13 @@ import {
 import { describeTags, TAG } from '../helpers/tags';
 import { openUserDetailFromAdmin, openUserDetailFromSuperuser } from '../helpers/userApi';
 import { totpCode } from '../helpers/totp';
-import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT } from '../helpers/waits';
+import {
+	waitForPageShell,
+	waitForSignedOut,
+	waitForPasswordChangeSignOut,
+	matchUserUpdate,
+	LOAD_TIMEOUT
+} from '../helpers/waits';
 
 const epic: JourneyActOptions = { outcomesOnly: true };
 
@@ -85,8 +91,7 @@ test.describe(
 				await userPage.getByTestId('password-confirm').fill(newPassword);
 				await userPage.getByTestId('password-mfa').fill(totpCode(mfaSecret));
 				await userPage.getByTestId('password-submit').click();
-				await userPage.getByTestId('confirm-modal-confirm').click();
-				await expect(userPage.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+				await waitForPasswordChangeSignOut(userPage);
 
 				await loginAs(userPage, {
 					email: ephemeralUser.email,

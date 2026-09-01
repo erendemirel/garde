@@ -1,5 +1,5 @@
 import { test, expect } from '../helpers/fixtures';
-import { loginAs, signInApprovedUser } from '../helpers/auth';
+import { signInApprovedUser, startUserSession } from '../helpers/auth';
 import {
 	adminApproveUpdate,
 	adminRejectAccount,
@@ -16,7 +16,7 @@ import {
 } from '../helpers/journeys';
 import { describeTags, TAG } from '../helpers/tags';
 import { deleteUserById, findUserByEmail, openUserDetailFromSuperuser } from '../helpers/userApi';
-import { waitForPageShell, LOAD_TIMEOUT } from '../helpers/waits';
+import { waitForPageShell, waitForPasswordChangeSignOut } from '../helpers/waits';
 
 /** Outcome-only acts — toast copy and error messages live in focused specs. */
 const epic: JourneyActOptions = { outcomesOnly: true };
@@ -96,11 +96,10 @@ test.describe(
 
 				await page.getByTestId('password-current').fill(password);
 				await page.getByTestId('password-submit').click();
-				await page.getByTestId('confirm-modal-confirm').click();
-				await expect(page.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+				await waitForPasswordChangeSignOut(page);
 
 				await expectStillSignedOut(page);
-				await loginAs(page, { email, password: newPassword });
+				await startUserSession(page, { email, password: newPassword });
 				await expect(page.getByTestId('dashboard-page')).toBeVisible();
 
 				await page.getByTestId('nav-logout').click();

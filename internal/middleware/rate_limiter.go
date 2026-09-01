@@ -36,7 +36,7 @@ type RateLimiter struct {
 // e.g. "100,60" means 100 requests per rolling 60-second window for unauthenticated IPs
 // e.g. "100,60,300,1000" means 100 for unauthenticated (IP), 300 for regular users, 1000 for admins and superusers
 // Window is a true sliding window (Redis sorted set), independent of RAPID_REQUEST_CONFIG.
-// Use "0" or "0,0" to disable rate limiting
+// Use "0" or "0,0" to disable rate limiting (all tiers: IP, authenticated, admin).
 func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
 	maxReqs := defaultRequestsPerWindow
 	authenticatedMaxReqs := defaultAuthenticatedRequests
@@ -56,15 +56,21 @@ func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
 			}
 		}
 		if len(parts) >= 3 {
-			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil && parsed > 0 {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil && parsed >= 0 {
 				authenticatedMaxReqs = parsed
 			}
 		}
 		if len(parts) >= 4 {
-			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[3])); err == nil && parsed > 0 {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[3])); err == nil && parsed >= 0 {
 				adminMaxReqs = parsed
 			}
 		}
+	}
+
+	// "0" / "0,0" must disable user-based limits too, not just the public IP tier.
+	if maxReqs == 0 {
+		authenticatedMaxReqs = 0
+		adminMaxReqs = 0
 	}
 
 	return &RateLimiter{
@@ -74,6 +80,17 @@ func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
 		adminMaxReqs:         adminMaxReqs,
 		windowSize:           time.Duration(windowSecs) * time.Second,
 	}
+}
+
+// IsRateLimitDisabled reports whether RATE_LIMIT is set to disable all tiers ("0", "0,0", …).
+func IsRateLimitDisabled() bool {
+	envLimit := strings.TrimSpace(config.Get("RATE_LIMIT"))
+	if envLimit == "" {
+		return false
+	}
+	first, _, _ := strings.Cut(envLimit, ",")
+	n, err := strconv.Atoi(strings.TrimSpace(first))
+	return err == nil && n == 0
 }
 
 func (rl *RateLimiter) Limit() gin.HandlerFunc {

@@ -2,6 +2,7 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { totpCode } from './totp';
 import {
 	LOAD_TIMEOUT,
+	matchMeGet,
 	matchUserUpdate,
 	waitForPageShell,
 	waitForRequestUpdateCatalog,
@@ -41,10 +42,7 @@ async function dismissToast(page: Page, pattern?: string | RegExp, opts?: Journe
 }
 
 export async function reloadDashboardWithMe(page: Page) {
-	const meResponse = page.waitForResponse(
-		(res) => res.url().includes('/api/users/me') && res.request().method() === 'GET',
-		{ timeout: LOAD_TIMEOUT }
-	);
+	const meResponse = page.waitForResponse(matchMeGet, { timeout: LOAD_TIMEOUT });
 	await page.reload();
 	await meResponse;
 	await waitForPageShell(page, 'dashboard-page');

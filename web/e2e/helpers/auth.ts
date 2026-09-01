@@ -37,7 +37,11 @@ export async function loginViaRequest(request: APIRequestContext, creds: LoginCr
 		const needsMfa = res.status() === 401 && text.toLowerCase().includes('mfa');
 		if (needsMfa && !creds.mfaCode) return res;
 
-		if (attempt < 3 && (res.status() >= 500 || res.status() === 429)) {
+		const rateLimited =
+			res.status() === 429 ||
+			(res.status() === 401 && /temporarily restricted|try again later/i.test(text));
+
+		if (attempt < 3 && (res.status() >= 500 || rateLimited)) {
 			await sleep(400 * (attempt + 1));
 			continue;
 		}
