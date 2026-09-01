@@ -1,6 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { startUserSession } from '../helpers/auth';
 import { describeTags, TAG } from '../helpers/tags';
+import { waitForRequestUpdateCatalog } from '../helpers/waits';
 
 async function stageAnyGroupChange(page: import('@playwright/test').Page) {
 	const groupSection = page.getByTestId('request-update-groups');
@@ -23,30 +24,21 @@ async function stageAnyGroupChange(page: import('@playwright/test').Page) {
 }
 
 test.describe('Dashboard pending update', describeTags(TAG.dashboard, TAG.requestUpdate, TAG.focused), () => {
-	test('shows pending banner after reload once me is refetched', async ({ browser, ephemeralUser }) => {
+	test('shows pending banner after request-update redirect refreshes session', async ({
+		browser,
+		ephemeralUser
+	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
 		await startUserSession(page, ephemeralUser);
 
 		await page.getByTestId('dashboard-link-request-update').click();
-		await expect(page.getByTestId('request-update-page')).toBeVisible();
-		await expect(
-			page.getByTestId('multiselect-chip').or(page.getByTestId('request-update-groups-empty')).first()
-		).toBeVisible({ timeout: 15_000 });
+		await waitForRequestUpdateCatalog(page);
 
 		await stageAnyGroupChange(page);
 		await page.getByTestId('request-update-submit').click();
 		await expect(page.getByTestId('toast')).toContainText('Request submitted');
-		await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
-
-		const meResponse = page.waitForResponse(
-			(res) => res.url().includes('/api/users/me') && res.request().method() === 'GET'
-		);
-		await page.reload();
-		const meRes = await meResponse;
-		expect(meRes.ok()).toBeTruthy();
-		const meBody = await meRes.json();
-		expect(meBody.data?.pending_updates).toBeTruthy();
+		await page.waitForURL(/\/dashboard/);
 
 		await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 		await context.close();

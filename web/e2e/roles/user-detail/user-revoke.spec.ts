@@ -2,10 +2,7 @@ import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { startUserSession } from '../../helpers/auth';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { REDIRECT_TIMEOUT, waitForToastGone } from '../../helpers/waits';
 
 /**
  * Revoke sessions on an ephemeral user — does not kill seed admin sessions used by other workers.
@@ -42,7 +39,7 @@ test.describe('Revoke user sessions', describeTags(TAG.userDetail, TAG.activeSes
 		await expect(suPage.getByTestId('user-detail-page')).toBeVisible();
 
 		await targetPage.goto('/dashboard');
-		await expect(targetPage.getByTestId('login-page')).toBeVisible({ timeout: 15_000 });
+		await expect(targetPage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 		await expect(targetPage.getByTestId('app-nav')).toHaveCount(0);
 
 		await targetContext.close();

@@ -1,10 +1,16 @@
 <script>
+	import { onMount } from 'svelte';
 	import { user, isSuperuser } from '$lib/stores';
+	import { refreshSession } from '$lib/session';
 	import { ShieldCheck, KeyRound, MailQuestion } from 'lucide-svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
 	const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
+
+	onMount(() => {
+		void refreshSession().catch(() => undefined);
+	});
 </script>
 
 <svelte:head>

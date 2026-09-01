@@ -1,7 +1,7 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { LOAD_TIMEOUT, waitForPageShell, waitForSessionReady } from './waits';
+import { LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForPageShell, waitForSessionReady } from './waits';
 
 /** Dev bootstrap accounts from README / docker compose seed. Override via env. */
 export const e2eAdmin = {
@@ -108,9 +108,65 @@ export async function signInApprovedUser(page: Page, creds: LoginCreds) {
 }
 
 /** Wait until Svelte has mounted and the login form handlers are wired. */
-export async function waitForLoginFormReady(page: Page, timeout = LOAD_TIMEOUT) {
-	await expect(page.getByTestId('login-form')).toHaveAttribute('data-ready', 'true', { timeout });
+export async function waitForLoginFormReady(page: Page, timeout = REDIRECT_TIMEOUT) {
+	const deadline = Date.now() + timeout;
+	for (let attempt = 0; attempt < 5; attempt++) {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) break;
+		try {
+			await expect(page.getByTestId('login-form')).toHaveAttribute('data-ready', 'true', {
+				timeout: Math.min(remaining, 5_000)
+			});
+			await expect(page.getByTestId('login-submit')).toBeEnabled();
+			return;
+		} catch {
+			if (attempt < 4) {
+				await page.reload({ waitUntil: 'load' });
+			}
+		}
+	}
+	await expect(page.getByTestId('login-form')).toHaveAttribute('data-ready', 'true', { timeout: 0 });
 	await expect(page.getByTestId('login-submit')).toBeEnabled();
+}
+
+/** Wait until the register form handlers are wired. */
+export async function waitForRegisterFormReady(page: Page, timeout = REDIRECT_TIMEOUT) {
+	await expect(page.getByTestId('register-form')).toHaveAttribute('data-ready', 'true', { timeout });
+	await expect(page.getByTestId('register-submit')).toBeEnabled();
+}
+
+/** Open login — domcontentloaded + interactive form (no networkidle). */
+export async function openLogin(page: Page) {
+	await page.bringToFront();
+	const alreadyOnLogin = await page
+		.getByTestId('login-page')
+		.isVisible()
+		.catch(() => false);
+	if (!alreadyOnLogin) {
+		await page.goto('/', { waitUntil: 'domcontentloaded' });
+	}
+	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+	await waitForLoginFormReady(page);
+}
+
+/** Open register — domcontentloaded + interactive form. */
+export async function openRegister(page: Page) {
+	await page.bringToFront();
+	await page.goto('/register', { waitUntil: 'domcontentloaded' });
+	await expect(page.getByTestId('register-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+	await waitForRegisterFormReady(page);
+}
+
+/** Open forgot-password email step. */
+export async function openForgotPassword(page: Page) {
+	await page.bringToFront();
+	await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
+	await expect(page.getByTestId('forgot-password-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+	await expect(page.getByTestId('forgot-password-page')).toHaveAttribute('data-step', 'email');
+	await expect(page.getByTestId('forgot-email-form')).toHaveAttribute('data-ready', 'true', {
+		timeout: REDIRECT_TIMEOUT
+	});
+	await expect(page.getByTestId('forgot-send-otp')).toBeEnabled();
 }
 
 /** Fill login inputs; retry until hydration remount stops clearing values. */
@@ -124,13 +180,6 @@ export async function fillLoginForm(page: Page, creds: Pick<LoginCreds, 'email' 
 		if (email === creds.email && password === creds.password) return;
 	}
 	throw new Error('login form inputs did not stabilize after hydration');
-}
-
-/** Wait until the login form is interactive (Svelte handlers attached). */
-export async function openLogin(page: Page) {
-	await page.goto('/', { waitUntil: 'domcontentloaded' });
-	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
-	await waitForLoginFormReady(page);
 }
 
 async function submitLoginForm(page: Page, creds: LoginCreds, expectSuccess: boolean) {
@@ -196,7 +245,7 @@ export async function loginAs(
 		if (!creds.mfaCode) {
 			throw new Error('login requires MFA code but none was provided');
 		}
-		await expect(page.getByTestId('login-mfa')).toBeVisible({ timeout: LOAD_TIMEOUT });
+		await expect(page.getByTestId('login-mfa')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 		await page.getByTestId('login-mfa').fill(creds.mfaCode);
 		const mfaLogin = page.waitForResponse(
 			(res) => res.url().includes('/api/login') && res.request().method() === 'POST',
@@ -213,8 +262,8 @@ export async function loginAs(
 	}
 
 	if (expectSuccess) {
-		await expect(page).toHaveURL(/\/dashboard/, { timeout: LOAD_TIMEOUT });
-		await waitForSessionReady(page, LOAD_TIMEOUT);
+		await expect(page).toHaveURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
+		await waitForSessionReady(page);
 		await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
 	}
 }
@@ -225,8 +274,9 @@ export async function expectLoginRejected(
 	creds: { email: string; password: string },
 	opts?: { message?: string | RegExp }
 ) {
+	await page.bringToFront();
 	await loginAs(page, creds, { expectSuccess: false });
-	await expect(page.getByTestId('login-error')).toBeVisible({ timeout: LOAD_TIMEOUT });
+	await expect(page.getByTestId('login-error')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 	if (opts?.message) {
 		await expect(page.getByTestId('login-error')).toContainText(opts.message);
 	}
@@ -236,5 +286,5 @@ export async function expectLoginRejected(
 export async function startUserSessionAt(page: Page, creds: LoginCreds, path: string) {
 	await loginViaRequest(page.request, creds);
 	await page.goto(path);
-	await waitForSessionReady(page, LOAD_TIMEOUT);
+	await waitForSessionReady(page);
 }

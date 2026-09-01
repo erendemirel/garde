@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { totpCode } from './totp';
-import { waitForPageShell, LOAD_TIMEOUT } from './waits';
+import { waitForPageShell } from './waits';
 
 /** Enable MFA through the UI; returns the TOTP secret shown on the verify step. */
 export async function enableMfaViaUi(page: Page): Promise<string> {
@@ -26,7 +26,7 @@ export async function enableMfaViaUi(page: Page): Promise<string> {
 	await page.getByTestId('mfa-verify-submit').click();
 	const verifyRes = await verifyResponse;
 	expect(verifyRes.ok()).toBeTruthy();
-	await waitForPageShell(page, 'dashboard-page', LOAD_TIMEOUT);
+	await waitForPageShell(page, 'dashboard-page');
 	return secret;
 }
 

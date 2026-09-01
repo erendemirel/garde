@@ -6,10 +6,10 @@ import {
 	openRequestUpdate,
 	stageGroupAddByName,
 	submitRequestUpdate,
-	waitForToastGone,
 	VISIBILITY_GROUP,
 	SCOPE_GROUP
 } from '../../helpers/journeys';
+import { waitForToastGone } from '../../helpers/waits';
 
 /** Seed group shared by admin and manageable users — safe for admin approve of group add. */
 

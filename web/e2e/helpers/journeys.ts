@@ -2,15 +2,18 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { totpCode } from './totp';
 import {
 	LOAD_TIMEOUT,
+	REDIRECT_TIMEOUT,
 	matchMeGet,
 	matchUserUpdate,
 	waitForPageShell,
 	waitForRequestUpdateCatalog,
 	waitForRequestUpdateGroups,
 	waitForSuperuserCatalog,
-	waitForVisibilityPanel
+	waitForVisibilityPanel,
+	waitForToastGone
 } from './waits';
 import {
+	openUserDetailById,
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser,
 	patchUserMaps
@@ -18,14 +21,10 @@ import {
 
 import { VISIBILITY_GROUP, SCOPE_GROUP } from './catalog';
 
-export { VISIBILITY_GROUP, SCOPE_GROUP };
+export { VISIBILITY_GROUP, SCOPE_GROUP, waitForToastGone };
 
 /** When true, act helpers wait for API/UI completion without toast copy assertions (for @epic specs). */
-export type JourneyActOptions = { outcomesOnly?: boolean };
-
-export async function waitForToastGone(page: Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+export type JourneyActOptions = { outcomesOnly?: boolean; userId?: string };
 
 async function dismissToast(page: Page, pattern?: string | RegExp, opts?: JourneyActOptions) {
 	if (opts?.outcomesOnly) {
@@ -36,27 +35,33 @@ async function dismissToast(page: Page, pattern?: string | RegExp, opts?: Journe
 		return;
 	}
 	if (pattern) {
-		await expect(page.getByTestId('toast')).toContainText(pattern, { timeout: LOAD_TIMEOUT });
+		await expect(page.getByTestId('toast')).toContainText(pattern, { timeout: REDIRECT_TIMEOUT });
 	}
 	await waitForToastGone(page);
 }
 
-export async function reloadDashboardWithMe(page: Page) {
+/** Navigate to dashboard and wait for a fresh /api/users/me (no full reload). */
+export async function gotoDashboardFresh(page: Page) {
 	const meResponse = page.waitForResponse(matchMeGet, { timeout: LOAD_TIMEOUT });
-	await page.reload();
+	await page.goto('/dashboard');
 	await meResponse;
 	await waitForPageShell(page, 'dashboard-page');
+}
+
+/** @deprecated Use {@link gotoDashboardFresh} — dashboard now refetches on mount. */
+export async function reloadDashboardWithMe(page: Page) {
+	await gotoDashboardFresh(page);
 }
 
 /** User still unauthenticated — outcome check for epics (details in auth/registration specs). */
 export async function expectStillSignedOut(page: Page, path = '/dashboard') {
 	await page.goto(path);
-	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 }
 
 export async function fillRegisterForm(page: Page, email: string, password: string) {
 	await expect(page.getByTestId('register-form')).toHaveAttribute('data-ready', 'true', {
-		timeout: LOAD_TIMEOUT
+		timeout: REDIRECT_TIMEOUT
 	});
 	for (let attempt = 0; attempt < 10; attempt++) {
 		await page.getByTestId('register-email').fill(email);
@@ -69,7 +74,7 @@ export async function fillRegisterForm(page: Page, email: string, password: stri
 
 export async function submitRegisterForm(page: Page, email: string, password: string) {
 	await page.goto('/register', { waitUntil: 'domcontentloaded' });
-	await expect(page.getByTestId('register-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+	await expect(page.getByTestId('register-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 	await fillRegisterForm(page, email, password);
 
 	const registerResponse = page.waitForResponse(
@@ -93,7 +98,13 @@ export async function createCatalogItem(
 	await page.getByTestId('superuser-catalog-create').click();
 	await page.getByTestId('superuser-catalog-item-name').fill(name);
 	await page.getByTestId('superuser-catalog-item-definition').fill(definition);
+	const saveResponse = page.waitForResponse(
+		(res) =>
+			res.request().method() === 'POST' && res.url().includes('/api/admin/permissions'),
+		{ timeout: LOAD_TIMEOUT }
+	);
 	await page.getByTestId('superuser-catalog-item-save').click();
+	await saveResponse;
 	await dismissToast(page, name, opts);
 	if (opts?.outcomesOnly) {
 		await expect(page.getByTestId('superuser-catalog-item-modal')).toHaveCount(0);
@@ -114,7 +125,14 @@ export async function addVisibilityInMatrix(
 		`[data-testid="superuser-visibility-cell"][data-permission-name="${permissionName}"][data-group-name="${groupName}"]`
 	);
 	await expect(cell).toBeVisible();
+	const visibilityResponse = page.waitForResponse(
+		(res) =>
+			res.request().method() === 'POST' &&
+			res.url().includes('/api/admin/permissions/visibility'),
+		{ timeout: LOAD_TIMEOUT }
+	);
 	await cell.click();
+	await visibilityResponse;
 	await dismissToast(page, /Visibility/i, opts);
 	if (!opts?.outcomesOnly) {
 		await expect(cell).toHaveAttribute('aria-pressed', 'true');
@@ -135,8 +153,15 @@ export async function removeVisibilityInMatrix(
 		`[data-testid="superuser-visibility-cell"][data-permission-name="${permissionName}"][data-group-name="${groupName}"]`
 	);
 	await expect(cell).toHaveAttribute('aria-pressed', 'true');
+	const visibilityResponse = page.waitForResponse(
+		(res) =>
+			res.request().method() === 'DELETE' &&
+			res.url().includes('/api/admin/permissions/visibility'),
+		{ timeout: LOAD_TIMEOUT }
+	);
 	await cell.click();
 	await page.getByTestId('confirm-modal-confirm').click();
+	await visibilityResponse;
 	await dismissToast(page, /removed/i, opts);
 }
 
@@ -207,9 +232,13 @@ export async function adminApproveUpdate(
 	email: string,
 	opts?: JourneyActOptions
 ) {
-	await adminPage.goto('/admin');
-	await waitForPageShell(adminPage, 'admin-page');
-	await openUserDetailFromAdmin(adminPage, email);
+	if (opts?.userId) {
+		await openUserDetailById(adminPage, opts.userId, email);
+	} else {
+		await adminPage.goto('/admin');
+		await waitForPageShell(adminPage, 'admin-page');
+		await openUserDetailFromAdmin(adminPage, email);
+	}
 	if (!opts?.outcomesOnly) {
 		await expect(adminPage.getByTestId('user-detail-pending-update')).toBeVisible();
 	}
@@ -239,6 +268,7 @@ export async function adminRejectUpdate(
 }
 
 export async function stageGroupAddByName(page: Page, groupName: string, opts?: JourneyActOptions) {
+	await waitForRequestUpdateGroups(page);
 	const ms = page.locator('[data-testid="multiselect"][data-label="Groups"]');
 	await ms.getByTestId('multiselect-input').fill(groupName);
 	await ms.locator(`[data-testid="multiselect-option"][data-key="${groupName}"]`).click();
@@ -282,7 +312,7 @@ export async function submitRequestUpdate(page: Page, opts?: JourneyActOptions) 
 	if (!opts?.outcomesOnly) {
 		await expect(page.getByTestId('toast')).toContainText('Request submitted');
 	}
-	await page.waitForURL(/\/dashboard/, { timeout: LOAD_TIMEOUT });
+	await waitForPageShell(page, 'dashboard-page');
 }
 
 export async function openRequestUpdate(page: Page, opts?: { requireGroups?: boolean }) {
@@ -334,7 +364,7 @@ export async function verifyMfaSetup(page: Page, secret: string, expectSuccess: 
 	const res = await verifyResponse;
 	if (expectSuccess) {
 		expect(res.ok()).toBeTruthy();
-		await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+		await waitForPageShell(page, 'dashboard-page');
 	}
 	return res;
 }

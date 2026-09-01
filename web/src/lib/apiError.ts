@@ -13,6 +13,22 @@ export function isApiError(err: unknown): err is ApiError {
 	return err instanceof ApiError;
 }
 
+/** True when the session cookie is no longer valid (not mere authorization denial). */
+export function isSessionInvalidMessage(message: string): boolean {
+	const msg = message.toLowerCase();
+	return (
+		msg.includes('session invalid') ||
+		msg.includes('no active session') ||
+		msg.includes('invalid session id')
+	);
+}
+
+/** Authorization denied — distinct from an expired/invalid session. */
 export function isForbidden(err: unknown): boolean {
-	return isApiError(err) && (err.status === 403 || err.status === 401);
+	if (!isApiError(err)) return false;
+	if (err.status === 403) return true;
+	if (err.status === 401) {
+		return !isSessionInvalidMessage(err.message);
+	}
+	return false;
 }

@@ -1,6 +1,6 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
-import { waitForPageShell } from '../../helpers/waits';
+import { waitForPageShell, REDIRECT_TIMEOUT } from '../../helpers/waits';
 
 const DEFAULT_GROUP = 'group_a';
 
@@ -80,7 +80,7 @@ test.describe('Regular user request update', describeTags(TAG.regular, TAG.reque
 		await expect(page.getByTestId('request-update-groups')).toBeVisible();
 		await expect(
 			page.getByTestId('multiselect-chip').or(page.getByTestId('request-update-groups-empty')).first()
-		).toBeVisible({ timeout: 15_000 });
+		).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 		await expect(page.getByTestId('request-update-submit')).toBeDisabled();
 
 		const ms = page.locator('[data-testid="multiselect"][data-label="Groups"]');

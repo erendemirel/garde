@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { e2eAdmin, expectLoginRejected, fillLoginForm, loginAs, openLogin, submitLogin } from '../helpers/auth';
 import { describeTags, TAG } from '../helpers/tags';
-import { LOAD_TIMEOUT } from '../helpers/waits';
+import { LOAD_TIMEOUT, REDIRECT_TIMEOUT } from '../helpers/waits';
 import { enableMfaViaUi } from '../helpers/mfa';
 import {
 	createEphemeralUser,
@@ -13,8 +13,7 @@ import {
 test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 	test.describe('UI', () => {
 		test('shows the login form with stable locators', async ({ page }) => {
-			await page.goto('/');
-			await page.waitForLoadState('networkidle');
+			await openLogin(page);
 
 			await expect(page.getByTestId('login-page')).toBeVisible();
 			await expect(page.getByTestId('login-form')).toBeVisible();
@@ -46,7 +45,7 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 				{ expectSuccess: false }
 			);
 
-			await expect(page.getByTestId('login-error')).toBeVisible({ timeout: LOAD_TIMEOUT });
+			await expect(page.getByTestId('login-error')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 			await expect(page.getByTestId('login-error')).toContainText(/authentication failed|invalid credentials/i);
 			await expect(page).toHaveURL('/');
 			await expect(page.getByTestId('login-page')).toBeVisible();

@@ -1,9 +1,10 @@
 <script>
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { getUser, updateUser, revokeSessions, deleteUser, listPermissions, listGroups } from '$lib/api';
-	import { isForbidden } from '$lib/apiError';
+	import { isForbidden, isApiError, isSessionInvalidMessage } from '$lib/apiError';
 	import { showToast } from '$lib/toast';
 	import { user as currentUser, isSuperuser } from '$lib/stores';
 	import { ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from 'lucide-svelte';
@@ -43,6 +44,7 @@
 	let pendingLeaveHref = '';
 	let allowNextNavigation = false;
 	let dirty = false;
+	let loadGen = 0;
 
 	let mfaCode = '';
 
@@ -226,32 +228,49 @@
 		return { permissions, groups };
 	}
 
-	onMount(async () => {
+	async function loadDetail(id) {
+		if (!id) return;
+		const gen = ++loadGen;
+		loading = true;
+		accessDenied = false;
+		error = '';
+		userData = null;
+		try {
+			const [perms, grps, user] = await Promise.all([
+				listPermissions().catch(() => []),
+				listGroups().catch(() => []),
+				getUser(id)
+			]);
+			if (gen !== loadGen) return;
+			availablePermissions = perms || [];
+			availableGroups = grps || [];
+			applyUser(user);
+		} catch (e) {
+			if (gen !== loadGen) return;
+			if (isApiError(e) && e.status === 401 && isSessionInvalidMessage(e.message)) {
+				return;
+			}
+			if (isForbidden(e)) {
+				accessDenied = true;
+			} else {
+				error = e instanceof Error ? e.message : 'Failed to load user';
+			}
+		} finally {
+			if (gen === loadGen) loading = false;
+		}
+	}
+
+	$: if (browser && userId) {
+		void loadDetail(userId);
+	}
+
+	onMount(() => {
 		const onBeforeUnload = (e) => {
 			if (!dirty) return;
 			e.preventDefault();
 			e.returnValue = '';
 		};
 		window.addEventListener('beforeunload', onBeforeUnload);
-
-		try {
-			const [perms, grps, user] = await Promise.all([
-				listPermissions().catch(() => []),
-				listGroups().catch(() => []),
-				getUser(userId)
-			]);
-
-			availablePermissions = perms || [];
-			availableGroups = grps || [];
-			applyUser(user);
-		} catch (e) {
-			if (isForbidden(e)) {
-				accessDenied = true;
-			} else {
-				error = e instanceof Error ? e.message : 'Failed to load user';
-			}
-		}
-		loading = false;
 
 		return () => {
 			window.removeEventListener('beforeunload', onBeforeUnload);

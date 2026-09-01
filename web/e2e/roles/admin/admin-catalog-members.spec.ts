@@ -1,14 +1,10 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import type { Page } from '@playwright/test';
-import { waitForAdminCatalog } from '../../helpers/waits';
+import { waitForAdminCatalog, waitForToastGone } from '../../helpers/waits';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from '../../helpers/catalog';
 
 /** Seed group the admin already belongs to; ephemeral users start in group_a only. */
-
-async function waitForToastGone(page: Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
 
 async function addUserInManagePicker(page: Page, userId: string, email: string) {
 	const ms = page.locator('[data-testid="multiselect"][data-label="Users"]');

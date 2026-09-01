@@ -5,11 +5,7 @@ import {
 	createEphemeralUser,
 	openUserDetailFromAdmin
 } from '../../helpers/userApi';
-import { waitForSignedOut, matchUserUpdate, matchRevokeSessions, LOAD_TIMEOUT } from '../../helpers/waits';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForSignedOut, matchUserUpdate, matchRevokeSessions, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone } from '../../helpers/waits';
 
 test.describe('Admin revoke and delete', describeTags(TAG.admin, TAG.userDetail, TAG.activeSession, TAG.focused), () => {
 	test('revoking sessions signs the target user out', async ({

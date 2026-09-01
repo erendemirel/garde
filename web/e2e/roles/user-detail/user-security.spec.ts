@@ -2,10 +2,7 @@ import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { expectLoginRejected } from '../../helpers/auth';
 import { openUserDetailFromSuperuser, patchUserMaps } from '../../helpers/userApi';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForToastGone } from '../../helpers/waits';
 
 async function confirmSecurityAction(
 	page: import('@playwright/test').Page,

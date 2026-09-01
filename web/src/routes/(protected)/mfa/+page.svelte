@@ -1,6 +1,8 @@
 <script>
-	import { setupMfa, verifyMfa, disableMfa, getMe } from '$lib/api';
+	import { onMount } from 'svelte';
+	import { setupMfa, verifyMfa, disableMfa } from '$lib/api';
 	import { user } from '$lib/stores';
+	import { refreshSession } from '$lib/session';
 	import { goto } from '$app/navigation';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import { ArrowLeft, ShieldCheck, ShieldOff, CheckCircle, X } from 'lucide-svelte';
@@ -13,8 +15,14 @@
 	let success = '';
 	let loading = false;
 	let showConfirmModal = false;
+	let formReady = false;
+
+	onMount(() => {
+		formReady = true;
+	});
 
 	async function handleSetup() {
+		if (!formReady || loading) return;
 		error = '';
 		loading = true;
 		try {
@@ -29,13 +37,13 @@
 	}
 
 	async function handleVerify() {
+		if (!formReady || loading) return;
 		error = '';
 		loading = true;
 		try {
 			await verifyMfa(code);
 			success = 'MFA enabled successfully!';
-			const me = await getMe();
-			user.set(me);
+			await refreshSession();
 			setTimeout(() => goto('/dashboard'), 2000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Verification failed';
@@ -48,13 +56,13 @@
 	}
 
 	async function handleDisable() {
+		if (!formReady || loading) return;
 		error = '';
 		loading = true;
 		try {
 			await disableMfa(code);
 			success = 'MFA disabled successfully!';
-			const me = await getMe();
-			user.set(me);
+			await refreshSession();
 			setTimeout(() => goto('/dashboard'), 2000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to disable MFA';
@@ -114,10 +122,10 @@
 						type="button"
 						data-testid="mfa-setup"
 						on:click={handleSetup}
-						disabled={loading}
+						disabled={!formReady || loading}
 					>
 						<ShieldCheck size={18} />
-						{loading ? 'Setting up...' : 'Setup MFA'}
+						{loading ? 'Setting up...' : formReady ? 'Setup MFA' : 'Loading...'}
 					</button>
 				</div>
 			{/if}
@@ -131,6 +139,8 @@
 			<form
 				class="space-y-4 mt-4"
 				data-testid="mfa-verify-form"
+				data-ready={formReady ? 'true' : 'false'}
+				aria-busy={!formReady}
 				method="post"
 				action="#"
 				onsubmit="return false;"
@@ -145,6 +155,7 @@
 						bind:value={code}
 						placeholder="6-digit code"
 						required
+						disabled={!formReady}
 					/>
 				</label>
 				{#if error}
@@ -154,10 +165,10 @@
 					class="btn-secondary"
 					type="submit"
 					data-testid="mfa-verify-submit"
-					disabled={loading}
+					disabled={!formReady || loading}
 				>
 					<CheckCircle size={18} />
-					{loading ? 'Verifying...' : 'Verify & Enable'}
+					{loading ? 'Verifying...' : formReady ? 'Verify & Enable' : 'Loading...'}
 				</button>
 			</form>
 		{:else if step === 'disable'}
@@ -165,6 +176,8 @@
 			<form
 				class="space-y-4"
 				data-testid="mfa-disable-form"
+				data-ready={formReady ? 'true' : 'false'}
+				aria-busy={!formReady}
 				method="post"
 				action="#"
 				onsubmit="return false;"
@@ -179,6 +192,7 @@
 						bind:value={code}
 						placeholder="6-digit code"
 						required
+						disabled={!formReady}
 					/>
 				</label>
 				{#if error}
@@ -189,10 +203,10 @@
 						class="btn-danger"
 						type="submit"
 						data-testid="mfa-disable-submit"
-						disabled={loading}
+						disabled={!formReady || loading}
 					>
 						<ShieldOff size={18} />
-						{loading ? 'Disabling...' : 'Disable MFA'}
+						{loading ? 'Disabling...' : formReady ? 'Disable MFA' : 'Loading...'}
 					</button>
 					<button
 						type="button"

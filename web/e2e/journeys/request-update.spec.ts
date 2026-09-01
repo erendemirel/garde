@@ -9,15 +9,12 @@ import {
 	openUserDetailFromSuperuser,
 	patchUserMaps
 } from '../helpers/userApi';
-import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT } from '../helpers/waits';
+import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone, waitForRequestUpdateGroups } from '../helpers/waits';
+import { gotoDashboardFresh } from '../helpers/journeys';
 import { describeTags, TAG } from '../helpers/tags';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from '../helpers/catalog';
 
 test.describe.configure({ timeout: 120_000 });
-
-async function waitForToastGone(page: Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
 
 function groupsMultiselect(page: Page): Locator {
 	return page.locator('[data-testid="multiselect"][data-label="Groups"]');
@@ -97,7 +94,7 @@ async function submitRequestUpdate(page: Page) {
 	await page.getByTestId('request-update-submit').click();
 	await submitResponse;
 	await expect(page.getByTestId('toast')).toContainText('Request submitted');
-	await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
+	await waitForPageShell(page, 'dashboard-page');
 }
 
 async function adminApproveUpdate(adminPage: Page, email: string) {
@@ -137,7 +134,7 @@ async function stageAnyGroupChange(page: Page) {
 async function submitGroupRequest(page: Page, groupName: string) {
 	await page.getByTestId('dashboard-link-request-update').click();
 	await waitForPageShell(page, 'request-update-page');
-	await expect(page.getByTestId('request-update-groups')).toBeVisible({ timeout: 15_000 });
+	await waitForRequestUpdateGroups(page);
 	await stageGroupAddByName(page, groupName);
 	const submitResponse = page.waitForResponse(
 		(res) =>
@@ -147,16 +144,7 @@ async function submitGroupRequest(page: Page, groupName: string) {
 	await page.getByTestId('request-update-submit').click();
 	await submitResponse;
 	await expect(page.getByTestId('toast')).toContainText('Request submitted');
-	await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
-}
-
-async function reloadDashboardWithMe(page: Page) {
-	const meResponse = page.waitForResponse(
-		(res) => res.url().includes('/api/users/me') && res.request().method() === 'GET',
-		{ timeout: LOAD_TIMEOUT }
-	);
-	await page.reload();
-	await meResponse;
+	await waitForPageShell(page, 'dashboard-page');
 }
 
 async function adminRejectUpdate(adminPage: Page, email: string, userId?: string) {
@@ -227,7 +215,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 
 			await expect(
 				page.getByTestId('multiselect-chip').or(page.getByTestId('request-update-groups-empty')).first()
-			).toBeVisible({ timeout: 15_000 });
+			).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 
 			await stageAnyGroupChange(page);
 			await expect(
@@ -256,11 +244,11 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 					.getByTestId('multiselect-chip')
 					.or(userPage.getByTestId('request-update-groups-empty'))
 					.first()
-			).toBeVisible({ timeout: 15_000 });
+			).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 			await stageAnyGroupChange(userPage);
 			await userPage.getByTestId('request-update-submit').click();
 			await expect(userPage.getByTestId('toast')).toContainText('Request submitted');
-			await userPage.waitForURL(/\/dashboard/, { timeout: 10_000 });
+			await userPage.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
 			await userContext.close();
 
 			await suPage.goto('/superuser');
@@ -288,12 +276,12 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 					.getByTestId('multiselect-chip')
 					.or(userPage.getByTestId('request-update-groups-empty'))
 					.first()
-			).toBeVisible({ timeout: 15_000 });
+			).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 
 			const addedGroup = await stageGroupAdd(userPage);
 			await userPage.getByTestId('request-update-submit').click();
 			await expect(userPage.getByTestId('toast')).toContainText('Request submitted');
-			await userPage.waitForURL(/\/dashboard/, { timeout: 10_000 });
+			await userPage.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
 			await userContext.close();
 
 			await suPage.goto('/superuser');
@@ -338,7 +326,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				const userPage = await userContext.newPage();
 				await loginViaRequest(userPage.request, ephemeralUser);
 				await userPage.goto('/dashboard');
-				await expect(userPage.getByTestId('dashboard-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+				await expect(userPage.getByTestId('dashboard-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 				await userPage.getByTestId('dashboard-link-request-update').click();
 				await expect(userPage.getByTestId('request-update-page')).toBeVisible();
 				await expect(
@@ -346,12 +334,12 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 						.getByTestId('multiselect-chip')
 						.or(userPage.getByTestId('request-update-permissions-empty'))
 						.first()
-				).toBeVisible({ timeout: 15_000 });
+				).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 
 				await stagePermissionAdd(userPage, permissionName);
 				await userPage.getByTestId('request-update-submit').click();
 				await expect(userPage.getByTestId('toast')).toContainText('Request submitted');
-				await userPage.waitForURL(/\/dashboard/, { timeout: 10_000 });
+				await userPage.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
 				await userContext.close();
 
 				await adminPage.goto('/admin');
@@ -430,7 +418,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			adminPage: adminPage
 		}) => {
 			await submitGroupRequest(page, SCOPE_GROUP);
-			await reloadDashboardWithMe(page);
+			await gotoDashboardFresh(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 
 			await adminPage.goto('/admin');
@@ -442,7 +430,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			await adminPage.getByTestId('confirm-modal-confirm').click();
 			await expect(adminPage.getByTestId('toast')).toContainText('Update rejected');
 
-			await reloadDashboardWithMe(page);
+			await gotoDashboardFresh(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
 			await expect(
 				page.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
@@ -463,7 +451,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			await adminPage.getByTestId('confirm-modal-confirm').click();
 			await expect(adminPage.getByTestId('toast')).toContainText('Update approved');
 
-			await reloadDashboardWithMe(page);
+			await gotoDashboardFresh(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
 			await expect(
 				page.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
@@ -491,13 +479,13 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				expect(visRes.ok()).toBeTruthy();
 
 				await submitGroupRequest(page, SCOPE_GROUP);
-				await reloadDashboardWithMe(page);
+				await gotoDashboardFresh(page);
 				await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 
 				await page.getByTestId('dashboard-link-request-update').click();
 				await waitForPageShell(page, 'request-update-page');
 				await expect(page.getByTestId('request-update-permissions')).toBeVisible({
-					timeout: 15_000
+					timeout: REDIRECT_TIMEOUT
 				});
 				await stagePermissionAddByName(page, permissionName);
 
@@ -509,7 +497,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await page.getByTestId('request-update-submit').click();
 				await submitResponse;
 				await expect(page.getByTestId('toast')).toContainText('Request submitted');
-				await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
+				await page.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
 
 				await adminPage.goto('/admin');
 				await openUserDetailFromAdmin(adminPage, ephemeralUser.email);
@@ -565,7 +553,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				const verifyContext = await browser.newContext();
 				const verifyPage = await verifyContext.newPage();
 				await startUserSession(verifyPage, ephemeralUser);
-				await reloadDashboardWithMe(verifyPage);
+				await gotoDashboardFresh(verifyPage);
 				await expect(
 					verifyPage.locator(`[data-testid="dashboard-permission-chip"][data-key="${permissionName}"]`)
 				).toBeVisible();
@@ -594,24 +582,24 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			ephemeralUser
 		}) => {
 			await submitGroupRequest(page, SCOPE_GROUP);
-			await reloadDashboardWithMe(page);
+			await gotoDashboardFresh(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 
 			await adminRejectUpdate(adminPage, ephemeralUser.email, ephemeralUser.id);
 
-			await reloadDashboardWithMe(page);
+			await gotoDashboardFresh(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
 			await expect(
 				page.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
 			).toHaveCount(0);
 
 			await submitGroupRequest(page, SCOPE_GROUP);
-			await reloadDashboardWithMe(page);
+			await gotoDashboardFresh(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 
 			await superuserApproveUpdate(suPage, ephemeralUser.email, ephemeralUser.id);
 
-			await reloadDashboardWithMe(page);
+			await gotoDashboardFresh(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
 			await expect(
 				page.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
@@ -641,7 +629,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await page.getByTestId('dashboard-link-request-update').click();
 				await waitForPageShell(page, 'request-update-page');
 				await expect(page.getByTestId('request-update-permissions')).toBeVisible({
-					timeout: 15_000
+					timeout: REDIRECT_TIMEOUT
 				});
 				await stagePermissionAddByName(page, permissionName);
 				const submitResponse = page.waitForResponse(
@@ -651,9 +639,9 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				);
 				await page.getByTestId('request-update-submit').click();
 				await submitResponse;
-				await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
+				await page.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
 
-				await reloadDashboardWithMe(page);
+				await gotoDashboardFresh(page);
 				await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 				await expect(
 					page.locator(`[data-testid="dashboard-permission-chip"][data-key="${permissionName}"]`)
@@ -661,7 +649,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 
 				await adminRejectUpdate(adminPage, ephemeralUser.email);
 
-				await reloadDashboardWithMe(page);
+				await gotoDashboardFresh(page);
 				await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
 				await expect(
 					page.locator(`[data-testid="dashboard-permission-chip"][data-key="${permissionName}"]`)
@@ -725,7 +713,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			const verifyContext = await browser.newContext();
 			const verifyPage = await verifyContext.newPage();
 			await startUserSession(verifyPage, ephemeralUser);
-			await reloadDashboardWithMe(verifyPage);
+			await gotoDashboardFresh(verifyPage);
 			await expect(
 				verifyPage.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
 			).toHaveCount(0);
@@ -772,7 +760,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await userPage.getByTestId('dashboard-link-request-update').click();
 				await waitForPageShell(userPage, 'request-update-page');
 				await expect(userPage.getByTestId('request-update-permissions')).toBeVisible({
-					timeout: 15_000
+					timeout: REDIRECT_TIMEOUT
 				});
 				await stagePermissionRemoveByName(userPage, permissionName);
 				await submitRequestUpdate(userPage);
@@ -783,7 +771,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				const verifyContext = await browser.newContext();
 				const verifyPage = await verifyContext.newPage();
 				await startUserSession(verifyPage, ephemeralUser);
-				await reloadDashboardWithMe(verifyPage);
+				await gotoDashboardFresh(verifyPage);
 				await expect(
 					verifyPage.locator(`[data-testid="dashboard-permission-chip"][data-key="${permissionName}"]`)
 				).toHaveCount(0);
@@ -838,7 +826,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 
 				await adminRejectUpdate(adminPage, ephemeralUser.email);
 
-				await reloadDashboardWithMe(page);
+				await gotoDashboardFresh(page);
 				await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
 				await expect(
 					page.locator(`[data-testid="dashboard-permission-chip"][data-key="${permissionName}"]`)
@@ -954,7 +942,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 
 				await startUserSession(userPage, user);
 				await submitGroupRequest(userPage, SCOPE_GROUP);
-				await reloadDashboardWithMe(userPage);
+				await gotoDashboardFresh(userPage);
 				await expect(userPage.getByTestId('dashboard-pending-update')).toBeVisible();
 
 				await adminPage.goto('/admin');
@@ -964,7 +952,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await expect(adminPage.getByTestId('toast')).toContainText('Update approved');
 				await waitForToastGone(adminPage);
 
-				await reloadDashboardWithMe(userPage);
+				await gotoDashboardFresh(userPage);
 				await expect(userPage.getByTestId('dashboard-pending-update')).toHaveCount(0);
 				await expect(
 					userPage.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)

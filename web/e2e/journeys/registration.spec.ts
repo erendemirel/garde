@@ -7,14 +7,10 @@ import {
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser
 } from '../helpers/userApi';
-import { matchUserUpdate, waitForPageShell, LOAD_TIMEOUT } from '../helpers/waits';
+import { matchUserUpdate, waitForPageShell, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone } from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe.configure({ timeout: 120_000 });
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
 
 async function fillRegisterForm(page: import('@playwright/test').Page, email: string, password: string) {
 	for (let attempt = 0; attempt < 10; attempt++) {
@@ -30,11 +26,11 @@ async function submitRegisterForm(page: import('@playwright/test').Page, email: 
 	let lastError: unknown;
 	for (let attempt = 0; attempt < 3; attempt++) {
 		await page.goto('/register', { waitUntil: 'domcontentloaded' });
-		await expect(page.getByTestId('register-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+		await expect(page.getByTestId('register-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 		await expect(page.getByTestId('register-form')).toHaveAttribute('data-ready', 'true', {
-			timeout: LOAD_TIMEOUT
+			timeout: REDIRECT_TIMEOUT
 		});
-		await expect(page.getByTestId('register-submit')).toBeEnabled({ timeout: LOAD_TIMEOUT });
+		await expect(page.getByTestId('register-submit')).toBeEnabled({ timeout: REDIRECT_TIMEOUT });
 		await fillRegisterForm(page, email, password);
 
 		const registerResponse = page.waitForResponse(

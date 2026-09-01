@@ -9,7 +9,7 @@
 	let error = '';
 	let needsMfa = false;
 	let loading = false;
-	/** True after mount — e2e waits on this before submitting (avoids pre-hydration no-ops). */
+	/** True after mount — gates interactivity until Svelte handlers are wired. */
 	let formReady = false;
 	let emailInput;
 	let passwordInput;
@@ -19,6 +19,7 @@
 	});
 
 	async function handleLogin() {
+		if (!formReady || loading) return;
 		error = '';
 		if (!emailInput?.checkValidity() || !passwordInput?.checkValidity()) {
 			emailInput?.reportValidity();
@@ -42,6 +43,7 @@
 	}
 
 	function onLoginKeydown(e) {
+		if (!formReady || loading) return;
 		if (e.key === 'Enter') {
 			e.preventDefault();
 			void handleLogin();
@@ -60,6 +62,7 @@
 			class="space-y-4"
 			data-testid="login-form"
 			data-ready={formReady ? 'true' : 'false'}
+			aria-busy={!formReady}
 			on:keydown={onLoginKeydown}
 		>
 			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
@@ -72,6 +75,7 @@
 					bind:value={email}
 					required
 					autocomplete="email"
+					disabled={!formReady}
 				/>
 			</label>
 			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
@@ -84,6 +88,7 @@
 					bind:value={password}
 					required
 					autocomplete="current-password"
+					disabled={!formReady}
 				/>
 			</label>
 			{#if needsMfa}
@@ -96,6 +101,7 @@
 						bind:value={mfaCode}
 						placeholder="6-digit code"
 						autocomplete="one-time-code"
+						disabled={!formReady}
 					/>
 				</label>
 			{/if}
@@ -106,10 +112,10 @@
 				class="btn-secondary w-full justify-center font-bold"
 				type="button"
 				data-testid="login-submit"
-				disabled={loading}
+				disabled={!formReady || loading}
 				on:click={handleLogin}
 			>
-				{loading ? 'Signing in...' : 'Sign In'}
+				{loading ? 'Signing in...' : formReady ? 'Sign In' : 'Loading...'}
 			</button>
 		</form>
 		<div class="links font-semibold">

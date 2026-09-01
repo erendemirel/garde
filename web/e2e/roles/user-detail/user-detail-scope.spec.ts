@@ -1,13 +1,14 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { createEphemeralUser, deleteUserById } from '../../helpers/userApi';
+import { waitForOutOfScopeDenied } from '../../helpers/waits';
 
 /**
- * Admin scope — seed admin can only manage users in shared groups.
- * API returns 401 for out-of-scope GET /users/:id; the client treats that as session expiry.
+ * Admin scope — admins only manage users who share a group with them.
+ * Out-of-scope GET /users/:id → 401 "unauthorized"; UI shows access denied (admin stays signed in).
  */
 test.describe('User detail admin scope', describeTags(TAG.userDetail, TAG.admin, TAG.focused), () => {
-	test('admin is signed out when opening a user outside their groups', async ({
+	test('admin sees access denied when opening a user outside their groups', async ({
 		adminPage: page,
 		suRequest,
 		uniqueSuffix
@@ -26,9 +27,12 @@ test.describe('User detail admin scope', describeTags(TAG.userDetail, TAG.admin,
 			});
 			userId = isolated.id;
 
-			await page.goto(`/admin/users/${isolated.id}`);
-			await expect(page).toHaveURL('/', { timeout: 15_000 });
-			await expect(page.getByTestId('login-page')).toBeVisible();
+			await waitForOutOfScopeDenied(page, isolated.id);
+
+			// Session must remain valid — admin can still use the console.
+			await page.goto('/admin');
+			await expect(page.getByTestId('admin-page')).toBeVisible();
+			await expect(page.getByTestId('login-page')).toHaveCount(0);
 		} finally {
 			if (userId) await deleteUserById(suRequest, userId).catch(() => undefined);
 			await suRequest
