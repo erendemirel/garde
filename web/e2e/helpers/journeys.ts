@@ -1,6 +1,14 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { totpCode } from './totp';
-import { LOAD_TIMEOUT, matchUserUpdate, waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from './waits';
+import {
+	LOAD_TIMEOUT,
+	matchUserUpdate,
+	waitForPageShell,
+	waitForRequestUpdateCatalog,
+	waitForRequestUpdateGroups,
+	waitForSuperuserCatalog,
+	waitForVisibilityPanel
+} from './waits';
 import {
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser,
@@ -278,9 +286,30 @@ export async function submitRequestUpdate(page: Page, opts?: JourneyActOptions) 
 	await page.waitForURL(/\/dashboard/, { timeout: LOAD_TIMEOUT });
 }
 
-export async function openRequestUpdate(page: Page) {
-	await page.getByTestId('dashboard-link-request-update').click();
-	await waitForPageShell(page, 'request-update-page');
+export async function openRequestUpdate(page: Page, opts?: { requireGroups?: boolean }) {
+	await Promise.all([
+		page.waitForResponse(
+			(res) => {
+				if (res.request().method() !== 'GET') return false;
+				try {
+					const path = new URL(res.url()).pathname;
+					return path.endsWith('/api/groups') || path.endsWith('/api/permissions');
+				} catch {
+					return false;
+				}
+			},
+			{ timeout: LOAD_TIMEOUT }
+		),
+		(async () => {
+			await page.getByTestId('dashboard-link-request-update').click();
+			await waitForPageShell(page, 'request-update-page');
+		})()
+	]);
+	if (opts?.requireGroups) {
+		await waitForRequestUpdateGroups(page);
+	} else {
+		await waitForRequestUpdateCatalog(page);
+	}
 }
 
 export async function completeMfaSetupFromChoice(page: Page): Promise<string> {

@@ -78,6 +78,22 @@ export async function waitForPageShell(page: Page, testId: string, timeout = LOA
 	await expect(page.getByTestId(testId)).toBeVisible({ timeout });
 }
 
+/** Request-update onMount fetches — groups section reflects API data (not initial empty placeholder). */
+export async function waitForRequestUpdateCatalog(page: Page, timeout = LOAD_TIMEOUT) {
+	await expect(page.getByTestId('request-update-form')).toBeVisible({ timeout });
+	await expect(
+		page
+			.getByTestId('request-update-groups')
+			.or(page.getByTestId('request-update-groups-empty'))
+	).toBeVisible({ timeout });
+}
+
+/** Groups multiselect mounted and populated (ephemeral users with group_a should always have addable groups). */
+export async function waitForRequestUpdateGroups(page: Page, timeout = LOAD_TIMEOUT) {
+	await waitForRequestUpdateCatalog(page, timeout);
+	await expect(page.getByTestId('request-update-groups')).toBeVisible({ timeout });
+}
+
 /** UsersListPanel — `users-list` mounts only after the first fetch. */
 export async function waitForUsersList(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);

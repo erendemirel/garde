@@ -4,6 +4,7 @@ import { loginAs, loginViaRequest, startUserSession } from '../helpers/auth';
 import {
 	createEphemeralUser,
 	deleteUserById,
+	openUserDetailById,
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser,
 	patchUserMaps
@@ -160,10 +161,14 @@ async function reloadDashboardWithMe(page: Page) {
 	await meResponse;
 }
 
-async function adminRejectUpdate(adminPage: Page, email: string) {
-	await adminPage.goto('/admin');
-	await waitForPageShell(adminPage, 'admin-page');
-	await openUserDetailFromAdmin(adminPage, email);
+async function adminRejectUpdate(adminPage: Page, email: string, userId?: string) {
+	if (userId) {
+		await openUserDetailById(adminPage, userId, email);
+	} else {
+		await adminPage.goto('/admin');
+		await waitForPageShell(adminPage, 'admin-page');
+		await openUserDetailFromAdmin(adminPage, email);
+	}
 	await expect(adminPage.getByTestId('user-detail-pending-update')).toBeVisible();
 	const updateResponse = adminPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 	await adminPage.getByTestId('user-detail-reject-update').click();
@@ -172,12 +177,17 @@ async function adminRejectUpdate(adminPage: Page, email: string) {
 	await expect(adminPage.getByTestId('toast')).toContainText('Update rejected', {
 		timeout: LOAD_TIMEOUT
 	});
+	await waitForToastGone(adminPage);
 }
 
-async function superuserApproveUpdate(suPage: Page, email: string) {
-	await suPage.goto('/superuser');
-	await waitForPageShell(suPage, 'superuser-page');
-	await openUserDetailFromSuperuser(suPage, email);
+async function superuserApproveUpdate(suPage: Page, email: string, userId?: string) {
+	if (userId) {
+		await openUserDetailById(suPage, userId, email);
+	} else {
+		await suPage.goto('/superuser');
+		await waitForPageShell(suPage, 'superuser-page');
+		await openUserDetailFromSuperuser(suPage, email);
+	}
 	await expect(suPage.getByTestId('user-detail-pending-update')).toBeVisible();
 	const updateResponse = suPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 	await suPage.getByTestId('user-detail-approve-update').click();
@@ -186,6 +196,7 @@ async function superuserApproveUpdate(suPage: Page, email: string) {
 	await expect(suPage.getByTestId('toast')).toContainText('Update approved', {
 		timeout: LOAD_TIMEOUT
 	});
+	await waitForToastGone(suPage);
 }
 
 /**
@@ -584,13 +595,11 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			superuserPage: suPage,
 			ephemeralUser
 		}) => {
-			test.setTimeout(90_000);
-
 			await submitGroupRequest(page, SCOPE_GROUP);
 			await reloadDashboardWithMe(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 
-			await adminRejectUpdate(adminPage, ephemeralUser.email);
+			await adminRejectUpdate(adminPage, ephemeralUser.email, ephemeralUser.id);
 
 			await reloadDashboardWithMe(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);
@@ -602,7 +611,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			await reloadDashboardWithMe(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toBeVisible();
 
-			await superuserApproveUpdate(suPage, ephemeralUser.email);
+			await superuserApproveUpdate(suPage, ephemeralUser.email, ephemeralUser.id);
 
 			await reloadDashboardWithMe(page);
 			await expect(page.getByTestId('dashboard-pending-update')).toHaveCount(0);

@@ -2,6 +2,7 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import path from 'node:path';
 import { e2eAdmin, e2eSuperuser, loginAs } from './auth';
 import {
+	LOAD_TIMEOUT,
 	matchUsersListRequest,
 	waitForPageShell,
 	waitForUserDetail,
@@ -173,6 +174,27 @@ export async function deleteUserByEmail(api: RequestLike, email: string) {
 	const user = await findUserByEmail(api, email);
 	if (!user?.id) return;
 	await deleteUserById(api, user.id);
+}
+
+/** Open user detail by id — skips users-list search (faster under parallel load). */
+export async function openUserDetailById(page: Page, userId: string, expectedEmail?: string) {
+	const detailResponse = page.waitForResponse(
+		(res) => {
+			if (res.request().method() !== 'GET') return false;
+			try {
+				return new URL(res.url()).pathname === `/api/users/${userId}`;
+			} catch {
+				return false;
+			}
+		},
+		{ timeout: LOAD_TIMEOUT }
+	);
+	await page.goto(`/admin/users/${userId}`);
+	await detailResponse;
+	await waitForUserDetail(page);
+	if (expectedEmail) {
+		await expect(page.getByTestId('user-detail-email')).toHaveText(expectedEmail);
+	}
 }
 
 /** Open a user detail page from the admin users tab. */
