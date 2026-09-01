@@ -30,10 +30,10 @@ GitHub Actions runs focused e2e tests on every push and pull request (see `.gith
 docker compose --profile dev up --build -d   # API on :8443
 cd web
 bun install
-bun run test:e2e:focused
+bun run test:e2e
 ```
 
-See [web/e2e/README.md](../web/e2e/README.md) for layout, tags, and conventions.
+See [web/e2e/README.md](../web/e2e/README.md) for layout, tags, and conventions. For a faster local run excluding long epics: `bun run test:e2e:focused`.
 
 #### Tests That Require mTLS (API-key auth flow)
 
