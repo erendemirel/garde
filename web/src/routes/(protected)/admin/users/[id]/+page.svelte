@@ -4,7 +4,7 @@
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { getUser, updateUser, revokeSessions, deleteUser, listPermissions, listGroups } from '$lib/api';
-	import { isForbidden, isApiError } from '$lib/apiError';
+	import { isForbidden, isApiError, isSessionInvalidMessage } from '$lib/apiError';
 	import { showToast } from '$lib/toast';
 	import { user as currentUser, isSuperuser } from '$lib/stores';
 	import { ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from 'lucide-svelte';
@@ -247,8 +247,7 @@
 			applyUser(user);
 		} catch (e) {
 			if (gen !== loadGen) return;
-			if (isApiError(e) && e.status === 401) {
-				// api.ts clears the session and redirects to login.
+			if (isApiError(e) && e.status === 401 && isSessionInvalidMessage(e.message)) {
 				return;
 			}
 			if (isForbidden(e)) {

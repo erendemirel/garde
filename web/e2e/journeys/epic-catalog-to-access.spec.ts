@@ -17,10 +17,11 @@ import {
 	type JourneyActOptions
 } from '../helpers/journeys';
 import { describeTags, TAG } from '../helpers/tags';
-import { createEphemeralUser, deleteUserById, openUserDetailFromAdmin } from '../helpers/userApi';
+import { createEphemeralUser, deleteUserById } from '../helpers/userApi';
 import {
 	waitForPageShell,
 	waitForRequestUpdateCatalog,
+	waitForOutOfScopeDenied,
 	LOAD_TIMEOUT,
 	REDIRECT_TIMEOUT
 } from '../helpers/waits';
@@ -88,11 +89,7 @@ test.describe(
 				await stagePermissionRemoveByName(userPage, permissionName);
 				await submitRequestUpdate(userPage, epic);
 
-				await adminPage.goto('/admin');
-				await openUserDetailFromAdmin(adminPage, mainUser.email);
-				await adminPage.getByTestId('user-detail-approve-update').click();
-				await adminPage.getByTestId('confirm-modal-confirm').click();
-				await expect(adminPage.getByTestId('user-detail-pending-update')).toBeVisible();
+				await adminApproveUpdate(adminPage, mainUser.email, epic);
 
 				const createGroup = await suRequest.post('/api/admin/groups', {
 					data: { name: isolatedGroup, definition: 'Epic isolated group' }
@@ -106,8 +103,7 @@ test.describe(
 				const adminProbe = await browser.newContext();
 				const probePage = await adminProbe.newPage();
 				await loginViaRequest(probePage.request, e2eAdmin);
-				await probePage.goto(`/admin/users/${isolated.id}`);
-				await expect(probePage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+				await waitForOutOfScopeDenied(probePage, isolated.id);
 				await adminProbe.close();
 
 				await removeVisibilityInMatrix(suPage, permissionName, VISIBILITY_GROUP, epic);

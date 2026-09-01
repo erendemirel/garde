@@ -1,6 +1,6 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { ApiError } from './apiError';
+import { ApiError, isSessionInvalidMessage } from './apiError';
 import { clearAuthState } from './stores';
 
 // Use environment variable in production, fallback to /api for development
@@ -16,11 +16,31 @@ function isPublicLocation() {
 	return PUBLIC_PATHS.has(window.location.pathname);
 }
 
-function handleExpiredSession() {
+/** Bumped when the session is cleared so in-flight refreshSession calls cannot repopulate stores. */
+let sessionGeneration = 0;
+
+export function getSessionGeneration() {
+	return sessionGeneration;
+}
+
+/** Clear client auth state and invalidate any in-flight session refresh. */
+export function invalidateSession() {
+	sessionGeneration++;
 	clearAuthState();
+}
+
+function handleExpiredSession() {
+	invalidateSession();
 	if (browser && !isPublicLocation()) {
 		goto('/');
 	}
+}
+
+/** Only true session/auth failures should clear client state — not out-of-scope 401s. */
+function shouldExpireSession(status: number, path: string, message: string): boolean {
+	if (status !== 401 || CREDENTIAL_401_ENDPOINTS.has(path)) return false;
+	if (path.endsWith('/users/me')) return true;
+	return isSessionInvalidMessage(message);
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -38,7 +58,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 	try {
 		json = await res.json();
 	} catch {
-		if (res.status === 401 && !CREDENTIAL_401_ENDPOINTS.has(path)) {
+		if (shouldExpireSession(res.status, path, '')) {
 			handleExpiredSession();
 		}
 		throw new ApiError(
@@ -47,7 +67,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 		);
 	}
 
-	if (res.status === 401 && !CREDENTIAL_401_ENDPOINTS.has(path)) {
+	const errorMessage = 'error' in json ? json.error.message : '';
+
+	if (shouldExpireSession(res.status, path, errorMessage)) {
 		handleExpiredSession();
 	}
 

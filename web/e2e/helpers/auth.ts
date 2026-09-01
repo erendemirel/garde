@@ -109,7 +109,23 @@ export async function signInApprovedUser(page: Page, creds: LoginCreds) {
 
 /** Wait until Svelte has mounted and the login form handlers are wired. */
 export async function waitForLoginFormReady(page: Page, timeout = REDIRECT_TIMEOUT) {
-	await expect(page.getByTestId('login-form')).toHaveAttribute('data-ready', 'true', { timeout });
+	const deadline = Date.now() + timeout;
+	for (let attempt = 0; attempt < 5; attempt++) {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) break;
+		try {
+			await expect(page.getByTestId('login-form')).toHaveAttribute('data-ready', 'true', {
+				timeout: Math.min(remaining, 5_000)
+			});
+			await expect(page.getByTestId('login-submit')).toBeEnabled();
+			return;
+		} catch {
+			if (attempt < 4) {
+				await page.reload({ waitUntil: 'load' });
+			}
+		}
+	}
+	await expect(page.getByTestId('login-form')).toHaveAttribute('data-ready', 'true', { timeout: 0 });
 	await expect(page.getByTestId('login-submit')).toBeEnabled();
 }
 

@@ -14,10 +14,16 @@ import {
 	createEphemeralUser,
 	deleteUserById,
 	ensureSeedAdminReady,
-	openUserDetailFromAdmin,
+	openUserDetailById,
 	restoreSeedAdminAccess
 } from '../helpers/userApi';
-import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT } from '../helpers/waits';
+import {
+	waitForPageShell,
+	waitForSignedOut,
+	waitForOutOfScopeDenied,
+	matchUserUpdate,
+	LOAD_TIMEOUT
+} from '../helpers/waits';
 
 const epic: JourneyActOptions = { outcomesOnly: true };
 
@@ -59,8 +65,7 @@ test.describe(
 				});
 				userId = user.id;
 
-				await adminPage.goto(`/admin/users/${user.id}`);
-				await expect(adminPage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+				await waitForOutOfScopeDenied(adminPage, user.id);
 
 				const userContext = await browser.newContext();
 				const userPage = await userContext.newPage();
@@ -72,8 +77,7 @@ test.describe(
 				const adminProbe = await browser.newContext();
 				const probePage = await adminProbe.newPage();
 				await startUserSession(probePage, e2eAdmin);
-				await probePage.goto(`/admin/users/${user.id}`);
-				await expect(probePage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+				await waitForOutOfScopeDenied(probePage, user.id);
 				await adminProbe.close();
 
 				await openAdminManagement(suPage);
@@ -93,20 +97,19 @@ test.describe(
 				const scopedAdmin = await adminContext.newPage();
 				await startUserSession(scopedAdmin, e2eAdmin);
 
-				await adminApproveUpdate(scopedAdmin, user.email, epic);
+				await adminApproveUpdate(scopedAdmin, user.email, { ...epic, userId: user.id });
 				await reloadDashboardWithMe(userPage);
 				await expect(
 					userPage.locator(`[data-testid="dashboard-group-chip"][data-key="${SCOPE_GROUP}"]`)
 				).toBeVisible();
 
-				await scopedAdmin.goto('/admin');
-				await openUserDetailFromAdmin(scopedAdmin, user.email);
+				await openUserDetailById(scopedAdmin, user.id, user.email);
 				const lockResponse = scopedAdmin.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 				await scopedAdmin.getByTestId('user-detail-lock-btn').click();
 				await scopedAdmin.getByTestId('confirm-modal-confirm').click();
 				await lockResponse;
 
-				await waitForSignedOut(userPage, { reload: true });
+				await waitForSignedOut(userPage, { reload: true, timeout: LOAD_TIMEOUT });
 
 				await scopedAdmin.getByTestId('user-detail-lock-btn').click();
 				await scopedAdmin.getByTestId('confirm-modal-confirm').click();

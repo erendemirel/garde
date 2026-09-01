@@ -136,8 +136,8 @@
 			if (groupsAdd.length) parts.push(`+${groupsAdd.length} group`);
 			if (groupsRemove.length) parts.push(`−${groupsRemove.length} group`);
 			showToast(`Request submitted (${parts.join(', ')})`, 'success');
-			await refreshSession();
 			await goto('/dashboard');
+			void refreshSession().catch(() => undefined);
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'Request failed', 'error');
 		}

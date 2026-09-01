@@ -9,7 +9,7 @@ import {
 	openUserDetailFromSuperuser,
 	patchUserMaps
 } from '../helpers/userApi';
-import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone, waitForRequestUpdateCatalog } from '../helpers/waits';
+import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone, waitForRequestUpdateGroups } from '../helpers/waits';
 import { gotoDashboardFresh } from '../helpers/journeys';
 import { describeTags, TAG } from '../helpers/tags';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from '../helpers/catalog';
@@ -94,7 +94,7 @@ async function submitRequestUpdate(page: Page) {
 	await page.getByTestId('request-update-submit').click();
 	await submitResponse;
 	await expect(page.getByTestId('toast')).toContainText('Request submitted');
-	await page.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
+	await waitForPageShell(page, 'dashboard-page');
 }
 
 async function adminApproveUpdate(adminPage: Page, email: string) {
@@ -134,7 +134,7 @@ async function stageAnyGroupChange(page: Page) {
 async function submitGroupRequest(page: Page, groupName: string) {
 	await page.getByTestId('dashboard-link-request-update').click();
 	await waitForPageShell(page, 'request-update-page');
-	await expect(page.getByTestId('request-update-groups')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+	await waitForRequestUpdateGroups(page);
 	await stageGroupAddByName(page, groupName);
 	const submitResponse = page.waitForResponse(
 		(res) =>
@@ -144,7 +144,7 @@ async function submitGroupRequest(page: Page, groupName: string) {
 	await page.getByTestId('request-update-submit').click();
 	await submitResponse;
 	await expect(page.getByTestId('toast')).toContainText('Request submitted');
-	await gotoDashboardFresh(page);
+	await waitForPageShell(page, 'dashboard-page');
 }
 
 async function adminRejectUpdate(adminPage: Page, email: string, userId?: string) {

@@ -62,6 +62,48 @@ export function matchMeGet(res: Response) {
 	}
 }
 
+/** Match GET /api/users/:id */
+export function matchUserGet(res: Response, userId?: string) {
+	if (res.request().method() !== 'GET') return false;
+	try {
+		const path = new URL(res.url()).pathname;
+		if (!/\/api\/users\/[^/]+$/.test(path)) return false;
+		if (userId && !path.endsWith(`/api/users/${userId}`)) return false;
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Admin opened a user outside their scope.
+ * Backend: GET /users/:id returns 401 + "unauthorized" (authorization failure, not session expiry).
+ * UI: user-detail shows access denied; the admin session stays signed in.
+ */
+export async function waitForOutOfScopeDenied(
+	page: Page,
+	userId: string,
+	path = `/admin/users/${userId}`,
+	timeout = LOAD_TIMEOUT
+) {
+	const userResponse = page.waitForResponse(
+		(res) => matchUserGet(res, userId),
+		{ timeout }
+	);
+	await page.goto(path);
+	const res = await userResponse;
+	expect(res.status()).toBe(401);
+	const body = await res.json().catch(() => ({}));
+	const message = String(body?.error?.message ?? '').toLowerCase();
+	expect(message).toContain('unauthorized');
+	expect(message).not.toContain('session invalid');
+
+	await waitForSessionReady(page, timeout);
+	await expect(page.getByTestId('app-nav')).toBeVisible({ timeout });
+	await expect(page.getByTestId('login-page')).toHaveCount(0);
+	await expect(page.getByTestId('user-detail-access-denied')).toBeVisible({ timeout });
+}
+
 /** POST /api/users/password/change */
 export function matchPasswordChange(res: Response) {
 	if (res.request().method() !== 'POST') return false;
@@ -204,25 +246,22 @@ export async function waitForSignedOut(
 	opts?: { path?: string; reload?: boolean; timeout?: number }
 ) {
 	const timeout = opts?.timeout ?? REDIRECT_TIMEOUT;
-	const meResponse = page.waitForResponse(matchMeGet, { timeout: LOAD_TIMEOUT });
+	const meResponse = page.waitForResponse(matchMeGet, { timeout: LOAD_TIMEOUT }).catch(() => undefined);
 	if (opts?.reload) {
 		await page.reload();
 	} else {
 		await page.goto(opts?.path ?? '/dashboard');
 	}
-	await meResponse.catch(() => undefined);
+	await meResponse;
 	await expect(page.getByTestId('login-page')).toBeVisible({ timeout });
 	await expect(page.getByTestId('app-nav')).toHaveCount(0);
 }
 
-/** Password change signs out after success toast + 2s delay — wait for API then login redirect. */
+/** Password change signs out immediately after success — wait for API then login redirect. */
 export async function waitForPasswordChangeSignOut(page: Page) {
 	const changeResponse = page.waitForResponse(matchPasswordChange, { timeout: LOAD_TIMEOUT });
 	await page.getByTestId('confirm-modal-confirm').click();
 	const res = await changeResponse;
 	expect(res.ok()).toBeTruthy();
-	await expect(page.getByTestId('password-success')).toContainText('Password changed', {
-		timeout: REDIRECT_TIMEOUT
-	});
 	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 }

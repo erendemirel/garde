@@ -1,6 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
-	import { changePassword, logout } from '$lib/api';
+	import { changePassword, invalidateSession, logout } from '$lib/api';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -41,11 +41,11 @@
 		try {
 			await changePassword(oldPassword, newPassword, mfaCode || undefined);
 			success = 'Password changed! You will be logged out.';
-			setTimeout(async () => {
+			invalidateSession();
+			try {
 				await logout();
-				user.set(null);
-				goto('/');
-			}, 2000);
+			} catch {}
+			goto('/');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Password change failed';
 		}

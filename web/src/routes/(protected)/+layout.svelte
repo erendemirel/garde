@@ -26,7 +26,10 @@
 	onMount(async () => {
 		bootError = '';
 		try {
-			await refreshSession();
+			const me = await refreshSession();
+			if (me?.mfa_enforced && !me.mfa_enabled && !path.startsWith('/mfa')) {
+				goto('/mfa');
+			}
 		} catch (e) {
 			clearAuthState();
 			bootError = e instanceof Error ? e.message : 'Session expired';

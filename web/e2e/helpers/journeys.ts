@@ -13,6 +13,7 @@ import {
 	waitForToastGone
 } from './waits';
 import {
+	openUserDetailById,
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser,
 	patchUserMaps
@@ -23,7 +24,7 @@ import { VISIBILITY_GROUP, SCOPE_GROUP } from './catalog';
 export { VISIBILITY_GROUP, SCOPE_GROUP, waitForToastGone };
 
 /** When true, act helpers wait for API/UI completion without toast copy assertions (for @epic specs). */
-export type JourneyActOptions = { outcomesOnly?: boolean };
+export type JourneyActOptions = { outcomesOnly?: boolean; userId?: string };
 
 async function dismissToast(page: Page, pattern?: string | RegExp, opts?: JourneyActOptions) {
 	if (opts?.outcomesOnly) {
@@ -152,8 +153,15 @@ export async function removeVisibilityInMatrix(
 		`[data-testid="superuser-visibility-cell"][data-permission-name="${permissionName}"][data-group-name="${groupName}"]`
 	);
 	await expect(cell).toHaveAttribute('aria-pressed', 'true');
+	const visibilityResponse = page.waitForResponse(
+		(res) =>
+			res.request().method() === 'DELETE' &&
+			res.url().includes('/api/admin/permissions/visibility'),
+		{ timeout: LOAD_TIMEOUT }
+	);
 	await cell.click();
 	await page.getByTestId('confirm-modal-confirm').click();
+	await visibilityResponse;
 	await dismissToast(page, /removed/i, opts);
 }
 
@@ -224,9 +232,13 @@ export async function adminApproveUpdate(
 	email: string,
 	opts?: JourneyActOptions
 ) {
-	await adminPage.goto('/admin');
-	await waitForPageShell(adminPage, 'admin-page');
-	await openUserDetailFromAdmin(adminPage, email);
+	if (opts?.userId) {
+		await openUserDetailById(adminPage, opts.userId, email);
+	} else {
+		await adminPage.goto('/admin');
+		await waitForPageShell(adminPage, 'admin-page');
+		await openUserDetailFromAdmin(adminPage, email);
+	}
 	if (!opts?.outcomesOnly) {
 		await expect(adminPage.getByTestId('user-detail-pending-update')).toBeVisible();
 	}
@@ -256,6 +268,7 @@ export async function adminRejectUpdate(
 }
 
 export async function stageGroupAddByName(page: Page, groupName: string, opts?: JourneyActOptions) {
+	await waitForRequestUpdateGroups(page);
 	const ms = page.locator('[data-testid="multiselect"][data-label="Groups"]');
 	await ms.getByTestId('multiselect-input').fill(groupName);
 	await ms.locator(`[data-testid="multiselect-option"][data-key="${groupName}"]`).click();
@@ -299,7 +312,7 @@ export async function submitRequestUpdate(page: Page, opts?: JourneyActOptions) 
 	if (!opts?.outcomesOnly) {
 		await expect(page.getByTestId('toast')).toContainText('Request submitted');
 	}
-	await page.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
+	await waitForPageShell(page, 'dashboard-page');
 }
 
 export async function openRequestUpdate(page: Page, opts?: { requireGroups?: boolean }) {
