@@ -6,10 +6,7 @@ import {
 	deleteUserById,
 	openUserDetailFromAdmin
 } from '../../helpers/userApi';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForToastGone } from '../../helpers/waits';
 
 async function confirmSecurityAction(
 	page: import('@playwright/test').Page,

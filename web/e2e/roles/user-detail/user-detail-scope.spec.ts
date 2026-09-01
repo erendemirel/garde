@@ -1,6 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { createEphemeralUser, deleteUserById } from '../../helpers/userApi';
+import { REDIRECT_TIMEOUT } from '../../helpers/waits';
 
 /**
  * Admin scope — seed admin can only manage users in shared groups.
@@ -27,7 +28,7 @@ test.describe('User detail admin scope', describeTags(TAG.userDetail, TAG.admin,
 			userId = isolated.id;
 
 			await page.goto(`/admin/users/${isolated.id}`);
-			await expect(page).toHaveURL('/', { timeout: 15_000 });
+			await expect(page).toHaveURL('/', { timeout: REDIRECT_TIMEOUT });
 			await expect(page.getByTestId('login-page')).toBeVisible();
 		} finally {
 			if (userId) await deleteUserById(suRequest, userId).catch(() => undefined);

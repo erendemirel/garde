@@ -107,6 +107,28 @@ export async function restoreSeedAdminAccess(api: RequestLike) {
 	}
 }
 
+/** Retry restore until seed admin is writable (409 = another worker is updating the same user). */
+export async function ensureSeedAdminReady(
+	api: RequestLike,
+	opts?: { maxAttempts?: number; pauseMs?: number }
+) {
+	const maxAttempts = opts?.maxAttempts ?? 12;
+	const pauseMs = opts?.pauseMs ?? 500;
+	let lastError: Error | undefined;
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
+		try {
+			await restoreSeedAdminAccess(api);
+			return;
+		} catch (err) {
+			lastError = err instanceof Error ? err : new Error(String(err));
+			if (attempt < maxAttempts - 1) {
+				await new Promise((resolve) => setTimeout(resolve, pauseMs));
+			}
+		}
+	}
+	throw lastError ?? new Error('ensureSeedAdminReady failed');
+}
+
 const E2E_GROUPS = [
 	{ name: VISIBILITY_GROUP, definition: 'E2E visibility group' },
 	{ name: SCOPE_GROUP, definition: 'E2E admin scope group' }

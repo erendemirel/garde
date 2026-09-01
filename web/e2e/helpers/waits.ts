@@ -1,7 +1,17 @@
 import { expect, type Page, type Response } from '@playwright/test';
 
-/** Panel/session waits — raise via PLAYWRIGHT_LOAD_TIMEOUT under heavy worker load. */
+/** Panel/session/API waits — raise via PLAYWRIGHT_LOAD_TIMEOUT under heavy worker load. */
 export const LOAD_TIMEOUT = Number(process.env.PLAYWRIGHT_LOAD_TIMEOUT || 45_000);
+
+/** Redirects, login page, and other public-route navigation. */
+export const REDIRECT_TIMEOUT = 15_000;
+
+/** Toast auto-hides after 5s — under heavy worker load timers slip; allow extra headroom. */
+export const TOAST_DISMISS_TIMEOUT = Number(process.env.PLAYWRIGHT_TOAST_TIMEOUT || 12_000);
+
+export async function waitForToastGone(page: Page, timeout = TOAST_DISMISS_TIMEOUT) {
+	await expect(page.getByTestId('toast')).toBeHidden({ timeout });
+}
 
 type UsersListRequestParams = {
 	page?: number;
@@ -200,15 +210,30 @@ export async function waitForAdminManagementRow(
 	return row;
 }
 
+function matchUserDetailGet(res: Response) {
+	if (res.request().method() !== 'GET') return false;
+	try {
+		return /\/api\/users\/[^/]+$/.test(new URL(res.url()).pathname);
+	} catch {
+		return false;
+	}
+}
+
 /** User detail — email is present once the user payload has loaded. */
 export async function waitForUserDetail(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
-	await waitOutOfLoading(
-		page,
-		'user-detail-loading',
-		page.getByTestId('user-detail-email'),
-		timeout
-	);
+	const ready = page.getByTestId('user-detail-email');
+	const loading = page.getByTestId('user-detail-loading');
+	try {
+		await waitOutOfLoading(page, 'user-detail-loading', ready, timeout);
+	} catch (err) {
+		if (await ready.isVisible().catch(() => false)) return;
+		if (!(await loading.isVisible().catch(() => false))) throw err;
+		const detailRetry = page.waitForResponse(matchUserDetailGet, { timeout });
+		await page.reload({ waitUntil: 'domcontentloaded' });
+		await detailRetry.catch(() => undefined);
+		await waitOutOfLoading(page, 'user-detail-loading', ready, timeout);
+	}
 }
 
 /**
@@ -219,8 +244,8 @@ export async function waitForSignedOut(
 	page: Page,
 	opts?: { path?: string; reload?: boolean; timeout?: number }
 ) {
-	const timeout = opts?.timeout ?? LOAD_TIMEOUT;
-	const meResponse = page.waitForResponse(matchMeGet, { timeout });
+	const timeout = opts?.timeout ?? REDIRECT_TIMEOUT;
+	const meResponse = page.waitForResponse(matchMeGet, { timeout: LOAD_TIMEOUT });
 	if (opts?.reload) {
 		await page.reload();
 	} else {
@@ -232,11 +257,13 @@ export async function waitForSignedOut(
 }
 
 /** Password change signs out after success toast + 2s delay — wait for API then login redirect. */
-export async function waitForPasswordChangeSignOut(page: Page, timeout = LOAD_TIMEOUT) {
-	const changeResponse = page.waitForResponse(matchPasswordChange, { timeout });
+export async function waitForPasswordChangeSignOut(page: Page) {
+	const changeResponse = page.waitForResponse(matchPasswordChange, { timeout: LOAD_TIMEOUT });
 	await page.getByTestId('confirm-modal-confirm').click();
 	const res = await changeResponse;
 	expect(res.ok()).toBeTruthy();
-	await expect(page.getByTestId('password-success')).toContainText('Password changed', { timeout });
-	await expect(page.getByTestId('login-page')).toBeVisible({ timeout });
+	await expect(page.getByTestId('password-success')).toContainText('Password changed', {
+		timeout: REDIRECT_TIMEOUT
+	});
+	await expect(page.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 }

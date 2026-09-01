@@ -1,11 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from '../../helpers/waits';
-
-async function waitForToastGone(page: Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel, waitForToastGone } from '../../helpers/waits';
 
 async function createCatalogItem(
 	page: Page,

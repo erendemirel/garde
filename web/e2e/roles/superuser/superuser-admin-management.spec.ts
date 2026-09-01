@@ -4,13 +4,18 @@ import { e2eAdmin } from '../../helpers/auth';
 import {
 	createEphemeralUser,
 	deleteUserById,
+	ensureSeedAdminReady,
 	restoreSeedAdminAccess
 } from '../../helpers/userApi';
-import { waitForAdminManagement, waitForAdminManagementRow, waitForPageShell } from '../../helpers/waits';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import {
+	waitForAdminManagement,
+	waitForAdminManagementRow,
+	waitForPageShell,
+	waitForToastGone,
+	matchUserUpdate,
+	LOAD_TIMEOUT,
+	REDIRECT_TIMEOUT
+} from '../../helpers/waits';
 
 async function openAdminManagement(page: import('@playwright/test').Page) {
 	await page.goto('/superuser?tab=admin-management');
@@ -20,6 +25,41 @@ async function openAdminManagement(page: import('@playwright/test').Page) {
 
 function adminRow(page: import('@playwright/test').Page, email: string) {
 	return page.locator(`[data-testid="admin-mgmt-row"][data-admin-email="${email}"]`);
+}
+
+/** Seed admin is shared — retry when another worker holds an in-flight update (409). */
+async function confirmAdminGroupsSave(
+	page: import('@playwright/test').Page,
+	suRequest: import('@playwright/test').APIRequestContext,
+	adminEmail: string,
+	restageGroup?: string
+) {
+	const ms = page.locator('[data-testid="multiselect"][data-label="Groups"]');
+	for (let attempt = 0; attempt < 5; attempt++) {
+		await ensureSeedAdminReady(suRequest);
+		const updateResponse = page.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
+		await page.getByTestId('admin-mgmt-groups-save').click();
+		await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
+		await page.getByTestId('confirm-modal-confirm').click();
+		const res = await updateResponse;
+		await expect(page.getByTestId('toast')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
+		const toastText = await page.getByTestId('toast').innerText();
+		if (res.ok() && toastText.includes(adminEmail) && !/failure/i.test(toastText)) {
+			await waitForToastGone(page);
+			return;
+		}
+		await waitForToastGone(page);
+		if (attempt === 4) {
+			expect(res.ok(), toastText).toBeTruthy();
+		}
+		if (restageGroup) {
+			await ms.getByTestId('multiselect-input').fill(restageGroup);
+			await ms.locator(`[data-testid="multiselect-option"][data-key="${restageGroup}"]`).click();
+			await expect(
+				ms.locator(`[data-testid="multiselect-chip"][data-key="${restageGroup}"]`)
+			).toHaveAttribute('data-state', 'added');
+		}
+	}
 }
 
 /**
@@ -61,7 +101,7 @@ test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG
 		let ephemeralId: string | undefined;
 
 		try {
-			await restoreSeedAdminAccess(suRequest).catch(() => undefined);
+			await ensureSeedAdminReady(suRequest);
 
 			const createGroup = await suRequest.post('/api/admin/groups', {
 				data: { name: groupName, definition: 'E2E admin management scope' }
@@ -87,11 +127,7 @@ test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG
 				ms.locator(`[data-testid="multiselect-chip"][data-key="${groupName}"]`)
 			).toHaveAttribute('data-state', 'added');
 
-			await page.getByTestId('admin-mgmt-groups-save').click();
-			await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
-			await page.getByTestId('confirm-modal-confirm').click();
-			await expect(page.getByTestId('toast')).toContainText(e2eAdmin.email);
-			await waitForToastGone(page);
+			await confirmAdminGroupsSave(page, suRequest, e2eAdmin.email, groupName);
 			await expect(page.getByTestId('admin-mgmt-groups-modal')).toHaveCount(0);
 
 			await page.getByTestId('admin-mgmt-search').fill(e2eAdmin.email);
@@ -114,10 +150,7 @@ test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG
 				)
 				.click();
 			await expect(page.getByTestId('change-summary-removed')).toBeVisible();
-			await page.getByTestId('admin-mgmt-groups-save').click();
-			await page.getByTestId('confirm-modal-confirm').click();
-			await expect(page.getByTestId('toast')).toContainText(e2eAdmin.email);
-			await waitForToastGone(page);
+			await confirmAdminGroupsSave(page, suRequest, e2eAdmin.email);
 		} finally {
 			await restoreSeedAdminAccess(suRequest).catch(() => undefined);
 			if (ephemeralId) {

@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { requestOtp, resetPassword } from '$lib/api';
 	import { goto } from '$app/navigation';
 
@@ -11,6 +12,11 @@
 	let error = '';
 	let success = '';
 	let loading = false;
+	let formReady = false;
+
+	onMount(() => {
+		formReady = true;
+	});
 
 	async function handleRequestOtp() {
 		error = '';
@@ -55,6 +61,7 @@
 			<form
 				class="space-y-4"
 				data-testid="forgot-email-form"
+				data-ready={formReady ? 'true' : 'false'}
 				method="post"
 				action="#"
 				onsubmit="return false;"
@@ -89,6 +96,7 @@
 			<form
 				class="space-y-4"
 				data-testid="forgot-reset-form"
+				data-ready={formReady ? 'true' : 'false'}
 				method="post"
 				action="#"
 				onsubmit="return false;"

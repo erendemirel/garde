@@ -1,12 +1,12 @@
 import { test, expect } from '../helpers/fixtures';
+import { openLogin, openRegister } from '../helpers/auth';
 import { deleteUserByEmail } from '../helpers/userApi';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focused), () => {
 	test.describe('happy path', () => {
 		test('shows the register form with stable locators', async ({ page }) => {
-			await page.goto('/register');
-			await page.waitForLoadState('networkidle');
+			await openRegister(page);
 
 			await expect(page.getByTestId('register-page')).toBeVisible();
 			await expect(page.getByTestId('register-form')).toBeVisible();
@@ -19,8 +19,7 @@ test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focu
 		});
 
 		test('reachable from the login page', async ({ page }) => {
-			await page.goto('/');
-			await page.waitForLoadState('networkidle');
+			await openLogin(page);
 			await page.getByTestId('login-register-link').click();
 			await expect(page).toHaveURL(/\/register/);
 			await expect(page.getByTestId('register-page')).toBeVisible();
@@ -30,8 +29,7 @@ test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focu
 			const email = `e2e.register.${uniqueSuffix}@example.com`;
 			const password = 'DevAdminTest123!';
 
-			await page.goto('/register');
-			await page.waitForLoadState('networkidle');
+			await openRegister(page);
 			await page.getByTestId('register-email').fill(email);
 			await page.getByTestId('register-password').fill(password);
 			await page.getByTestId('register-confirm').fill(password);
@@ -53,8 +51,7 @@ test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focu
 
 	test.describe('validation', () => {
 		test('client-side mismatch shows an error without calling the API', async ({ page }) => {
-			await page.goto('/register');
-			await page.waitForLoadState('networkidle');
+			await openRegister(page);
 
 			await page.getByTestId('register-email').fill('e2e.register@example.com');
 			await page.getByTestId('register-password').fill('DevAdminTest123!');
@@ -73,8 +70,7 @@ test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focu
 			page,
 			ephemeralUser
 		}) => {
-			await page.goto('/register');
-			await page.waitForLoadState('networkidle');
+			await openRegister(page);
 			await page.getByTestId('register-email').fill(ephemeralUser.email);
 			await page.getByTestId('register-password').fill('DevAdminTest123!');
 			await page.getByTestId('register-confirm').fill('DevAdminTest123!');

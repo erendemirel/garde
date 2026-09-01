@@ -13,10 +13,11 @@ import { describeTags, TAG } from '../helpers/tags';
 import {
 	createEphemeralUser,
 	deleteUserById,
+	ensureSeedAdminReady,
 	openUserDetailFromAdmin,
 	restoreSeedAdminAccess
 } from '../helpers/userApi';
-import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT } from '../helpers/waits';
+import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT } from '../helpers/waits';
 
 const epic: JourneyActOptions = { outcomesOnly: true };
 
@@ -46,7 +47,7 @@ test.describe(
 			let userId: string | undefined;
 
 			try {
-				await restoreSeedAdminAccess(suRequest).catch(() => undefined);
+				await ensureSeedAdminReady(suRequest);
 
 				const createGroup = await suRequest.post('/api/admin/groups', {
 					data: { name: isolatedGroup, definition: 'Epic scope alignment group' }
@@ -59,7 +60,7 @@ test.describe(
 				userId = user.id;
 
 				await adminPage.goto(`/admin/users/${user.id}`);
-				await expect(adminPage.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+				await expect(adminPage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 
 				const userContext = await browser.newContext();
 				const userPage = await userContext.newPage();
@@ -72,10 +73,11 @@ test.describe(
 				const probePage = await adminProbe.newPage();
 				await startUserSession(probePage, e2eAdmin);
 				await probePage.goto(`/admin/users/${user.id}`);
-				await expect(probePage.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+				await expect(probePage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 				await adminProbe.close();
 
 				await openAdminManagement(suPage);
+				await ensureSeedAdminReady(suRequest);
 				await suPage.getByTestId('admin-mgmt-search').fill(e2eAdmin.email);
 				await adminRow(suPage, e2eAdmin.email).getByTestId('admin-mgmt-edit-groups').click();
 				const ms = suPage.locator('[data-testid="multiselect"][data-label="Groups"]');

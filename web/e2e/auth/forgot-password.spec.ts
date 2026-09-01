@@ -1,6 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
+import { openForgotPassword, openLogin } from '../helpers/auth';
 import { describeTags, TAG } from '../helpers/tags';
-import { LOAD_TIMEOUT } from '../helpers/waits';
+import { REDIRECT_TIMEOUT } from '../helpers/waits';
 
 async function stubOtpRoute(page: import('@playwright/test').Page) {
 	await page.route('**/api/users/password/otp', async (route) => {
@@ -17,20 +18,15 @@ async function stubOtpRoute(page: import('@playwright/test').Page) {
 test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () => {
 	test.describe('happy path', () => {
 		test('shows the email step with stable locators', async ({ page }) => {
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 
-			await expect(page.getByTestId('forgot-password-page')).toBeVisible();
-			await expect(page.getByTestId('forgot-password-page')).toHaveAttribute('data-step', 'email');
 			await expect(page.getByTestId('forgot-email-form')).toBeVisible();
 			await expect(page.getByTestId('forgot-email')).toBeVisible();
-			await expect(page.getByTestId('forgot-send-otp')).toBeEnabled();
 			await expect(page.getByTestId('forgot-login-link')).toHaveAttribute('href', '/');
 		});
 
 		test('reachable from the login page', async ({ page }) => {
-			await page.goto('/');
-			await page.waitForLoadState('networkidle');
+			await openLogin(page);
 			await page.getByTestId('login-forgot-link').click();
 			await expect(page).toHaveURL(/\/forgot-password/);
 			await expect(page.getByTestId('forgot-password-page')).toBeVisible();
@@ -38,9 +34,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 
 		test('requesting OTP advances to the reset step', async ({ page }) => {
 			await stubOtpRoute(page);
-
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 
 			await page.getByTestId('forgot-email').fill('test.admin@test.com');
 			await page.getByTestId('forgot-send-otp').click();
@@ -55,9 +49,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 
 		test('reset step back button returns to email step', async ({ page }) => {
 			await stubOtpRoute(page);
-
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 			await page.getByTestId('forgot-email').fill('test.admin@test.com');
 			await page.getByTestId('forgot-send-otp').click();
 			await expect(page.getByTestId('forgot-password-page')).toHaveAttribute('data-step', 'reset');
@@ -84,8 +76,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 				});
 			});
 
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 			await page.getByTestId('forgot-email').fill(ephemeralUser.email);
 			await page.getByTestId('forgot-send-otp').click();
 			await expect(page.getByTestId('forgot-reset-form')).toBeVisible();
@@ -96,14 +87,12 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 			await page.getByTestId('forgot-reset-submit').click();
 
 			await expect(page.getByTestId('forgot-success')).toContainText('Password reset successful');
-			await expect(page.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+			await expect(page.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 		});
 
 		test('reset step exposes MFA field for accounts with MFA enabled', async ({ page }) => {
 			await stubOtpRoute(page);
-
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 			await page.getByTestId('forgot-email').fill('test.admin@test.com');
 			await page.getByTestId('forgot-send-otp').click();
 			await expect(page.getByTestId('forgot-reset-form')).toBeVisible();
@@ -114,9 +103,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 	test.describe('validation', () => {
 		test('reset step client-side mismatch shows an error', async ({ page }) => {
 			await stubOtpRoute(page);
-
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 			await page.getByTestId('forgot-email').fill('test.admin@test.com');
 			await page.getByTestId('forgot-send-otp').click();
 			await expect(page.getByTestId('forgot-reset-form')).toBeVisible();
@@ -142,8 +129,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 				});
 			});
 
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 			await page.getByTestId('forgot-email').fill('test.admin@test.com');
 			await page.getByTestId('forgot-send-otp').click();
 			await expect(page.getByTestId('forgot-reset-form')).toBeVisible();
@@ -170,8 +156,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 				});
 			});
 
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 			await page.getByTestId('forgot-email').fill(ephemeralUser.email);
 			await page.getByTestId('forgot-send-otp').click();
 			await expect(page.getByTestId('forgot-reset-form')).toBeVisible();
@@ -195,8 +180,7 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 				});
 			});
 
-			await page.goto('/forgot-password');
-			await page.waitForLoadState('networkidle');
+			await openForgotPassword(page);
 			await page.getByTestId('forgot-email').fill(ephemeralUser.email);
 			await page.getByTestId('forgot-send-otp').click();
 			await expect(page.getByTestId('forgot-reset-form')).toBeVisible();

@@ -3,7 +3,7 @@ import { loginAs, loginViaRequest, startUserSession, e2eAdmin } from '../helpers
 import { enableMfaViaUi, startMfaSetup } from '../helpers/mfa';
 import { totpCode } from '../helpers/totp';
 import { createEphemeralUser, deleteUserById } from '../helpers/userApi';
-import { waitForPageShell, waitForPasswordChangeSignOut, LOAD_TIMEOUT } from '../helpers/waits';
+import { waitForPageShell, waitForPasswordChangeSignOut, LOAD_TIMEOUT, REDIRECT_TIMEOUT } from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe('Dashboard account overview', describeTags(TAG.dashboard, TAG.focused), () => {
@@ -284,7 +284,7 @@ test.describe('MFA page', describeTags(TAG.dashboard, TAG.selfService, TAG.secur
 			const disableRes = await disableResponse;
 			expect(disableRes.ok()).toBeTruthy();
 			await expect(page.getByTestId('mfa-success')).toContainText('MFA disabled');
-			await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: 15_000 });
+			await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 
 			await context.close();
 		});
@@ -330,7 +330,7 @@ test.describe('MFA page', describeTags(TAG.dashboard, TAG.selfService, TAG.secur
 				const page = await context.newPage();
 				await loginViaRequest(page.request, user);
 				await page.goto('/dashboard');
-				await expect(page).toHaveURL(/\/mfa/, { timeout: LOAD_TIMEOUT });
+				await expect(page).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
 				await waitForPageShell(page, 'mfa-page');
 				await expect(page.getByTestId('mfa-page')).toHaveAttribute('data-step', 'choice');
 				await context.close();
@@ -352,7 +352,7 @@ test.describe('MFA page', describeTags(TAG.dashboard, TAG.selfService, TAG.secur
 			const page = await context.newPage();
 			await loginViaRequest(page.request, ephemeralUser);
 			await page.goto('/dashboard');
-			await expect(page).toHaveURL(/\/mfa/, { timeout: LOAD_TIMEOUT });
+			await expect(page).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
 			await waitForPageShell(page, 'mfa-page');
 
 			const setupResponse = page.waitForResponse(
@@ -369,7 +369,7 @@ test.describe('MFA page', describeTags(TAG.dashboard, TAG.selfService, TAG.secur
 			);
 			await page.getByTestId('mfa-verify-submit').click();
 			await verifyResponse;
-			await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: 15_000 });
+			await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 
 			await page.goto('/mfa');
 			await waitForPageShell(page, 'mfa-page');

@@ -18,7 +18,12 @@ import {
 } from '../helpers/journeys';
 import { describeTags, TAG } from '../helpers/tags';
 import { createEphemeralUser, deleteUserById, openUserDetailFromAdmin } from '../helpers/userApi';
-import { waitForPageShell, LOAD_TIMEOUT } from '../helpers/waits';
+import {
+	waitForPageShell,
+	waitForRequestUpdateCatalog,
+	LOAD_TIMEOUT,
+	REDIRECT_TIMEOUT
+} from '../helpers/waits';
 
 const epic: JourneyActOptions = { outcomesOnly: true };
 
@@ -102,12 +107,13 @@ test.describe(
 				const probePage = await adminProbe.newPage();
 				await loginViaRequest(probePage.request, e2eAdmin);
 				await probePage.goto(`/admin/users/${isolated.id}`);
-				await expect(probePage.getByTestId('login-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+				await expect(probePage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 				await adminProbe.close();
 
 				await removeVisibilityInMatrix(suPage, permissionName, VISIBILITY_GROUP, epic);
 				await userPage.getByTestId('dashboard-link-request-update').click();
 				await waitForPageShell(userPage, 'request-update-page');
+				await waitForRequestUpdateCatalog(userPage);
 				const ms = userPage.locator('[data-testid="multiselect"][data-label="Permissions"]');
 				await ms.getByTestId('multiselect-input').fill(permissionName);
 				await expect(

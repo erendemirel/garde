@@ -1,11 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
-import { waitForUsersList } from '../../helpers/waits';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForUsersList, waitForToastGone, REDIRECT_TIMEOUT } from '../../helpers/waits';
 
 /**
  * Delete ephemeral user from the UI (fixture cleanup is a no-op after delete).
@@ -24,7 +20,7 @@ test.describe('Delete user', describeTags(TAG.userDetail, TAG.superuser, TAG.foc
 		await expect(page.getByTestId('toast')).toContainText('User deleted');
 		await waitForToastGone(page);
 
-		await expect(page).toHaveURL(/\/superuser/, { timeout: 10_000 });
+		await expect(page).toHaveURL(/\/superuser/, { timeout: REDIRECT_TIMEOUT });
 		await waitForUsersList(page);
 
 		const usersResponse = page.waitForResponse(

@@ -18,7 +18,8 @@ import {
 	waitForSignedOut,
 	waitForPasswordChangeSignOut,
 	matchUserUpdate,
-	LOAD_TIMEOUT
+	LOAD_TIMEOUT,
+	REDIRECT_TIMEOUT
 } from '../helpers/waits';
 
 const epic: JourneyActOptions = { outcomesOnly: true };
@@ -56,11 +57,11 @@ test.describe(
 				await enforceResponse;
 
 				await userPage.reload();
-				await expect(userPage).toHaveURL(/\/mfa/, { timeout: LOAD_TIMEOUT });
+				await expect(userPage).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
 				await waitForPageShell(userPage, 'mfa-page');
 
 				await userPage.goto('/dashboard');
-				await expect(userPage).toHaveURL(/\/mfa/, { timeout: LOAD_TIMEOUT });
+				await expect(userPage).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
 				await waitForPageShell(userPage, 'mfa-page');
 
 				mfaSecret = await completeMfaSetupFromChoice(userPage);

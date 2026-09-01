@@ -1,11 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
-import { waitForSuperuserCatalog } from '../../helpers/waits';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForSuperuserCatalog, waitForToastGone } from '../../helpers/waits';
 
 /**
  * Grant/revoke access on an ephemeral user (never mutates seed admin).

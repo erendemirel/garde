@@ -1,11 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import type { Page } from '@playwright/test';
-import { waitForSuperuserCatalog } from '../../helpers/waits';
-
-async function waitForToastGone(page: Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForSuperuserCatalog, waitForToastGone } from '../../helpers/waits';
 
 async function addUserInManagePicker(page: Page, userId: string, email: string) {
 	const ms = page.locator('[data-testid="multiselect"][data-label="Users"]');

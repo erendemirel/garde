@@ -1,11 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
-import { waitForPageShell, waitForUserDetail } from '../../helpers/waits';
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
+import { waitForPageShell, waitForUserDetail, waitForToastGone } from '../../helpers/waits';
 
 test.describe('User detail edit flows', describeTags(TAG.userDetail, TAG.focused), () => {
 	test('blocks navigation with unsaved changes until confirmed', async ({

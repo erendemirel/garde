@@ -6,14 +6,10 @@ import {
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser
 } from '../helpers/userApi';
-import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT } from '../helpers/waits';
+import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone } from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe.configure({ timeout: 120_000 });
-
-async function waitForToastGone(page: import('@playwright/test').Page) {
-	await expect(page.getByTestId('toast')).toBeHidden({ timeout: 7000 });
-}
 
 /**
  * Admin/superuser actions against a user who already has an active session.
@@ -74,7 +70,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await waitForToastGone(suPage);
 
 				await userPage.goto('/dashboard');
-				await expect(userPage.getByTestId('login-page')).toBeVisible({ timeout: 15_000 });
+				await expect(userPage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 				await expect(userPage.getByTestId('app-nav')).toHaveCount(0);
 			} finally {
 				await userContext.close();
@@ -104,7 +100,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 			const page = await context.newPage();
 			try {
 				await startUserSessionAt(page, ephemeralUser, '/dashboard');
-				await expect(page).toHaveURL(/\/mfa/, { timeout: LOAD_TIMEOUT });
+				await expect(page).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
 				await waitForPageShell(page, 'mfa-page');
 				await expect(page.getByTestId('mfa-page')).toHaveAttribute('data-step', 'choice');
 			} finally {
@@ -135,7 +131,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await waitForToastGone(adminPage);
 
 				await userPage.reload();
-				await expect(userPage).toHaveURL(/\/mfa/, { timeout: 15_000 });
+				await expect(userPage).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
 				await waitForPageShell(userPage, 'mfa-page');
 				await expect(userPage.getByTestId('mfa-page')).toHaveAttribute('data-step', 'choice');
 			} finally {
@@ -168,7 +164,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await waitForToastGone(adminPage);
 
 				await userPage.reload();
-				await expect(userPage).toHaveURL(/\/mfa/, { timeout: 15_000 });
+				await expect(userPage).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
 				await waitForPageShell(userPage, 'mfa-page');
 				await expect(userPage.getByTestId('mfa-page')).toHaveAttribute('data-step', 'choice');
 
@@ -189,7 +185,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await userPage.getByTestId('mfa-verify-submit').click();
 				await verifyResponse;
 
-				await expect(userPage.getByTestId('dashboard-page')).toBeVisible({ timeout: 15_000 });
+				await expect(userPage.getByTestId('dashboard-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 				await expect(userPage.getByTestId('dashboard-link-request-update')).toBeVisible();
 			} finally {
 				await userContext.close();

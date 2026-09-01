@@ -1,6 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { startUserSession } from '../helpers/auth';
 import { describeTags, TAG } from '../helpers/tags';
+import { REDIRECT_TIMEOUT } from '../helpers/waits';
 
 async function stageAnyGroupChange(page: import('@playwright/test').Page) {
 	const groupSection = page.getByTestId('request-update-groups');
@@ -32,12 +33,12 @@ test.describe('Dashboard pending update', describeTags(TAG.dashboard, TAG.reques
 		await expect(page.getByTestId('request-update-page')).toBeVisible();
 		await expect(
 			page.getByTestId('multiselect-chip').or(page.getByTestId('request-update-groups-empty')).first()
-		).toBeVisible({ timeout: 15_000 });
+		).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 
 		await stageAnyGroupChange(page);
 		await page.getByTestId('request-update-submit').click();
 		await expect(page.getByTestId('toast')).toContainText('Request submitted');
-		await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
+		await page.waitForURL(/\/dashboard/, { timeout: REDIRECT_TIMEOUT });
 
 		const meResponse = page.waitForResponse(
 			(res) => res.url().includes('/api/users/me') && res.request().method() === 'GET'
