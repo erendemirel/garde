@@ -1,6 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { describeTags, TAG } from '../helpers/tags';
 import { waitForAdminCatalog, waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from '../helpers/waits';
+import { SCOPE_GROUP } from '../helpers/catalog';
 
 test.describe('Superuser catalog modals', describeTags(TAG.catalog, TAG.superuser, TAG.focused), () => {
 	test('create modal cancel closes without creating', async ({ superuserPage: page, uniqueSuffix }) => {
@@ -114,9 +115,6 @@ test.describe('Superuser catalog modals', describeTags(TAG.catalog, TAG.superuse
 });
 
 test.describe('Admin catalog modals', describeTags(TAG.catalog, TAG.admin, TAG.focused), () => {
-	/** Seed group the admin already belongs to. */
-	const SCOPE_GROUP = 'asdfasdf';
-
 	test('manage modal cancel closes without saving membership', async ({
 		adminPage: page,
 		ephemeralUser

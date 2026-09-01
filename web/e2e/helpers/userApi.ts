@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import path from 'node:path';
 import { e2eAdmin, e2eSuperuser, loginAs } from './auth';
+import { SCOPE_GROUP, VISIBILITY_GROUP } from './catalog';
 import {
 	LOAD_TIMEOUT,
 	matchUsersListRequest,
@@ -90,8 +91,8 @@ export async function restoreSeedAdminAccess(api: RequestLike) {
 			status: 'ok',
 			mfa_enforced: false,
 			groups: {
-				asdfasdf: true,
-				group_a: true
+				[SCOPE_GROUP]: true,
+				[VISIBILITY_GROUP]: true
 			},
 			permissions: {
 				a_permission: true,
@@ -103,6 +104,51 @@ export async function restoreSeedAdminAccess(api: RequestLike) {
 	});
 	if (!putRes.ok()) {
 		throw new Error(`Failed to restore seed admin: ${putRes.status()} ${await putRes.text()}`);
+	}
+}
+
+const E2E_GROUPS = [
+	{ name: VISIBILITY_GROUP, definition: 'E2E visibility group' },
+	{ name: SCOPE_GROUP, definition: 'E2E admin scope group' }
+] as const;
+
+const E2E_PERMISSIONS = [
+	{ name: 'a_permission', definition: 'Ability to perform A actions' },
+	{ name: 'another_permission', definition: 'Ability to perform something' },
+	{ name: 'permission_b', definition: 'E2E permission B' },
+	{ name: 'some_permission', definition: 'E2E some permission' }
+] as const;
+
+async function ensureGroup(api: RequestLike, name: string, definition: string) {
+	const res = await api.post('/api/admin/groups', { data: { name, definition } });
+	if (res.ok() || res.status() === 409) return;
+	throw new Error(`Failed to ensure group ${name}: ${res.status()} ${await res.text()}`);
+}
+
+async function ensurePermission(api: RequestLike, name: string, definition: string) {
+	const res = await api.post('/api/admin/permissions', { data: { name, definition } });
+	if (res.ok() || res.status() === 409) return;
+	throw new Error(`Failed to ensure permission ${name}: ${res.status()} ${await res.text()}`);
+}
+
+async function ensurePermissionVisibility(api: RequestLike, permissionName: string, groupName: string) {
+	const res = await api.post('/api/admin/permissions/visibility', {
+		data: { permission_name: permissionName, group_name: groupName }
+	});
+	if (res.ok() || res.status() === 409) return;
+	throw new Error(
+		`Failed to ensure visibility ${permissionName}→${groupName}: ${res.status()} ${await res.text()}`
+	);
+}
+
+/** Idempotent catalog seed for fresh CI/local SQLite (permissions.db starts empty). */
+export async function ensureE2eCatalog(api: RequestLike) {
+	for (const group of E2E_GROUPS) {
+		await ensureGroup(api, group.name, group.definition);
+	}
+	for (const permission of E2E_PERMISSIONS) {
+		await ensurePermission(api, permission.name, permission.definition);
+		await ensurePermissionVisibility(api, permission.name, VISIBILITY_GROUP);
 	}
 }
 
