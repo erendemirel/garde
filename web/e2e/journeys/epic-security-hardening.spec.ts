@@ -7,6 +7,7 @@ import {
 	SCOPE_GROUP,
 	stageGroupAddByName,
 	submitRequestUpdate,
+	verifyMfaSetup,
 	type JourneyActOptions
 } from '../helpers/journeys';
 import { describeTags, TAG } from '../helpers/tags';
@@ -50,22 +51,16 @@ test.describe(
 
 				await userPage.reload();
 				await expect(userPage).toHaveURL(/\/mfa/, { timeout: LOAD_TIMEOUT });
+				await waitForPageShell(userPage, 'mfa-page');
 
 				await userPage.goto('/dashboard');
 				await expect(userPage).toHaveURL(/\/mfa/, { timeout: LOAD_TIMEOUT });
+				await waitForPageShell(userPage, 'mfa-page');
 
 				mfaSecret = await completeMfaSetupFromChoice(userPage);
-				await userPage.getByTestId('mfa-code').fill('000000');
-				await userPage.getByTestId('mfa-verify-submit').click();
+				await verifyMfaSetup(userPage, mfaSecret, false);
 				await expect(userPage.getByTestId('mfa-page')).toHaveAttribute('data-step', 'verify');
-
-				await userPage.getByTestId('mfa-code').fill(totpCode(mfaSecret));
-				const verifyResponse = userPage.waitForResponse(
-					(res) => res.url().includes('/api/users/mfa/verify') && res.request().method() === 'POST'
-				);
-				await userPage.getByTestId('mfa-verify-submit').click();
-				expect((await verifyResponse).ok()).toBeTruthy();
-				await expect(userPage.getByTestId('dashboard-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
+				await verifyMfaSetup(userPage, mfaSecret, true);
 
 				await openRequestUpdate(userPage);
 				await stageGroupAddByName(userPage, SCOPE_GROUP, epic);

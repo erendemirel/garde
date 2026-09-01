@@ -46,6 +46,8 @@ test.describe(
 			let userId: string | undefined;
 
 			try {
+				await restoreSeedAdminAccess(suRequest).catch(() => undefined);
+
 				const createGroup = await suRequest.post('/api/admin/groups', {
 					data: { name: isolatedGroup, definition: 'Epic scope alignment group' }
 				});
@@ -79,8 +81,10 @@ test.describe(
 				const ms = suPage.locator('[data-testid="multiselect"][data-label="Groups"]');
 				await ms.getByTestId('multiselect-input').fill(isolatedGroup);
 				await ms.locator(`[data-testid="multiselect-option"][data-key="${isolatedGroup}"]`).click();
+				const adminScopeResponse = suPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 				await suPage.getByTestId('admin-mgmt-groups-save').click();
 				await suPage.getByTestId('confirm-modal-confirm').click();
+				await adminScopeResponse;
 				await expect(suPage.getByTestId('admin-mgmt-groups-modal')).toHaveCount(0);
 
 				const adminContext = await browser.newContext();

@@ -62,6 +62,8 @@ test.describe('Superuser admin-user management', describeTags(TAG.superuser, TAG
 		let ephemeralId: string | undefined;
 
 		try {
+			await restoreSeedAdminAccess(suRequest).catch(() => undefined);
+
 			const createGroup = await suRequest.post('/api/admin/groups', {
 				data: { name: groupName, definition: 'E2E admin management scope' }
 			});

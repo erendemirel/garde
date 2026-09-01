@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { totpCode } from './totp';
 import { LOAD_TIMEOUT, matchUserUpdate, waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from './waits';
 import {
 	openUserDetailFromAdmin,
@@ -187,8 +188,10 @@ export async function superuserApproveAccountAnyway(
 ) {
 	await suPage.goto('/superuser');
 	await openUserDetailFromSuperuser(suPage, email);
+	const updateResponse = suPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 	await suPage.getByTestId('user-detail-approve-account').click();
 	await suPage.getByTestId('confirm-modal-confirm').click();
+	await updateResponse;
 	await dismissToast(suPage, 'Account approved', opts);
 }
 
@@ -281,6 +284,7 @@ export async function openRequestUpdate(page: Page) {
 }
 
 export async function completeMfaSetupFromChoice(page: Page): Promise<string> {
+	await waitForPageShell(page, 'mfa-page');
 	await expect(page.getByTestId('mfa-page')).toHaveAttribute('data-step', 'choice');
 	const setupResponse = page.waitForResponse(
 		(res) => res.url().includes('/api/users/mfa/setup') && res.request().method() === 'POST'
@@ -288,11 +292,13 @@ export async function completeMfaSetupFromChoice(page: Page): Promise<string> {
 	await page.getByTestId('mfa-setup').click();
 	await setupResponse;
 	await expect(page.getByTestId('mfa-page')).toHaveAttribute('data-step', 'verify');
-	return (await page.getByTestId('mfa-secret').innerText()).trim();
+	const secret = (await page.getByTestId('mfa-secret').innerText()).trim();
+	expect(secret.length).toBeGreaterThan(10);
+	return secret;
 }
 
 export async function verifyMfaSetup(page: Page, secret: string, expectSuccess: boolean) {
-	await page.getByTestId('mfa-code').fill(secret);
+	await page.getByTestId('mfa-code').fill(expectSuccess ? totpCode(secret) : '000000');
 	const verifyResponse = page.waitForResponse(
 		(res) => res.url().includes('/api/users/mfa/verify') && res.request().method() === 'POST'
 	);
@@ -302,6 +308,7 @@ export async function verifyMfaSetup(page: Page, secret: string, expectSuccess: 
 		expect(res.ok()).toBeTruthy();
 		await expect(page.getByTestId('dashboard-page')).toBeVisible({ timeout: LOAD_TIMEOUT });
 	}
+	return res;
 }
 
 export { patchUserMaps };
