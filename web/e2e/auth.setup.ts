@@ -1,6 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import { e2eSuperuser, loginViaRequest, openDashboardSession } from './helpers/auth';
-import { ensureSeedAdminReady, ensureE2eCatalog } from './helpers/userApi';
+import { ensureSeedAdmin2Ready, ensureSeedAdminReady, ensureE2eCatalog } from './helpers/userApi';
 
 /**
  * Once before the suite: seed permission catalog (fresh CI SQLite) and restore seed admin groups/permissions.
@@ -11,5 +11,6 @@ setup('restore seed admin access', async ({ page }) => {
 	await openDashboardSession(page);
 	await ensureE2eCatalog(page.request);
 	await ensureSeedAdminReady(page.request);
+	await ensureSeedAdmin2Ready(page.request);
 	await page.getByTestId('nav-logout').click();
 });

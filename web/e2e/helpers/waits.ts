@@ -151,7 +151,20 @@ async function waitOutOfLoading(
 export async function waitForSessionReady(page: Page, timeout = LOAD_TIMEOUT) {
 	const nav = page.getByTestId('app-nav');
 	const loading = page.getByTestId('session-loading');
+
+	if (await nav.isVisible().catch(() => false)) {
+		return;
+	}
+
 	await expect(nav.or(loading)).toBeVisible({ timeout });
+
+	if ((await loading.count().catch(() => 0)) > 0) {
+		await Promise.race([
+			page.waitForResponse(matchMeGet, { timeout }),
+			expect(loading).toHaveCount(0, { timeout })
+		]);
+	}
+
 	await expect(loading).toHaveCount(0, { timeout });
 	await expect(nav).toBeVisible({ timeout });
 }

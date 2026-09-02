@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import path from 'node:path';
-import { e2eAdmin, e2eSuperuser, loginAs } from './auth';
+import { e2eAdmin, e2eAdmin2, e2eSuperuser, loginAs } from './auth';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from './catalog';
 import {
 	LOAD_TIMEOUT,
@@ -80,9 +80,8 @@ export async function patchUserMaps(
 	}
 }
 
-/** Restore seed admin memberships (run once in auth setup, not per-test). */
-export async function restoreSeedAdminAccess(api: RequestLike) {
-	const summary = await findUserByEmail(api, e2eAdmin.email);
+async function restoreSeedAdminLikeAccess(api: RequestLike, email: string, label: string) {
+	const summary = await findUserByEmail(api, email);
 	if (!summary?.id) return;
 
 	// Only send enabled keys so stale/deleted catalog entries are not referenced.
@@ -103,8 +102,18 @@ export async function restoreSeedAdminAccess(api: RequestLike) {
 		}
 	});
 	if (!putRes.ok()) {
-		throw new Error(`Failed to restore seed admin: ${putRes.status()} ${await putRes.text()}`);
+		throw new Error(`Failed to restore seed ${label}: ${putRes.status()} ${await putRes.text()}`);
 	}
+}
+
+/** Restore seed admin memberships (run once in auth setup, not per-test). */
+export async function restoreSeedAdminAccess(api: RequestLike) {
+	await restoreSeedAdminLikeAccess(api, e2eAdmin.email, 'admin');
+}
+
+/** Restore second seed admin — isolated actor for MFA mutation tests. */
+export async function restoreSeedAdmin2Access(api: RequestLike) {
+	await restoreSeedAdminLikeAccess(api, e2eAdmin2.email, 'admin2');
 }
 
 /** Retry restore until seed admin is writable (409 = another worker is updating the same user). */
@@ -127,6 +136,28 @@ export async function ensureSeedAdminReady(
 		}
 	}
 	throw lastError ?? new Error('ensureSeedAdminReady failed');
+}
+
+/** Retry restore until seed admin2 is writable (409 = another worker is updating the same user). */
+export async function ensureSeedAdmin2Ready(
+	api: RequestLike,
+	opts?: { maxAttempts?: number; pauseMs?: number }
+) {
+	const maxAttempts = opts?.maxAttempts ?? 6;
+	const pauseMs = opts?.pauseMs ?? 500;
+	let lastError: Error | undefined;
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
+		try {
+			await restoreSeedAdmin2Access(api);
+			return;
+		} catch (err) {
+			lastError = err instanceof Error ? err : new Error(String(err));
+			if (attempt < maxAttempts - 1) {
+				await new Promise((resolve) => setTimeout(resolve, pauseMs));
+			}
+		}
+	}
+	throw lastError ?? new Error('ensureSeedAdmin2Ready failed');
 }
 
 const E2E_GROUPS = [

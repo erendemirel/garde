@@ -193,6 +193,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 	test.describe('form', () => {
 		test('shows the request-update form from the dashboard', async ({ adminPage: page }) => {
 			await page.goto('/dashboard');
+			await waitForPageShell(page, 'dashboard-page');
 			await page.getByTestId('dashboard-link-request-update').click();
 			await expect(page).toHaveURL(/\/request-update/);
 			await expect(page.getByTestId('request-update-page')).toBeVisible();

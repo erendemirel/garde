@@ -908,12 +908,21 @@ func isAdminEmail(email string) bool {
 	return false
 }
 
-func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, targetUserID string, isSuperUser bool, isAdmin bool) error {
+func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, targetUserID string, mfaCode string, isSuperUser bool, isAdmin bool) error {
 
 	// Get admin user for group checks
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
 		return fmt.Errorf(errors.ErrUnauthorized)
+	}
+
+	if admin.MFAEnabled {
+		if mfaCode == "" {
+			return fmt.Errorf(errors.ErrMFARequired)
+		}
+		if !mfa.ValidateCode(admin.MFASecret, mfaCode) {
+			return fmt.Errorf(errors.ErrInvalidMFACode)
+		}
 	}
 
 	// Get target user
