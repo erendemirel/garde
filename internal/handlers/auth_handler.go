@@ -461,7 +461,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // @Security Bearer
 // @Param request body models.RevokeSessionRequest true "Session revocation request with user ID"
 // @Success 200 {object} models.SuccessResponse "Sessions revoked successfully"
-// @Failure 400 {object} models.ErrorResponse "Invalid request format"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format, MFA required, or invalid MFA code"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized"
 // @Failure 403 {object} models.ErrorResponse "Forbidden - insufficient permissions"
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
@@ -484,6 +484,7 @@ func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 		c.Request.Context(),
 		adminID.(string),
 		req.UserID,
+		req.MFACode,
 		c.GetBool("is_superuser"),
 		c.GetBool("is_admin"),
 	)
@@ -495,6 +496,10 @@ func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 		}
 		if errStr == pkgerrors.ErrUnauthorized {
 			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+			return
+		}
+		if errStr == pkgerrors.ErrMFARequired || errStr == pkgerrors.ErrInvalidMFACode {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
 			return
 		}
 		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errStr))

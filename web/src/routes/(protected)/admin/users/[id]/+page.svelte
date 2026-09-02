@@ -366,6 +366,7 @@
 		showRevokeConfirm = false;
 		try {
 			await revokeSessions(userId, $currentUser?.mfa_enabled ? mfaCode : undefined);
+			mfaCode = '';
 			showToast('Sessions revoked!', 'success');
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'Failed to revoke sessions', 'error');

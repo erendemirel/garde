@@ -9,6 +9,12 @@ export const e2eAdmin = {
 	password: process.env.E2E_ADMIN_PASSWORD || 'DevAdminTest123!'
 };
 
+/** Second seed admin — used for MFA mutation tests so the shared superuser stays MFA-free. */
+export const e2eAdmin2 = {
+	email: process.env.E2E_ADMIN2_EMAIL || 'test.admin.2@test.com',
+	password: process.env.E2E_ADMIN2_PASSWORD || 'DevAdminTest123!'
+};
+
 export const e2eSuperuser = {
 	email: process.env.E2E_SUPERUSER_EMAIL || 'test.superuser@test.com',
 	password: process.env.E2E_SUPERUSER_PASSWORD || 'DevAdminTest123!'
