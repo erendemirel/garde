@@ -1,0 +1,83 @@
+# Public exposure is WireGuard everywhere, plus HTTP/HTTPS on the two app
+# nodes. Everything else - SSH, Vault, Redis, the exporters - is reachable only
+# from inside the mesh.
+#
+# Note the ordering constraint from the playbook: WireGuard is configured
+# first, because these rules restrict SSH to the mesh subnet.
+
+- name: Default deny inbound
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+
+- name: Default allow outbound
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: Allow WireGuard
+  community.general.ufw:
+    rule: allow
+    port: "{{ wg_port }}"
+    proto: udp
+    comment: wireguard
+
+- name: Allow SSH from the mesh only
+  community.general.ufw:
+    rule: allow
+    src: "{{ wg_subnet }}"
+    port: "22"
+    proto: tcp
+    comment: ssh over mesh
+
+- name: Allow HTTP and HTTPS on the app nodes
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    comment: public edge
+  loop: ["80", "443"]
+  when: node_role in ['app-primary', 'app-standby']
+
+- name: Deny HTTP and HTTPS elsewhere
+  # The witness has no edge role; keeping this explicit means a node that
+  # changes role does not silently keep an open port.
+  community.general.ufw:
+    rule: deny
+    port: "{{ item }}"
+    proto: tcp
+    delete: true
+  loop: ["80", "443"]
+  when: node_role not in ['app-primary', 'app-standby']
+  failed_when: false
+
+- name: Allow internal services from the mesh only
+  community.general.ufw:
+    rule: allow
+    src: "{{ wg_subnet }}"
+    port: "{{ item.port }}"
+    proto: tcp
+    comment: "{{ item.comment }}"
+  loop:
+    - { port: "8200", comment: "vault api" }
+    - { port: "8201", comment: "vault raft cluster" }
+    - { port: "6379", comment: "redis replication" }
+    - { port: "9100", comment: "node exporter" }
+    - { port: "8080", comment: "cadvisor" }
+    - { port: "9090", comment: "prometheus" }
+    - { port: "3000", comment: "grafana" }
+  loop_control:
+    label: "{{ item.port }} {{ item.comment }}"
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+
+- name: Record the resulting ruleset
+  ansible.builtin.command: ufw status verbose
+  register: ufw_status
+  changed_when: false
+
+- name: Show the ruleset
+  ansible.builtin.debug:
+    var: ufw_status.stdout_lines

@@ -1,0 +1,54 @@
+- name: Create the deploy user
+  # No sudo, on purpose. This account is what CI authenticates as, and it only
+  # needs the Docker socket. Privileged host changes go through this playbook
+  # as root instead, so a compromised CI key cannot reconfigure the machine.
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    shell: /bin/bash
+    groups: docker
+    append: true
+    create_home: true
+    state: present
+
+- name: Authorise the deploy key
+  ansible.posix.authorized_key:
+    user: "{{ deploy_user }}"
+    key: "{{ lookup('file', deploy_pubkey_file) }}"
+    # Not exclusive: the snapshot role adds node-to-node keys for the same
+    # user, and an exclusive block here would delete them on every run and
+    # re-add them moments later. Stale keys therefore need removing by hand.
+    exclusive: false
+  when: deploy_pubkey_file is defined
+
+- name: Warn when no deploy key was supplied
+  ansible.builtin.debug:
+    msg: >-
+      deploy_pubkey_file was not set, so authorized_keys is left untouched.
+      Pass -e deploy_pubkey_file=~/.ssh/garde_deploy.pub on the first run.
+  when: deploy_pubkey_file is not defined
+
+- name: Create the directory layout
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+  loop:
+    - "{{ remote_root }}"
+    - "{{ remote_root }}/compose"
+    - "{{ remote_root }}/config"
+    - "{{ remote_root }}/data"
+    - "{{ remote_root }}/backup"
+    - "{{ remote_root }}/certs"
+    - "{{ remote_root }}/configs"
+    - "{{ remote_root }}/scripts"
+
+- name: Create the Vault credential directory
+  # role-id and secret-id are written here by vault-cluster-init.sh.
+  ansible.builtin.file:
+    path: "{{ remote_root }}/vault"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0700"

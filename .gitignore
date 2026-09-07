@@ -84,6 +84,23 @@ vault-credentials.json
 vault-unseal-keys
 vault-unseal-keys.txt
 
+# Deployment: inventory, WireGuard keys/configs, netcup rate-limit state
+deploy/inventory.env
+deploy/.wg/
+deploy/.traffic-last-move
+
+# Ansible fact cache and SSH control sockets
+ansible/.facts/
+ansible/*.retry
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/tfplan
+
 # Database files
 *.db
 *.sqlite

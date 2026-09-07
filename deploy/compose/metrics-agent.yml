@@ -1,0 +1,36 @@
+# Metrics exporters. Deployed to all three nodes.
+# Both bind to the WireGuard address only, so nothing is scrapeable publicly.
+
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: garde-node-exporter
+    command:
+      - --path.rootfs=/host
+      - --collector.systemd
+      - --no-collector.wifi
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "${NODE_WG_IP:?NODE_WG_IP is required}:9100:9100"
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: garde-cadvisor
+    command:
+      - --housekeeping_interval=30s
+      - --docker_only=true
+      - --store_container_labels=false
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "${NODE_WG_IP}:8080:8080"
+    restart: unless-stopped

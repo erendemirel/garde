@@ -1,0 +1,13 @@
+# MANAGED BY ANSIBLE - roles/snapshot
+[Unit]
+Description=Snapshot garde permissions.db and distribute it to the peers
+After=docker.service wg-quick@wg0.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User={{ deploy_user }}
+Group={{ deploy_user }}
+ExecStart={{ remote_root }}/scripts/snapshot.sh
+# A snapshot that cannot finish quickly is a snapshot of a sick host.
+TimeoutStartSec=120

@@ -1,0 +1,22 @@
+# MANAGED BY ANSIBLE - roles/failover_ip
+#
+# Deliberately not a netplan drop-in. Netplan merges files per interface, and a
+# second file declaring `addresses:` for the primary interface can replace the
+# list rather than extend it - which removes the host's real address and locks
+# you out. Adding one address imperatively cannot do that.
+[Unit]
+Description=Bind the failover IP so this host accepts its routed traffic
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# `replace` rather than `add`, so re-running the unit is not an error.
+# /32 with no gateway: the address is routed to this host, it is not a subnet.
+ExecStart=/usr/sbin/ip address replace {{ garde_facts.failover_ip }}/32 dev {{ ansible_facts.default_ipv4.interface }}
+# No ExecStop that removes the address. Restarting this unit on the node that
+# currently holds the IP would otherwise blackhole live traffic.
+
+[Install]
+WantedBy=multi-user.target

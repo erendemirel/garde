@@ -1,0 +1,102 @@
+# Host baseline for the garde cluster.
+#
+#   First run, before the mesh exists (connects over the public IP as root):
+#     ansible-playbook playbooks/bootstrap.yml -e use_mesh=false \
+#       -e deploy_pubkey_file=~/.ssh/garde_deploy.pub
+#
+#   Afterwards, over the WireGuard mesh (your workstation must be the ops peer):
+#     ansible-playbook playbooks/bootstrap.yml
+#
+#   See what has drifted without changing anything:
+#     ansible-playbook playbooks/bootstrap.yml --check --diff
+#
+#   One host only:
+#     ansible-playbook playbooks/bootstrap.yml --limit node2
+#
+# Connects as root. The deploy user this creates deliberately has no sudo: it
+# only needs the docker socket, and CI only ever uses that account. Privileged
+# host changes go through this playbook instead.
+
+- name: Load the deployment inventory
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Set to false for the very first run, when the mesh is not up yet and the
+    # firewall has not closed public SSH.
+    use_mesh: true
+  tasks:
+    - name: Read deploy/inventory.env
+      ansible.builtin.command: bash {{ playbook_dir }}/../inventory-to-json.sh
+      register: inventory_json
+      changed_when: false
+
+    - name: Parse it
+      ansible.builtin.set_fact:
+        garde: "{{ inventory_json.stdout | from_json }}"
+
+    - name: Fail early if roles are missing
+      ansible.builtin.assert:
+        that:
+          - garde.nodes | selectattr('role', 'equalto', 'app-primary') | list | length == 1
+          - garde.nodes | selectattr('role', 'equalto', 'app-standby') | list | length == 1
+          - garde.nodes | selectattr('role', 'equalto', 'witness') | list | length >= 1
+        fail_msg: >-
+          deploy/inventory.env must define exactly one app-primary, one
+          app-standby and at least one witness. After a failover, swap the
+          NODE*_ROLE values before running this playbook.
+
+    - name: Register the nodes
+      ansible.builtin.add_host:
+        name: "{{ item.name }}"
+        groups:
+          - garde_nodes
+          - "role_{{ item.role | replace('-', '_') }}"
+        # Before the mesh exists there is only the public address to use.
+        ansible_host: "{{ item.wg_ip if (use_mesh | bool) else item.public_ip }}"
+        ansible_user: root
+        ansible_port: "{{ garde.ssh_port }}"
+        node_name: "{{ item.name }}"
+        node_role: "{{ item.role }}"
+        node_wg_ip: "{{ item.wg_ip }}"
+        node_public_ip: "{{ item.public_ip }}"
+        node_vault_id: "{{ item.vault_id }}"
+        node_provider_id: "{{ item.provider_id }}"
+        garde_facts: "{{ garde }}"
+      loop: "{{ garde.nodes }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.role }})"
+      changed_when: false
+
+- name: Baseline
+  hosts: garde_nodes
+  gather_facts: true
+  vars:
+    deploy_user: "{{ garde_facts.ssh_user }}"
+    remote_root: "{{ garde_facts.remote_root }}"
+    wg_subnet: "{{ garde_facts.wg_subnet }}"
+    wg_port: "{{ garde_facts.wg_port }}"
+  roles:
+    - common
+    - docker
+    - deploy_user
+    # WireGuard comes before the firewall on purpose. The firewall restricts
+    # SSH to the mesh, so the mesh has to exist first, and on a first run the
+    # current connection survives only because ufw keeps established sessions.
+    - wireguard
+    - firewall
+    # Skipped entirely on providers that deliver the address rather than route
+    # it. The capability comes from the driver, so there is no provider name
+    # anywhere in the Ansible layer.
+    - role: failover_ip
+      when:
+        - node_role in ['app-primary', 'app-standby']
+        - garde_facts.requires_ip_binding | bool
+
+- name: Snapshot timer
+  hosts: role_app_primary:role_app_standby:role_witness
+  gather_facts: false
+  vars:
+    deploy_user: "{{ garde_facts.ssh_user }}"
+    remote_root: "{{ garde_facts.remote_root }}"
+  roles:
+    - snapshot

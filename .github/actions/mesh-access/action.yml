@@ -1,0 +1,101 @@
+name: Mesh access
+description: >-
+  Join the WireGuard mesh and prepare SSH so the runner can reach the netcup
+  hosts. Public SSH is firewalled off on every node, so this is the only path
+  in, and it disappears when the job ends.
+
+inputs:
+  wg-config:
+    description: WireGuard config for the ephemeral CI peer (WG_CI_CONF secret)
+    required: true
+  ssh-key:
+    description: Private deploy key (DEPLOY_SSH_KEY secret)
+    required: true
+  known-hosts:
+    description: Pinned host keys (DEPLOY_KNOWN_HOSTS secret)
+    required: true
+  inventory:
+    description: Contents of deploy/inventory.env (DEPLOY_INVENTORY secret)
+    required: true
+  require-all-nodes:
+    description: >-
+      Fail the job if any node is unreachable. Deploys want this; failover does
+      not, since it usually runs precisely because a node is down.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Values are passed through env rather than inlined into the script, so no
+    # secret is ever expanded into a shell command line.
+    - name: Install tooling
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq wireguard-tools zstd rsync jq
+
+    - name: Join the mesh
+      shell: bash
+      env:
+        WG_CONFIG: ${{ inputs.wg-config }}
+      run: |
+        set -euo pipefail
+        printf '%s\n' "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf >/dev/null
+        sudo chmod 600 /etc/wireguard/wg0.conf
+        if ! sudo wg-quick up wg0; then
+          echo "::error::could not bring up WireGuard. If the runner image lacks the"
+          echo "::error::kernel module, switch this step to a userspace implementation."
+          exit 1
+        fi
+        sudo wg show wg0 | sed 's/^/  /'
+
+    - name: Configure SSH
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-key }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/known_hosts
+
+    - name: Write inventory
+      shell: bash
+      env:
+        INVENTORY: ${{ inputs.inventory }}
+      run: |
+        set -euo pipefail
+        printf '%s\n' "$INVENTORY" > deploy/inventory.env
+        chmod 600 deploy/inventory.env
+        chmod +x deploy/scripts/*.sh
+
+    - name: Check reachability
+      shell: bash
+      env:
+        REQUIRE_ALL: ${{ inputs.require-all-nodes }}
+      run: |
+        set -uo pipefail
+        set -a; . deploy/inventory.env; set +a
+        unreachable=""
+        for node in $NODES; do
+          ip_var="$(echo "${node}_WG_IP" | tr '[:lower:]' '[:upper:]')"
+          ip="${!ip_var}"
+          if ssh -o BatchMode=yes -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$ip" true 2>/dev/null; then
+            echo "  ok   $node ($ip)"
+          else
+            echo "  down $node ($ip)"
+            unreachable="$unreachable $node"
+          fi
+        done
+        if [ -n "${unreachable// /}" ]; then
+          echo "unreachable:$unreachable" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$REQUIRE_ALL" = "true" ]; then
+            echo "::error::unreachable nodes:$unreachable"
+            exit 1
+          fi
+          echo "::warning::continuing with unreachable nodes:$unreachable"
+        fi

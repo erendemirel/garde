@@ -1,0 +1,94 @@
+name: Failover
+
+# Promotes the standby node to primary. This causes a short outage (roughly
+# 30-90 seconds, dominated by netcup applying the failover IP route) and cannot
+# be reversed for 301 seconds afterwards, because netcup rate-limits
+# reassignments of the same IP.
+#
+# Guarded by the `failover` environment, which should require a reviewer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: Node to promote (blank = STANDBY_NODE from the inventory)
+        type: string
+        default: ""
+      reason:
+        description: Why this failover is happening (recorded in the summary)
+        type: string
+        required: true
+      power_off:
+        description: >-
+          Power the old primary off through the netcup API. Use when it is
+          unreachable and cannot be fenced over SSH.
+        type: boolean
+        default: false
+      dry_run:
+        description: Run every precondition check and stop before making changes
+        type: boolean
+        default: false
+
+concurrency:
+  group: cluster-mutation
+  cancel-in-progress: false
+
+jobs:
+  failover:
+    name: Fail over
+    runs-on: ubuntu-latest
+    environment: failover
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/mesh-access
+        with:
+          wg-config: ${{ secrets.WG_CI_CONF }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          inventory: ${{ secrets.DEPLOY_INVENTORY }}
+          # A failover usually runs because a node is down. Do not block on it.
+          require-all-nodes: "false"
+
+      - name: Pre-flight state
+        run: ./deploy/scripts/healthcheck.sh --all || true
+
+      - name: Fail over
+        env:
+          # Both provider credentials are passed; the driver selected by
+          # PROVIDER in the inventory uses one and ignores the other, so this
+          # works without the workflow knowing which provider is in play.
+          NETCUP_SCP_REFRESH_TOKEN: ${{ secrets.NETCUP_SCP_REFRESH_TOKEN }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          OVH_APPLICATION_KEY: ${{ secrets.OVH_APPLICATION_KEY }}
+          OVH_APPLICATION_SECRET: ${{ secrets.OVH_APPLICATION_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          IONOS_TOKEN: ${{ secrets.IONOS_TOKEN }}
+          ASSUME_YES: "true"
+        run: |
+          args="--reason '${{ inputs.reason }}'"
+          [ -n "${{ inputs.to }}" ] && args="$args --to ${{ inputs.to }}"
+          [ "${{ inputs.power_off }}" = "true" ] && args="$args --power-off"
+          [ "${{ inputs.dry_run }}" = "true" ] && args="$args --dry-run"
+          eval "./deploy/scripts/failover.sh $args"
+
+      - name: Post-failover state
+        if: ${{ inputs.dry_run != true }}
+        run: ./deploy/scripts/healthcheck.sh --all --public || true
+
+      - name: Remind about inventory drift
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          {
+            echo "### Follow-up required"
+            echo ""
+            echo "The roles have swapped, but the DEPLOY_INVENTORY secret still describes the old layout."
+            echo "Update it now, otherwise the next deploy will render a replicaof line onto the new primary:"
+            echo ""
+            echo '- `PRIMARY_NODE` and `STANDBY_NODE`'
+            echo '- the matching `NODE*_ROLE` values'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Leave the mesh
+        if: always()
+        run: sudo wg-quick down wg0 || true

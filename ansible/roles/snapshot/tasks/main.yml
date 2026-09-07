@@ -1,0 +1,97 @@
+# Continuous protection for permissions.db.
+#
+# This is the part of the deployment Ansible genuinely improves: generating a
+# keypair per app node and authorising it on the peers is fiddly to do
+# correctly in a shell script, and it is what lets the primary push snapshots
+# directly over the mesh instead of routing them through CI.
+
+- name: Ensure the deploy user has a snapshot keypair
+  # Only app nodes ever push snapshots; the witness only receives them.
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_file: .ssh/id_ed25519
+    ssh_key_comment: "garde-snapshot@{{ node_name }}"
+  register: deploy_keypair
+  when: node_role in ['app-primary', 'app-standby']
+
+- name: Authorise the other app nodes' snapshot keys
+  ansible.posix.authorized_key:
+    user: "{{ deploy_user }}"
+    key: "{{ hostvars[item].deploy_keypair.ssh_public_key }}"
+    exclusive: false
+  loop: "{{ groups['garde_nodes'] }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - item != inventory_hostname
+    - hostvars[item].deploy_keypair is defined
+    - hostvars[item].deploy_keypair.ssh_public_key is defined
+
+- name: Read this node's SSH host key
+  ansible.builtin.slurp:
+    src: /etc/ssh/ssh_host_ed25519_key.pub
+  register: host_key_raw
+
+- name: Publish it for the other nodes to trust
+  # The linear strategy runs each task across all hosts before moving on, so
+  # every node's key is available by the time the next task needs it.
+  ansible.builtin.set_fact:
+    host_key: "{{ (host_key_raw.content | b64decode).split()[0:2] | join(' ') }}"
+
+- name: Trust the peers' host keys
+  # BatchMode rsync cannot answer a host key prompt, so the known_hosts entries
+  # have to exist before the first snapshot runs.
+  ansible.builtin.known_hosts:
+    path: "/home/{{ deploy_user }}/.ssh/known_hosts"
+    name: "{{ hostvars[item].node_wg_ip }}"
+    key: "{{ hostvars[item].node_wg_ip }} {{ hostvars[item].host_key }}"
+    state: present
+  loop: "{{ groups['garde_nodes'] }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - item != inventory_hostname
+    - hostvars[item].host_key is defined
+  become: true
+  become_user: "{{ deploy_user }}"
+
+- name: Work out where this node sends snapshots
+  ansible.builtin.set_fact:
+    snapshot_peers: >-
+      {{ groups['garde_nodes']
+         | difference([inventory_hostname])
+         | map('extract', hostvars, 'node_wg_ip')
+         | select('string')
+         | list }}
+
+- name: Install the snapshot script
+  ansible.builtin.template:
+    src: snapshot.sh.j2
+    dest: "{{ remote_root }}/scripts/snapshot.sh"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0750"
+
+- name: Install the systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - garde-snapshot.service
+    - garde-snapshot.timer
+  notify: Reload systemd
+
+- name: Reload systemd now so the timer state below is accurate
+  ansible.builtin.meta: flush_handlers
+
+- name: Run the snapshot timer on the primary only
+  # Enabled here and explicitly stopped elsewhere, so that re-running this
+  # playbook after a failover moves the timer to the node that now owns the
+  # database rather than leaving two nodes pushing at each other.
+  ansible.builtin.systemd:
+    name: garde-snapshot.timer
+    enabled: "{{ node_role == 'app-primary' }}"
+    state: "{{ 'started' if node_role == 'app-primary' else 'stopped' }}"

@@ -1,0 +1,10 @@
+# Deliberately a reload, never a restart.
+#
+# Restarting Docker restarts every container on the host, and a restarted Vault
+# member comes back sealed. A routine drift-correcting run must not be able to
+# seal the cluster. Reload applies daemon.json to newly created containers,
+# which is all the settings here need.
+- name: Restart docker
+  ansible.builtin.service:
+    name: docker
+    state: reloaded

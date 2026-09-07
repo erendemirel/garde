@@ -1,0 +1,13 @@
+# Install with: ansible-galaxy collection install -r requirements.yml
+#
+# Versions are pinned with a lower bound rather than exactly, because these two
+# collections are stable and the playbooks use long-standing modules only.
+
+collections:
+  # community.general.ufw drives the firewall rules
+  - name: community.general
+    version: ">=8.0.0"
+
+  # ansible.posix.authorized_key manages the node-to-node snapshot keys
+  - name: ansible.posix
+    version: ">=1.5.0"
