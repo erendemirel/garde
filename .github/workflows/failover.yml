@@ -64,6 +64,7 @@ jobs:
           OVH_APPLICATION_SECRET: ${{ secrets.OVH_APPLICATION_SECRET }}
           OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
           IONOS_TOKEN: ${{ secrets.IONOS_TOKEN }}
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
           ASSUME_YES: "true"
         run: |
           args="--reason '${{ inputs.reason }}'"

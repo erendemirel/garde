@@ -108,9 +108,9 @@ visible in run metadata.
 **The hosting provider sits behind one seam.** Everything provider-specific
 reaches the outside world through three verbs — route traffic to a node, report
 where traffic is, set a host's power — plus five declared facts. Drivers live in
-`deploy/scripts/providers/`; `netcup`, `hetzner`, `ovh` and `ionos` ship today,
-selected by `PROVIDER` in the inventory. Nothing outside that directory names a
-provider.
+`deploy/scripts/providers/`; `netcup`, `hetzner`, `ovh`, `ionos` and `scaleway`
+ship today, selected by `PROVIDER` in the inventory. Nothing outside that
+directory names a provider.
 
 The verbs are intent rather than mechanism: "route traffic to this node", not
 "assign the failover IP". A floating IP is how both current providers do it, but
@@ -285,6 +285,7 @@ address drops traffic for one the host does not know about.
 | `HCLOUD_TOKEN` | Hetzner Cloud driver, if `PROVIDER=hetzner` |
 | `OVH_APPLICATION_KEY`, `OVH_APPLICATION_SECRET`, `OVH_CONSUMER_KEY` | OVHcloud driver, if `PROVIDER=ovh` |
 | `IONOS_TOKEN` | IONOS Cloud driver, if `PROVIDER=ionos` |
+| `SCW_SECRET_KEY` | Scaleway driver, if `PROVIDER=scaleway` |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin |
 
 **Variables:** `API_DOMAIN` (used by the deploy workflow), plus `DNS_ZONE` and
@@ -485,14 +486,17 @@ different API that the driver will not talk to.
 | `hetzner` | **Cloud** (CCX for dedicated vCPU) | dedicated/Robot: 90–110s | seconds, no cooldown |
 | `ovh` | **VPS** | dedicated, Public Cloud | ~1–2 minutes |
 | `ionos` | **Cloud** (DCD, API v6) | shared-hosting VPS range | detach + attach |
+| `scaleway` | **Instances** | Elastic Metal | seconds, no cooldown |
 
 netcup's cooldown is the one that shapes operations rather than just timing: a
 cutover is one-way for five minutes, so you commit to the direction. The others
 let you fail straight back, which lowers the stakes of deciding to fail over at
 all.
 
-OVH additionally refuses to move an Additional IP between services in different
-countries, so keep all three hosts in one region.
+Two providers constrain where the hosts live. OVH refuses to move an Additional
+IP between services in different countries, and Scaleway cannot attach a
+flexible IP to an Instance in another zone. On both, keep all three hosts
+together.
 
 ### Doing the move
 
@@ -507,12 +511,20 @@ The shell tooling is provider-neutral, so most of a move is inventory edits:
 4. Re-run the bootstrap playbook. It reads `PROVIDER_REQUIRES_IP_BINDING` from
    the driver and configures — or skips — the host-side address binding.
 
-Step 4 is not a formality on IONOS. The other three providers *route* the
-address to a host that must already carry it, so both app nodes bind it
-permanently. IONOS *delivers* it by attaching the reserved IP to a NIC, and
-statically binding it on both would put one address on two machines of the same
-virtual LAN. The IONOS driver therefore declares
-`PROVIDER_REQUIRES_IP_BINDING=false` and the playbook skips the role.
+Step 4 is not a formality. The providers split into two families:
+
+- **Routed** — netcup, Hetzner and OVH hand the address to a host that must
+  already carry it on its interface. Both app nodes bind it permanently, so the
+  standby can serve the instant the route lands.
+- **Delivered** — IONOS attaches the reserved IP to a NIC, and Scaleway
+  configures it inside the guest itself via `scw-net-reconfig`. Binding it
+  statically on both nodes would put one address on two machines, and on
+  Scaleway it would actively fight the agent that deconfigures the address on
+  detach.
+
+That difference is the `PROVIDER_REQUIRES_IP_BINDING` fact. The two delivered
+providers declare `false` and the playbook skips the `failover_ip` role for
+them; the three routed ones declare `true` and get it.
 
 Three things are **not** behind the seam, deliberately, because they are
 declarations rather than calls and a common schema for them would fit nobody:
