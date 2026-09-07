@@ -26,7 +26,17 @@ KEY_DIR="$WG_DIR/keys"
 mkdir -p "$KEY_DIR"
 chmod 700 "$WG_DIR" "$KEY_DIR"
 
-PEERS="$NODES ci ops"
+# Where the provider brokers control-plane access, the CI runner and the
+# operator do not join the mesh at all - they tunnel straight to each host - so
+# there are no roaming peers to generate keys or configs for. The mesh then
+# carries only node-to-node traffic.
+if provider_uses_tunnel; then
+  PEERS="$NODES"
+  ROAMING_PEERS=""
+else
+  PEERS="$NODES ci ops"
+  ROAMING_PEERS="ci ops"
+fi
 
 # --- keys -----------------------------------------------------------------
 
@@ -73,7 +83,7 @@ for node in $NODES; do
       printf 'PublicKey = %s\n' "$(cat "$KEY_DIR/$other.pub")"
       printf 'AllowedIPs = %s/32\n' "$(peer_ip "$other")"
       if ! is_roaming_peer "$other"; then
-        printf 'Endpoint = %s:%s\n' "$(node_public_ip "$other")" "${WG_PORT:-51820}"
+        printf 'Endpoint = %s:%s\n' "$(node_mesh_endpoint "$other")" "${WG_PORT:-51820}"
         printf 'PersistentKeepalive = 25\n'
       fi
     done
@@ -98,7 +108,7 @@ write_roaming_conf() {
       printf '# %s\n' "$node"
       printf 'PublicKey = %s\n' "$(cat "$KEY_DIR/$node.pub")"
       printf 'AllowedIPs = %s/32\n' "$(node_wg_ip "$node")"
-      printf 'Endpoint = %s:%s\n' "$(node_public_ip "$node")" "${WG_PORT:-51820}"
+      printf 'Endpoint = %s:%s\n' "$(node_mesh_endpoint "$node")" "${WG_PORT:-51820}"
       printf 'PersistentKeepalive = 25\n'
     done
   } >"$conf"
@@ -106,10 +116,28 @@ write_roaming_conf() {
   ok "$conf"
 }
 
-write_roaming_conf ci  "GitHub Actions runner peer - store as the WG_CI_CONF secret"
-write_roaming_conf ops "Operator workstation peer - install as your local wg0.conf"
+for peer in $ROAMING_PEERS; do
+  case "$peer" in
+    ci)  write_roaming_conf ci  "GitHub Actions runner peer - store as the WG_CI_CONF secret" ;;
+    ops) write_roaming_conf ops "Operator workstation peer - install as your local wg0.conf" ;;
+  esac
+done
 
-cat <<EOF
+if provider_uses_tunnel; then
+  cat <<EOF
+
+Next steps:
+  1. Bootstrap the hosts (installs each node config for you):
+       cd ansible && ansible-playbook playbooks/bootstrap.yml -e use_mesh=false \\
+         -e deploy_pubkey_file=~/.ssh/garde_deploy.pub
+  2. Keep deploy/.wg/keys/ offline. Rotating a key means regenerating every config.
+
+No ci.conf or ops.conf: on $PROVIDER_NAME you reach the hosts through the
+provider's own tunnel, not by joining the mesh. Make sure your workstation is
+authenticated to $PROVIDER_NAME and can open one before you close public SSH.
+EOF
+else
+  cat <<EOF
 
 Next steps:
   1. Bring up your own peer, or you will lock yourself out once the firewall
@@ -122,3 +150,4 @@ Next steps:
   3. Store deploy/.wg/ci.conf as the GitHub secret WG_CI_CONF
   4. Keep deploy/.wg/keys/ offline. Rotating a key means regenerating every config.
 EOF
+fi

@@ -51,8 +51,16 @@
         groups:
           - garde_nodes
           - "role_{{ item.role | replace('-', '_') }}"
-        # Before the mesh exists there is only the public address to use.
-        ansible_host: "{{ item.wg_ip if (use_mesh | bool) else item.public_ip }}"
+        # Three cases. Where the provider brokers access the hosts have no
+        # public address at all, so the tunnel is the only route and use_mesh
+        # does not apply. Otherwise it is the mesh address, or - on a first run,
+        # before the mesh exists - the public one.
+        ansible_host: >-
+          {{ item.admin_host if garde.admin_access == 'tunnel'
+             else (item.wg_ip if (use_mesh | bool) else item.public_ip) }}
+        ansible_ssh_common_args: >-
+          {{ '-o ProxyCommand="' ~ item.admin_proxy_command ~ '"'
+             if garde.admin_access == 'tunnel' else '' }}
         ansible_user: root
         ansible_port: "{{ garde.ssh_port }}"
         node_name: "{{ item.name }}"

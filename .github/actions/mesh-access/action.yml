@@ -1,13 +1,20 @@
 name: Mesh access
 description: >-
-  Join the WireGuard mesh and prepare SSH so the runner can reach the netcup
-  hosts. Public SSH is firewalled off on every node, so this is the only path
-  in, and it disappears when the job ends.
+  Give the runner a path to the hosts. Public SSH is firewalled off on every
+  node, so this is the only way in, and it disappears when the job ends.
+
+  Which path depends on the provider. Most declare mesh access, and the runner
+  joins the WireGuard mesh as an ephemeral peer. Providers that broker their own
+  connection declare tunnel access, and the runner skips WireGuard entirely -
+  the hosts have no public address to dial in the first place.
 
 inputs:
   wg-config:
-    description: WireGuard config for the ephemeral CI peer (WG_CI_CONF secret)
-    required: true
+    description: >-
+      WireGuard config for the ephemeral CI peer (WG_CI_CONF secret). Not used
+      by providers that declare tunnel access.
+    required: false
+    default: ""
   ssh-key:
     description: Private deploy key (DEPLOY_SSH_KEY secret)
     required: true
@@ -23,6 +30,13 @@ inputs:
       not, since it usually runs precisely because a node is down.
     required: false
     default: "true"
+  gcp-service-account-key:
+    description: >-
+      Service account JSON, for providers that authenticate from a key file
+      rather than environment variables. Written to the runner's temp directory
+      and exported as GOOGLE_APPLICATION_CREDENTIALS for the rest of the job.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -35,12 +49,50 @@ runs:
         sudo apt-get update -qq
         sudo apt-get install -y -qq wireguard-tools zstd rsync jq
 
+    # The inventory names the provider, and the provider decides whether there
+    # is a mesh to join, so it has to be on disk before that question is asked.
+    - name: Write inventory
+      shell: bash
+      env:
+        INVENTORY: ${{ inputs.inventory }}
+      run: |
+        set -euo pipefail
+        printf '%s\n' "$INVENTORY" > deploy/inventory.env
+        chmod 600 deploy/inventory.env
+        chmod +x deploy/scripts/*.sh
+
+    - name: Provide Google Cloud credentials
+      if: ${{ inputs.gcp-service-account-key != '' }}
+      shell: bash
+      env:
+        KEY: ${{ inputs.gcp-service-account-key }}
+      run: |
+        set -euo pipefail
+        install -m 600 /dev/null "$RUNNER_TEMP/gcp-key.json"
+        printf '%s' "$KEY" > "$RUNNER_TEMP/gcp-key.json"
+        echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+
+    - name: Resolve access mode
+      id: access
+      shell: bash
+      run: |
+        set -euo pipefail
+        mode="$(. deploy/scripts/lib.sh && load_inventory \
+                 && printf '%s' "${PROVIDER_ADMIN_ACCESS:-mesh}")"
+        echo "mode=$mode" >> "$GITHUB_OUTPUT"
+        echo "  access mode: $mode"
+
     - name: Join the mesh
+      if: steps.access.outputs.mode == 'mesh'
       shell: bash
       env:
         WG_CONFIG: ${{ inputs.wg-config }}
       run: |
         set -euo pipefail
+        if [ -z "$WG_CONFIG" ]; then
+          echo "::error::this provider uses mesh access but no wg-config was supplied"
+          exit 1
+        fi
         printf '%s\n' "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf >/dev/null
         sudo chmod 600 /etc/wireguard/wg0.conf
         if ! sudo wg-quick up wg0; then
@@ -63,31 +115,22 @@ runs:
         printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
         chmod 600 ~/.ssh/known_hosts
 
-    - name: Write inventory
-      shell: bash
-      env:
-        INVENTORY: ${{ inputs.inventory }}
-      run: |
-        set -euo pipefail
-        printf '%s\n' "$INVENTORY" > deploy/inventory.env
-        chmod 600 deploy/inventory.env
-        chmod +x deploy/scripts/*.sh
-
+    # Uses the deploy scripts' own helpers rather than reimplementing the SSH
+    # target, so this checks the same path the rest of the job will use.
     - name: Check reachability
       shell: bash
       env:
         REQUIRE_ALL: ${{ inputs.require-all-nodes }}
       run: |
         set -uo pipefail
-        set -a; . deploy/inventory.env; set +a
+        . deploy/scripts/lib.sh
+        load_inventory
         unreachable=""
         for node in $NODES; do
-          ip_var="$(echo "${node}_WG_IP" | tr '[:lower:]' '[:upper:]')"
-          ip="${!ip_var}"
-          if ssh -o BatchMode=yes -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$ip" true 2>/dev/null; then
-            echo "  ok   $node ($ip)"
+          if on_node "$node" true 2>/dev/null; then
+            echo "  ok   $node"
           else
-            echo "  down $node ($ip)"
+            echo "  down $node"
             unreachable="$unreachable $node"
           fi
         done

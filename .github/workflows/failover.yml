@@ -1,9 +1,9 @@
 name: Failover
 
-# Promotes the standby node to primary. This causes a short outage (roughly
-# 30-90 seconds, dominated by netcup applying the failover IP route) and cannot
-# be reversed for 301 seconds afterwards, because netcup rate-limits
-# reassignments of the same IP.
+# Promotes the standby node to primary. This causes a short outage, most of it
+# spent waiting for the hosting provider to move public traffic; how long, and
+# whether it can be reversed immediately, is the provider's business and is
+# declared by its driver rather than assumed here.
 #
 # Guarded by the `failover` environment, which should require a reviewer.
 
@@ -20,8 +20,8 @@ on:
         required: true
       power_off:
         description: >-
-          Power the old primary off through the netcup API. Use when it is
-          unreachable and cannot be fenced over SSH.
+          Power the old primary off through the hosting provider's API. Use when
+          it is unreachable and cannot be fenced over SSH.
         type: boolean
         default: false
       dry_run:
@@ -38,6 +38,14 @@ jobs:
     name: Fail over
     runs-on: ubuntu-latest
     environment: failover
+    # Set on the job, not the step: providers that tunnel need these to open a
+    # connection at all, so the reachability check inside mesh-access needs them
+    # just as much as the failover itself does.
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
     steps:
       - uses: actions/checkout@v5
 
@@ -47,6 +55,7 @@ jobs:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           inventory: ${{ secrets.DEPLOY_INVENTORY }}
+          gcp-service-account-key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
           # A failover usually runs because a node is down. Do not block on it.
           require-all-nodes: "false"
 
@@ -55,9 +64,9 @@ jobs:
 
       - name: Fail over
         env:
-          # Both provider credentials are passed; the driver selected by
-          # PROVIDER in the inventory uses one and ignores the other, so this
-          # works without the workflow knowing which provider is in play.
+          # Every provider's credentials are passed; the driver selected by
+          # PROVIDER in the inventory consumes the ones it declares and ignores
+          # the rest, so the workflow never needs to know which is in play.
           NETCUP_SCP_REFRESH_TOKEN: ${{ secrets.NETCUP_SCP_REFRESH_TOKEN }}
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
           OVH_APPLICATION_KEY: ${{ secrets.OVH_APPLICATION_KEY }}

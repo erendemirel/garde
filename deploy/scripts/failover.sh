@@ -65,7 +65,7 @@ printf '\n'
 
 step "1/6 Verifying the target can take over"
 
-on_node "$TO_NODE" "true" 2>/dev/null || die "$TO_NODE is not reachable over the mesh - it cannot become primary"
+on_node "$TO_NODE" "true" 2>/dev/null || die "$TO_NODE is not reachable - it cannot become primary"
 
 for container in garde-redis garde-vault-agent; do
   on_node "$TO_NODE" "docker inspect -f '{{.State.Running}}' $container 2>/dev/null | grep -q true" \

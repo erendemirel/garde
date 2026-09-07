@@ -30,6 +30,21 @@
     proto: tcp
     comment: ssh over mesh
 
+# Where the provider brokers the connection, SSH arrives from the tunnel's own
+# range rather than from the mesh, and the rule above would lock it out. This is
+# still not public exposure: the range belongs to the provider's proxy or to
+# your own VPC, and every connection through it is authorised by the provider's
+# IAM before it reaches the host.
+- name: Allow SSH from the provider tunnel
+  community.general.ufw:
+    rule: allow
+    src: "{{ item }}"
+    port: "22"
+    proto: tcp
+    comment: ssh over provider tunnel
+  loop: "{{ garde_facts.admin_ssh_sources | default('') | split() }}"
+  when: garde_facts.admin_ssh_sources | default('') | length > 0
+
 - name: Allow HTTP and HTTPS on the app nodes
   community.general.ufw:
     rule: allow

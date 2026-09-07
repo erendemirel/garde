@@ -29,6 +29,40 @@
 # Because those are data, failover.sh contains no provider conditionals at all:
 # a provider with no cooldown declares 0 and the same wait logic does nothing.
 #
+# Two further facts have defaults, so a driver declares them only if it differs.
+# Both describe how the *control plane* reaches a host, which turned out to vary
+# more than traffic routing does:
+#
+#   PROVIDER_ADMIN_ACCESS      mesh | tunnel     default: mesh
+#   PROVIDER_IMAGE_TRANSPORT   ssh  | url        default: ssh
+#
+# `mesh` means the nodes carry public addresses and the control plane dials them
+# over WireGuard. Every VPS provider works this way. `tunnel` means the provider
+# brokers the connection to a host that has no public address at all, and the
+# driver must implement:
+#
+#   provider_admin_host <node>            hostname to hand ssh
+#   provider_admin_proxy_command <node>   ProxyCommand that reaches it
+#
+# `ssh` transports images by streaming `docker save` into `docker load`. `url`
+# exists because the tunnels the hyperscalers provide are for administrative
+# traffic and explicitly not for bulk transfer, so those drivers stage the image
+# elsewhere and hand the host a short-lived URL to fetch it from:
+#
+#   provider_publish_image <file>         upload; echo a URL the node can GET
+#
+# The host never gains a credential either way, which is the property the
+# original registry-free design existed to protect.
+
+PROVIDER_ADMIN_ACCESS_DEFAULT="mesh"
+PROVIDER_IMAGE_TRANSPORT_DEFAULT="ssh"
+
+# Tunnelled SSH does not arrive from the mesh subnet, so the firewall has to
+# admit it from somewhere else. A driver declares the range when the provider
+# publishes a fixed one; otherwise ADMIN_SSH_SOURCES in the inventory supplies
+# it. Empty on mesh providers, where the mesh rule already covers SSH.
+PROVIDER_ADMIN_SSH_SOURCES_DEFAULT=""
+#
 # Policy stays here and in the callers, never in a driver. Ordering, fencing,
 # verification and the cooldown wait are identical whoever the host is; a driver
 # that made those decisions would give you subtly different failover behaviour
@@ -57,6 +91,11 @@ load_provider() {
   file="$PROVIDER_DIR/$name.sh"
   [ -f "$file" ] || die "no driver for provider '$name' (available: $(available_providers))"
 
+  # Defaults first, so the driver only has to declare what differs.
+  PROVIDER_ADMIN_ACCESS="$PROVIDER_ADMIN_ACCESS_DEFAULT"
+  PROVIDER_IMAGE_TRANSPORT="$PROVIDER_IMAGE_TRANSPORT_DEFAULT"
+  PROVIDER_ADMIN_SSH_SOURCES="$PROVIDER_ADMIN_SSH_SOURCES_DEFAULT"
+
   # shellcheck disable=SC1090
   . "$file"
 
@@ -68,6 +107,38 @@ load_provider() {
   for fact in $PROVIDER_REQUIRED_FACTS; do
     [ -n "${!fact+set}" ] || die "driver '$name' does not declare $fact"
   done
+
+  case "$PROVIDER_ADMIN_ACCESS" in
+    mesh) ;;
+    tunnel)
+      for fn in provider_admin_host provider_admin_proxy_command; do
+        command -v "$fn" >/dev/null 2>&1 \
+          || die "driver '$name' declares tunnel access but does not implement $fn()"
+      done
+      [ -n "$(admin_ssh_sources)" ] || die "\
+$PROVIDER_NAME reaches hosts through a tunnel, so SSH does not arrive from the
+     mesh subnet and the firewall would lock it out. Set ADMIN_SSH_SOURCES in
+     the inventory to the range the tunnel arrives from." ;;
+    *) die "driver '$name' declares PROVIDER_ADMIN_ACCESS='$PROVIDER_ADMIN_ACCESS' (expected mesh or tunnel)" ;;
+  esac
+
+  case "$PROVIDER_IMAGE_TRANSPORT" in
+    ssh) ;;
+    url)
+      command -v provider_publish_image >/dev/null 2>&1 \
+        || die "driver '$name' declares url image transport but does not implement provider_publish_image()" ;;
+    *) die "driver '$name' declares PROVIDER_IMAGE_TRANSPORT='$PROVIDER_IMAGE_TRANSPORT' (expected ssh or url)" ;;
+  esac
+}
+
+# True when the control plane reaches hosts through a provider-brokered tunnel
+# rather than over the WireGuard mesh.
+provider_uses_tunnel() { [ "${PROVIDER_ADMIN_ACCESS:-mesh}" = "tunnel" ]; }
+
+# The inventory wins: a driver's value is a sensible default for providers that
+# publish a fixed range, not a fact the operator cannot correct.
+admin_ssh_sources() {
+  printf '%s' "${ADMIN_SSH_SOURCES:-${PROVIDER_ADMIN_SSH_SOURCES:-}}"
 }
 
 # Credentials are checked only when a driver is about to be used, so that

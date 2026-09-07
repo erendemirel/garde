@@ -75,6 +75,13 @@ jobs:
     # Runs even when the build job was skipped for a vault/metrics-only deploy.
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     environment: production
+    # Set on the job because mesh-access needs them too: on providers that
+    # tunnel, even checking reachability is an authenticated call.
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
     steps:
       - uses: actions/checkout@v5
 
@@ -99,6 +106,7 @@ jobs:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           inventory: ${{ secrets.DEPLOY_INVENTORY }}
+          gcp-service-account-key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
       - name: Deploy
         env:

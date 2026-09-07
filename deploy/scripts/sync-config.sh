@@ -122,11 +122,12 @@ for node in $TARGETS; do
   step "Pushing config to $node"
   # --delete would remove host-owned state (vault/role-id, data/), so the sync
   # is additive and scoped to the directories this script owns.
-  rsync -az -e "ssh -p ${SSH_PORT:-22} ${SSH_OPTS:-}" --delete \
+  rsh="$(rsync_rsh "$node")"
+  rsync -az -e "$rsh" --delete \
     "$STAGE/compose/" "$(ssh_target "$node"):$REMOTE_ROOT/compose/"
-  rsync -az -e "ssh -p ${SSH_PORT:-22} ${SSH_OPTS:-}" \
+  rsync -az -e "$rsh" \
     "$STAGE/config/" "$(ssh_target "$node"):$REMOTE_ROOT/config/"
-  rsync -az -e "ssh -p ${SSH_PORT:-22} ${SSH_OPTS:-}" \
+  rsync -az -e "$rsh" \
     "$STAGE/.env" "$(ssh_target "$node"):$REMOTE_ROOT/.env"
 
   on_node "$node" "chmod 600 '$REMOTE_ROOT/.env' && mkdir -p '$REMOTE_ROOT/vault' '$REMOTE_ROOT/data' '$REMOTE_ROOT/backup' '$REMOTE_ROOT/certs' '$REMOTE_ROOT/configs'"
@@ -145,7 +146,7 @@ for node in $TARGETS; do
       fi
       render "$DEPLOY_DIR/config/redis/redis.conf.tpl" "$STAGE/redis.conf" \
         "REDIS_PASSWORD=$REDIS_PASSWORD" "REPLICAOF=$replicaof"
-      rsync -az -e "ssh -p ${SSH_PORT:-22} ${SSH_OPTS:-}" \
+      rsync -az -e "$(rsync_rsh "$node")" \
         "$STAGE/redis.conf" "$(ssh_target "$node"):$REMOTE_ROOT/config/redis/redis.conf"
       # uid 999 is the redis user in the official image, and it must be able to
       # rewrite this file during failover. The deploy user is not root, so the

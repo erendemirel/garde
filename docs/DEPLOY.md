@@ -45,7 +45,7 @@ least five minutes.
 ```
                        Internet
                           │
-                 [ netcup failover IP ]  ── routed to the primary
+                 [ failover IP ]  ── routed to the primary
                           │
         ┌─────────────────▼─────────────────┐
         │ node1   app-primary               │
@@ -108,9 +108,9 @@ visible in run metadata.
 **The hosting provider sits behind one seam.** Everything provider-specific
 reaches the outside world through three verbs — route traffic to a node, report
 where traffic is, set a host's power — plus five declared facts. Drivers live in
-`deploy/scripts/providers/`; `netcup`, `hetzner`, `ovh`, `ionos` and `scaleway`
-ship today, selected by `PROVIDER` in the inventory. Nothing outside that
-directory names a provider.
+`deploy/scripts/providers/`; `netcup`, `hetzner`, `ovh`, `ionos`, `scaleway`,
+`aws` and `gcp` ship today, selected by `PROVIDER` in the inventory. Nothing
+outside that directory names a provider.
 
 The verbs are intent rather than mechanism: "route traffic to this node", not
 "assign the failover IP". A floating IP is how both current providers do it, but
@@ -286,10 +286,18 @@ address drops traffic for one the host does not know about.
 | `OVH_APPLICATION_KEY`, `OVH_APPLICATION_SECRET`, `OVH_CONSUMER_KEY` | OVHcloud driver, if `PROVIDER=ovh` |
 | `IONOS_TOKEN` | IONOS Cloud driver, if `PROVIDER=ionos` |
 | `SCW_SECRET_KEY` | Scaleway driver, if `PROVIDER=scaleway` |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | AWS driver, if `PROVIDER=aws` |
+| `GCP_SERVICE_ACCOUNT_KEY` | Google driver, if `PROVIDER=gcp`; the workflow writes it to a file and points `GOOGLE_APPLICATION_CREDENTIALS` at it |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin |
 
 **Variables:** `API_DOMAIN` (used by the deploy workflow), plus `DNS_ZONE` and
-`FAILOVER_IP` (used by the infra workflow).
+`FAILOVER_IP` (used by the infra workflow). `AWS_REGION` and
+`GOOGLE_CLOUD_PROJECT` if you deploy to either hyperscaler.
+
+`WG_CI_CONF` is not required on AWS or GCP: the runner does not join the mesh
+there. Their credentials are set at job level rather than on the deploy step,
+because on those providers even checking whether a host is reachable means
+opening an authorised tunnel.
 
 `API_DOMAIN` is duplicated here and in the inventory on purpose: the build job
 bakes it into the UI bundle before the inventory secret is loaded. The two must
@@ -487,16 +495,32 @@ different API that the driver will not talk to.
 | `ovh` | **VPS** | dedicated, Public Cloud | ~1–2 minutes |
 | `ionos` | **Cloud** (DCD, API v6) | shared-hosting VPS range | detach + attach |
 | `scaleway` | **Instances** | Elastic Metal | seconds, no cooldown |
+| `aws` | **EC2** + an Elastic IP | — | seconds, atomic |
+| `gcp` | **Compute Engine** + a static external IP | — | release + attach |
 
 netcup's cooldown is the one that shapes operations rather than just timing: a
 cutover is one-way for five minutes, so you commit to the direction. The others
 let you fail straight back, which lowers the stakes of deciding to fail over at
 all.
 
-Two providers constrain where the hosts live. OVH refuses to move an Additional
-IP between services in different countries, and Scaleway cannot attach a
-flexible IP to an Instance in another zone. On both, keep all three hosts
-together.
+Only AWS moves the address atomically: one call disassociates and reassociates
+it, so it is never held by nobody. IONOS and GCP genuinely release it first,
+leaving a window where the address is unattached and a failed second step leaves
+the site dark. That window is what each driver's declared propagation time
+covers.
+
+Placement is constrained on four. OVH refuses to move an Additional IP between
+services in different countries and Scaleway cannot cross a zone, so keep those
+hosts together. AWS and GCP are the opposite: their addresses move freely across
+availability zones within one region but never across regions, so spread the
+three hosts across zones and keep them in one region.
+
+AWS and GCP are also the two where this architecture is not what the platform
+would suggest. Both answer this problem natively with a managed load balancer in
+front of an autoscaling group. The drivers exist so the same three-host design
+runs there unchanged, which is worth having for portability — but if you are
+building for one of them and nothing else, their own primitives are the better
+tool, and this seam is not an argument against them.
 
 ### Doing the move
 
@@ -516,15 +540,76 @@ Step 4 is not a formality. The providers split into two families:
 - **Routed** — netcup, Hetzner and OVH hand the address to a host that must
   already carry it on its interface. Both app nodes bind it permanently, so the
   standby can serve the instant the route lands.
-- **Delivered** — IONOS attaches the reserved IP to a NIC, and Scaleway
-  configures it inside the guest itself via `scw-net-reconfig`. Binding it
-  statically on both nodes would put one address on two machines, and on
-  Scaleway it would actively fight the agent that deconfigures the address on
-  detach.
+- **Delivered** — IONOS attaches the reserved IP to a NIC, Scaleway configures
+  it inside the guest via `scw-net-reconfig`, and AWS and GCP never put it on
+  the guest at all: they translate it to the instance's private address, so
+  `ip addr` inside the machine shows only that. Binding it statically would put
+  one address on two machines, and on Scaleway would fight the agent that
+  removes it on detach.
 
-That difference is the `PROVIDER_REQUIRES_IP_BINDING` fact. The two delivered
+That difference is the `PROVIDER_REQUIRES_IP_BINDING` fact. The four delivered
 providers declare `false` and the playbook skips the `failover_ip` role for
 them; the three routed ones declare `true` and get it.
+
+### AWS and GCP: hosts with no public address
+
+One constraint applies to both hyperscalers and to none of the VPS providers,
+and it changes how the cluster is reached.
+
+On a VPS provider a host has its own permanent public address *and* may hold the
+failover address at the same time. On EC2 and Compute Engine it cannot: an
+instance's primary interface gets one public IPv4, and attaching the failover
+address takes that slot. A node that becomes primary would lose its own public
+address, and the node that was primary would lose public reachability entirely.
+
+The resolution is to stop wanting per-node public addresses. On these two
+providers the hosts have **none**, and the only public address in the deployment
+is the failover address itself, held by whichever node is currently primary.
+That splits into two questions the seam now answers separately.
+
+**How nodes reach each other.** Put all three hosts in one VPC and set
+`NODE*_MESH_ENDPOINT` to their private addresses. WireGuard still carries all
+node-to-node traffic — Vault Raft, Redis replication, snapshot transfer — but
+peers over addresses that a failover never touches. `NODE*_PUBLIC_IP` is left
+unset.
+
+**How you reach them.** Not over the mesh: with no public endpoint to dial, a
+roaming peer has nothing to connect to. Instead each provider's own identity-
+aware tunnel carries SSH, and the tooling opens one per connection:
+
+| | AWS | GCP |
+| --- | --- | --- |
+| Mechanism | EC2 Instance Connect Endpoint | IAP TCP forwarding |
+| Authorised by | IAM | IAM |
+| Agent on the host | none | none |
+| Cost | free | free |
+| Arrives from | the endpoint's ENI, in your VPC | `35.235.240.0/20` |
+
+`wg-gen.sh` notices this and generates no `ci.conf` or `ops.conf` — there are no
+roaming peers to generate them for. `sshd` is never reachable from the internet
+on any node, which is a stronger position than the VPS providers end up in.
+
+Set `ADMIN_SSH_SOURCES` to your subnet CIDR on AWS, so the firewall admits the
+tunnel. GCP needs nothing: IAP's range is fixed and the driver declares it.
+`load_provider` refuses to start on AWS without it rather than let you apply a
+firewall that locks the tunnel out.
+
+**Images do not go through the tunnel.** Both providers document theirs as
+administrative rather than bulk transport. So these drivers declare
+`PROVIDER_IMAGE_TRANSPORT=url`: CI stages the compressed image in object storage
+and hands the host a URL that expires in fifteen minutes, which the host fetches
+with `curl` and pipes into `docker load`. Set `AWS_IMAGE_BUCKET` or
+`GCP_IMAGE_BUCKET`, and give the network a free private path to the bucket — an
+**S3 gateway endpoint** on AWS, **Private Google Access** on GCP — since the
+instances have no public address and no NAT gateway.
+
+This keeps the property the registry-free design existed to protect: the hosts
+still hold no credential. A presigned URL carries no identity of its own and is
+useless once it expires, which is not true of a registry login.
+
+The running cost of all this is the reserved address, about $4 a month. The
+tunnels are free, the gateway endpoint and Private Google Access are free, and
+nothing extra runs on the hosts.
 
 Three things are **not** behind the seam, deliberately, because they are
 declarations rather than calls and a common schema for them would fit nobody:
@@ -538,10 +623,30 @@ declarations rather than calls and a common schema for them would fit nobody:
 - **DNS API credentials**, which are separate from the compute API credentials
   on both providers.
 
-Adding a third provider means one new file in `deploy/scripts/providers/`
+Adding another provider means one new file in `deploy/scripts/providers/`
 implementing the three verbs and declaring the five facts. `load_provider()`
 verifies the contract at load time, so a half-implemented driver fails
 immediately rather than two steps into a failover.
+
+Three further facts have defaults, so a driver declares them only when it
+differs. All three describe how the control plane reaches a host, which turned
+out to vary more between providers than traffic routing does:
+
+| Fact | Default | Non-default meaning |
+| --- | --- | --- |
+| `PROVIDER_ADMIN_ACCESS` | `mesh` | `tunnel`: hosts have no public address; the provider brokers the connection. Requires `provider_admin_host()` and `provider_admin_proxy_command()` |
+| `PROVIDER_IMAGE_TRANSPORT` | `ssh` | `url`: stage the image and let the host fetch it. Requires `provider_publish_image()` |
+| `PROVIDER_ADMIN_SSH_SOURCES` | empty | the fixed range a tunnel arrives from, where the provider publishes one |
+
+The contract check extends to these: a driver claiming `tunnel` without the two
+access verbs is rejected at load, and so is a `tunnel` driver with no SSH source
+from either the driver or the inventory — that combination would produce a
+firewall that locks you out of your own hosts.
+
+Drivers may bring their own tool requirements, checked in `provider_preflight`
+so a missing one is a clear error rather than a strange failure. Most need only
+`curl` and `jq`; `aws` needs the AWS CLI and `gcp` needs `gcloud`, both already
+present on GitHub's `ubuntu-latest` runners but not necessarily on yours.
 
 ---
 

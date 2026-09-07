@@ -9,6 +9,13 @@
 # pipes `docker save` straight into `docker load` on the far side, compressed
 # in flight.
 #
+# Where the provider brokers control-plane access, that stream would run through
+# an administrative tunnel that is documented as not being for bulk transfer. So
+# those drivers declare PROVIDER_IMAGE_TRANSPORT=url: the image is staged in the
+# provider's object storage and the host fetches it over a URL that expires.
+# The host still holds no credential - the URL carries no identity of its own,
+# and it is useless twenty minutes later.
+#
 # The image is skipped if the node already has that exact image id, which makes
 # redeploying an unchanged component nearly free.
 
@@ -41,6 +48,36 @@ choose_compressor() {
   fi
 }
 
+# --- url transport ---------------------------------------------------------
+
+declare -A _staged_url=()
+STAGE_DIR=""
+trap '[ -z "$STAGE_DIR" ] || rm -rf "$STAGE_DIR"' EXIT
+
+# Staging is keyed by image and compressor, not by node: three nodes fetching
+# the same image is one upload, not three.
+staged_image_url() {
+  local image="$1" comp="$2" key="$image|$comp" file
+
+  if [ -n "${_staged_url[$key]:-}" ]; then
+    printf '%s' "${_staged_url[$key]}"
+    return 0
+  fi
+
+  [ -n "$STAGE_DIR" ] || STAGE_DIR="$(mktemp -d)"
+  file="$STAGE_DIR/$(printf '%s' "$image" | tr '/:' '__').tar.$comp"
+
+  log "staging $image for the hosts to fetch"
+  case "$comp" in
+    zstd) docker save "$image" | zstd -T0 -3 -c >"$file" ;;
+    gzip) docker save "$image" | gzip -1 -c >"$file" ;;
+    *)    die "unknown compressor '$comp'" ;;
+  esac
+
+  _staged_url[$key]="$(provider_publish_image "$file")"
+  printf '%s' "${_staged_url[$key]}"
+}
+
 for node in $TARGETS; do
   require_node "$node"
   comp="$(choose_compressor "$node")"
@@ -59,16 +96,24 @@ for node in $TARGETS; do
     step "Shipping $image to $node ($((size / 1024 / 1024)) MB uncompressed, $comp)"
 
     started="$(date +%s)"
-    case "$comp" in
-      zstd)
-        docker save "$image" | zstd -T0 -3 -c \
-          | on_node_stdin "$node" "zstd -d -c | docker load"
-        ;;
-      gzip)
-        docker save "$image" | gzip -1 -c \
-          | on_node_stdin "$node" "gzip -d -c | docker load"
-        ;;
-    esac
+    if [ "${PROVIDER_IMAGE_TRANSPORT:-ssh}" = "url" ]; then
+      staged="$(staged_image_url "$image" "$comp")"
+      # The URL is secret while it lives, so it goes over stdin rather than in
+      # a command line that would show up in `ps` on the host.
+      printf '%s' "$staged" | on_node_stdin "$node" \
+        "read -r url && curl -fsSL \"\$url\" | $comp -d -c | docker load"
+    else
+      case "$comp" in
+        zstd)
+          docker save "$image" | zstd -T0 -3 -c \
+            | on_node_stdin "$node" "zstd -d -c | docker load"
+          ;;
+        gzip)
+          docker save "$image" | gzip -1 -c \
+            | on_node_stdin "$node" "gzip -d -c | docker load"
+          ;;
+      esac
+    fi
     ok "$image loaded on $node in $(( $(date +%s) - started ))s"
   done
 
