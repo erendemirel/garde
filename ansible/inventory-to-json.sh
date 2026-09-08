@@ -52,6 +52,7 @@ json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
 printf '{\n'
 printf '  "ssh_user": "%s",\n'    "$(json_escape "${SSH_USER:-deploy}")"
+printf '  "bootstrap_user": "%s",\n' "$(json_escape "${BOOTSTRAP_SSH_USER:-root}")"
 printf '  "ssh_port": %s,\n'      "${SSH_PORT:-22}"
 printf '  "remote_root": "%s",\n' "$(json_escape "${REMOTE_ROOT:-/opt/garde}")"
 printf '  "wg_subnet": "%s",\n'   "$(json_escape "${WG_SUBNET:-10.10.0.0/24}")"

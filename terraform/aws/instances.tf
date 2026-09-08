@@ -1,0 +1,76 @@
+# Three hosts, one per availability zone, and the address that moves between the
+# first two. Ubuntu because the Ansible roles assume apt and ufw.
+#
+# Private addresses are fixed rather than left to DHCP. They become
+# NODE*_MESH_ENDPOINT, and a WireGuard endpoint that changed when an instance
+# restarted would silently partition the mesh.
+
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+}
+
+resource "aws_key_pair" "bootstrap" {
+  key_name   = "${var.name}-bootstrap"
+  public_key = var.ssh_public_key
+}
+
+locals {
+  # Index 0 and 1 are the app pair the Elastic IP moves between; index 2 is the
+  # witness, which exists to give Vault's Raft cluster a third vote and never
+  # holds the address.
+  roles = ["app-primary", "app-standby", "witness"]
+}
+
+resource "aws_instance" "nodes" {
+  count = 3
+
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.nodes[count.index].id
+  vpc_security_group_ids = [aws_security_group.nodes.id]
+  key_name               = aws_key_pair.bootstrap.key_name
+  private_ip             = cidrhost(aws_subnet.nodes[count.index].cidr_block, 10)
+
+  root_block_device {
+    volume_size = var.root_volume_gb
+    volume_type = "gp3"
+    encrypted   = true
+  }
+
+  # Require IMDSv2. Nothing here reads instance metadata, but leaving the older
+  # unauthenticated version enabled is the difference between a server-side
+  # request bug being noise and it being a credential disclosure.
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+  tags = {
+    Name = "${var.name}-${count.index + 1}"
+    Role = local.roles[count.index]
+  }
+}
+
+# The only public address in the deployment. Terraform allocates it and points
+# it at the first app node; after that it belongs to the failover tooling, which
+# is why there is no aws_eip_association here. Adding one would mean Terraform
+# and failover.sh both believing they decide where traffic goes, and the next
+# `terraform apply` would quietly undo a failover.
+resource "aws_eip" "failover" {
+  domain   = "vpc"
+  instance = aws_instance.nodes[0].id
+
+  tags = { Name = "${var.name}-failover" }
+
+  lifecycle {
+    ignore_changes = [instance]
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}

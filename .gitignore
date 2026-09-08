@@ -94,7 +94,14 @@ deploy/.ssh-config
 ansible/.facts/
 ansible/*.retry
 
-# Terraform
+# Terraform. Recursive, because terraform/aws/ is a second root module and its
+# state holds a generated IAM secret key.
+terraform/**/.terraform/
+terraform/**/.terraform.lock.hcl
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+terraform/**/terraform.tfvars
+terraform/**/tfplan
 terraform/.terraform/
 terraform/.terraform.lock.hcl
 terraform/*.tfstate

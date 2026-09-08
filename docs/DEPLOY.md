@@ -607,9 +607,46 @@ This keeps the property the registry-free design existed to protect: the hosts
 still hold no credential. A presigned URL carries no identity of its own and is
 useless once it expires, which is not true of a registry login.
 
-The running cost of all this is the reserved address, about $4 a month. The
-tunnels are free, the gateway endpoint and Private Google Access are free, and
-nothing extra runs on the hosts.
+The tunnels are free, the gateway endpoint and Private Google Access are free,
+and nothing extra runs on the hosts. Public IPv4 is the cost: AWS bills every
+public address, including Elastic IPs, at roughly $3.60 a month. Expect about
+$11 a month for a three-host cluster, on top of the instances.
+
+That is three addresses rather than one, because of a constraint worth
+understanding before you design the network. **An Elastic IP only works in a
+subnet whose route table points at an internet gateway** — the address is
+translated there, and return traffic must leave the same way. So the app nodes
+cannot sit behind a NAT gateway or NAT instance: a NAT default route and an
+internet-gateway default route are the same entry in one table, and a subnet has
+only one. The node *not* holding the failover address would then have no route
+out at all, and it still needs to install packages and renew its own
+certificates. Giving each node an auto-assigned public address solves that, and
+costs the two extra addresses.
+
+They do not conflict. Associating the failover address replaces whatever public
+address the instance had, and releasing it removes public connectivity until the
+instance is stopped and started — which is exactly what fencing does, so a
+demoted node returns with a fresh address of its own.
+
+#### Provisioning it
+
+`terraform/aws/` builds all of the above: the VPC and its three subnets, both
+security groups, the Instance Connect Endpoint, three instances, the Elastic IP,
+the staging bucket with its gateway endpoint and expiry rule, and a CI user
+whose policy is scoped to exactly the calls the driver makes.
+
+```
+cd terraform/aws
+cp terraform.tfvars.example terraform.tfvars    # bucket name and your SSH key
+terraform init && terraform apply
+terraform output -raw inventory_fragment >> ../../deploy/inventory.env
+```
+
+It is a separate root module from `terraform/`, which drives netcup DNS; they
+share no state and no provider. Note that it deliberately does not manage the
+Elastic IP *association* after creation — `ignore_changes` covers it, because
+Terraform and `failover.sh` both believing they decide where traffic goes would
+mean the next `apply` quietly reverting a failover.
 
 Three things are **not** behind the seam, deliberately, because they are
 declarations rather than calls and a common schema for them would fit nobody:

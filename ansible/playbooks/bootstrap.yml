@@ -61,7 +61,7 @@
         ansible_ssh_common_args: >-
           {{ '-o ProxyCommand="' ~ item.admin_proxy_command ~ '"'
              if garde.admin_access == 'tunnel' else '' }}
-        ansible_user: root
+        ansible_user: "{{ garde.bootstrap_user }}"
         ansible_port: "{{ garde.ssh_port }}"
         node_name: "{{ item.name }}"
         node_role: "{{ item.role }}"
@@ -78,6 +78,11 @@
 - name: Baseline
   hosts: garde_nodes
   gather_facts: true
+  # Every role here changes privileged host state. Connecting as root needs no
+  # escalation; connecting as a cloud image's default account does. Escalating
+  # unconditionally would instead require sudo to exist on images where root
+  # logs in directly, which is not a safe assumption either.
+  become: "{{ garde_facts.bootstrap_user != 'root' }}"
   vars:
     deploy_user: "{{ garde_facts.ssh_user }}"
     remote_root: "{{ garde_facts.remote_root }}"
@@ -103,6 +108,7 @@
 - name: Snapshot timer
   hosts: role_app_primary:role_app_standby:role_witness
   gather_facts: false
+  become: "{{ garde_facts.bootstrap_user != 'root' }}"
   vars:
     deploy_user: "{{ garde_facts.ssh_user }}"
     remote_root: "{{ garde_facts.remote_root }}"
