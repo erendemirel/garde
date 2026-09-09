@@ -52,9 +52,24 @@ fi
 
 [ -f "$CREDS_FILE" ] && die "$CREDS_FILE already exists - refusing to overwrite existing credentials"
 
-vault_on "$FIRST_NODE" "vault operator init -key-shares=$KEY_SHARES -key-threshold=$KEY_THRESHOLD -format=json" >"$CREDS_FILE"
+# Staged through a temp file and moved into place only once it parses. Writing
+# the redirect straight to CREDS_FILE creates the file before the command runs,
+# so an init that fails for any reason leaves an empty one behind - and the
+# guard above then refuses every retry, claiming to protect credentials that do
+# not exist. The recovery for that looks alarmingly like "delete your unseal
+# keys", which is not something to ask of anyone mid-incident.
+umask 077
+CREDS_TMP="$CREDS_FILE.partial"
+trap 'rm -f "$CREDS_TMP"' EXIT
+
+vault_on "$FIRST_NODE" "vault operator init -key-shares=$KEY_SHARES -key-threshold=$KEY_THRESHOLD -format=json" >"$CREDS_TMP" \
+  || die "vault operator init failed on $FIRST_NODE - nothing was written"
+jq -e '.root_token' "$CREDS_TMP" >/dev/null 2>&1 \
+  || die "init did not return a root token - nothing was written"
+
+mv "$CREDS_TMP" "$CREDS_FILE"
+trap - EXIT
 chmod 600 "$CREDS_FILE"
-jq -e '.root_token' "$CREDS_FILE" >/dev/null || die "init did not return a root token"
 ok "initialised, credentials written to $CREDS_FILE"
 
 mapfile -t UNSEAL_KEYS < <(jq -r '.unseal_keys_b64[]' "$CREDS_FILE")

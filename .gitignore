@@ -81,6 +81,7 @@ prod.secrets
 vault/*.token
 vault/dev-token
 vault-credentials.json
+vault-credentials.json.partial
 vault-unseal-keys
 vault-unseal-keys.txt
 
