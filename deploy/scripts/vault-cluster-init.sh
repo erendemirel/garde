@@ -12,6 +12,12 @@
 #   5. distributes role-id / secret-id to the two application nodes
 #   6. seeds secrets from the given KEY=value file
 #
+# Safe to re-run. Initialising is the one step that cannot be repeated, and the
+# script detects that it already happened and resumes from the unseal instead.
+# That matters because a run can stop halfway for reasons that say nothing about
+# the cluster - a slow member, a dropped connection - and the half-configured
+# state it leaves behind has no Vault in it that the app stack can use.
+#
 # Unseal keys and the root token are written to vault-credentials.json in the
 # repository root, which is gitignored. Move it to offline storage and delete
 # the local copy: losing it means losing the Vault data permanently, and
@@ -30,7 +36,7 @@ while [ $# -gt 0 ]; do
     --secrets)   SECRETS_FILE="$2"; shift 2 ;;
     --shares)    KEY_SHARES="$2"; shift 2 ;;
     --threshold) KEY_THRESHOLD="$2"; shift 2 ;;
-    -h|--help)   sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '2,26p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -47,42 +53,66 @@ vault_on() {
 
 step "1/6 Initialising Vault on $FIRST_NODE"
 if vault_on "$FIRST_NODE" "vault status -format=json" 2>/dev/null | jq -e '.initialized == true' >/dev/null 2>&1; then
-  die "Vault is already initialised. If you meant to re-run the AppRole and secret steps only, use vault-reseed.sh."
+  # Resume rather than refuse. Everything from here on is idempotent, and a run
+  # interrupted partway - one member slow to unseal, a dropped connection - used
+  # to leave the cluster initialised but with no AppRole and no secrets, and no
+  # supported way forward. Initialising is the only step that cannot be repeated,
+  # and the check above is what establishes it has already happened.
+  [ -f "$CREDS_FILE" ] || die "$FIRST_NODE is already initialised, but $CREDS_FILE is missing.
+     Its unseal keys are the only way into this cluster. Restore that file and
+     re-run. If it is gone for good, so is the data: destroy the raft volumes
+     and start over with
+       ./deploy/scripts/deploy.sh vault --no-ship"
+  jq -e '.root_token' "$CREDS_FILE" >/dev/null 2>&1 \
+    || die "$CREDS_FILE holds no root token - cannot resume with it"
+  warn "already initialised - resuming from the unseal step"
+else
+  [ -f "$CREDS_FILE" ] && die "$CREDS_FILE already exists - refusing to overwrite existing credentials"
+
+  # Staged through a temp file and moved into place only once it parses. Writing
+  # the redirect straight to CREDS_FILE creates the file before the command runs,
+  # so an init that fails for any reason leaves an empty one behind - and the
+  # guard above then refuses every retry, claiming to protect credentials that do
+  # not exist. The recovery for that looks alarmingly like "delete your unseal
+  # keys", which is not something to ask of anyone mid-incident.
+  umask 077
+  CREDS_TMP="$CREDS_FILE.partial"
+  trap 'rm -f "$CREDS_TMP"' EXIT
+
+  vault_on "$FIRST_NODE" "vault operator init -key-shares=$KEY_SHARES -key-threshold=$KEY_THRESHOLD -format=json" >"$CREDS_TMP" \
+    || die "vault operator init failed on $FIRST_NODE - nothing was written"
+  jq -e '.root_token' "$CREDS_TMP" >/dev/null 2>&1 \
+    || die "init did not return a root token - nothing was written"
+
+  mv "$CREDS_TMP" "$CREDS_FILE"
+  trap - EXIT
+  chmod 600 "$CREDS_FILE"
+  ok "initialised, credentials written to $CREDS_FILE"
 fi
-
-[ -f "$CREDS_FILE" ] && die "$CREDS_FILE already exists - refusing to overwrite existing credentials"
-
-# Staged through a temp file and moved into place only once it parses. Writing
-# the redirect straight to CREDS_FILE creates the file before the command runs,
-# so an init that fails for any reason leaves an empty one behind - and the
-# guard above then refuses every retry, claiming to protect credentials that do
-# not exist. The recovery for that looks alarmingly like "delete your unseal
-# keys", which is not something to ask of anyone mid-incident.
-umask 077
-CREDS_TMP="$CREDS_FILE.partial"
-trap 'rm -f "$CREDS_TMP"' EXIT
-
-vault_on "$FIRST_NODE" "vault operator init -key-shares=$KEY_SHARES -key-threshold=$KEY_THRESHOLD -format=json" >"$CREDS_TMP" \
-  || die "vault operator init failed on $FIRST_NODE - nothing was written"
-jq -e '.root_token' "$CREDS_TMP" >/dev/null 2>&1 \
-  || die "init did not return a root token - nothing was written"
-
-mv "$CREDS_TMP" "$CREDS_FILE"
-trap - EXIT
-chmod 600 "$CREDS_FILE"
-ok "initialised, credentials written to $CREDS_FILE"
 
 mapfile -t UNSEAL_KEYS < <(jq -r '.unseal_keys_b64[]' "$CREDS_FILE")
 ROOT_TOKEN="$(jq -r '.root_token' "$CREDS_FILE")"
 
+node_is_unsealed() {
+  on_node "$1" "docker exec garde-vault vault status >/dev/null 2>&1"
+}
+
 unseal_node() {
   local node="$1" i=0
+  node_is_unsealed "$node" && return 0
+
   while [ "$i" -lt "$KEY_THRESHOLD" ]; do
-    on_node "$node" "docker exec -e VAULT_ADDR=http://127.0.0.1:8200 garde-vault vault operator unseal '${UNSEAL_KEYS[$i]}' >/dev/null"
+    # Errors are tolerated: a member that reached the threshold on an earlier
+    # attempt answers the remaining keys with a status dump, not a failure.
+    on_node "$node" "docker exec -e VAULT_ADDR=http://127.0.0.1:8200 garde-vault vault operator unseal '${UNSEAL_KEYS[$i]}' >/dev/null" || true
     i=$((i + 1))
-    if on_node "$node" "docker exec garde-vault vault status >/dev/null 2>&1"; then return 0; fi
   done
-  return 1
+
+  # Unsealing finishes asynchronously. A joining member completes its raft join
+  # and enters standby before it reports unsealed, which takes a second or two,
+  # so checking once straight after the final key races that and calls a
+  # perfectly healthy node a failure.
+  retry_until 15 2 node_is_unsealed "$node"
 }
 
 # --- 2/3. unseal all members ---------------------------------------------
