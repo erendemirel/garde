@@ -90,7 +90,13 @@ for node in $TARGETS; do
       # Both app nodes must hold the failover IP at all times. The standby
       # needs it before a cutover, not during one, and a missing binding is
       # invisible until the moment it matters.
-      if [ -n "${FAILOVER_IP:-}" ]; then
+      #
+      # Only where the provider routes the address rather than delivering it,
+      # matching the same gate in traffic.sh and failover.sh. Where the platform
+      # translates the address to a private one, the guest interface never
+      # carries it and there is nothing here to find - so checking anyway would
+      # report a failure no amount of fixing could ever clear.
+      if [ "$PROVIDER_REQUIRES_IP_BINDING" = "true" ] && [ -n "${FAILOVER_IP:-}" ]; then
         if on_node "$node" "ip -4 -oneline address show | grep -qF '$FAILOVER_IP'"; then
           ok "failover IP $FAILOVER_IP bound"
         else
