@@ -19,10 +19,12 @@ services:
     command: server -config=/vault/config/raft.hcl
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
-    # Do not set SKIP_CHOWN here. Docker creates the named volume below owned by
-    # root, and the image's entrypoint hands /vault to the unprivileged vault
-    # user before dropping to it. Skipping that leaves the Raft store unwritable
-    # and the container crash-loops on "vault.db: permission denied".
+      # Deliberately no SKIP_CHOWN. Vault runs as uid 100 and Docker creates the
+      # data volume owned by root, so the entrypoint's chown is what makes
+      # /vault/data writable at all - skipping it leaves the member in a restart
+      # loop on "failed to open bolt file: permission denied". The read-only
+      # config mount below does not obstruct it; the single-host stack in
+      # docker-compose.prod.yml has run this way from the start.
     volumes:
       - ../config/vault/raft.hcl:/vault/config/raft.hcl:ro
       - vault_raft:/vault/data
