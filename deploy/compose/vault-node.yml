@@ -19,8 +19,10 @@ services:
     command: server -config=/vault/config/raft.hcl
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
-      # Raft joins are retried from the config file; see config/vault/raft.hcl
-      SKIP_CHOWN: "true"
+    # Do not set SKIP_CHOWN here. Docker creates the named volume below owned by
+    # root, and the image's entrypoint hands /vault to the unprivileged vault
+    # user before dropping to it. Skipping that leaves the Raft store unwritable
+    # and the container crash-loops on "vault.db: permission denied".
     volumes:
       - ../config/vault/raft.hcl:/vault/config/raft.hcl:ro
       - vault_raft:/vault/data
