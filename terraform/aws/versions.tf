@@ -5,8 +5,12 @@
 #
 #   cd terraform/aws
 #   cp terraform.tfvars.example terraform.tfvars   # edit it
-#   terraform init && terraform apply
-#   terraform output -raw inventory_fragment >> ../../deploy/inventory.env
+#   ./bring-up.sh                                  # preferred: apply + merge inventory
+#   # or: terraform init && terraform apply
+#   #     terraform output -raw inventory_fragment >> ../../deploy/inventory.env
+#
+# Track remaining host/app steps with ../../deploy/scripts/doctor.sh
+# (see docs/AWS_BRINGUP.md).
 #
 # DNS lives with the compute provider: netcup clusters use terraform/ (CCP DNS);
 # AWS clusters use this module's Route 53 resources. They share no state.

@@ -22,6 +22,7 @@ to survive losing a host.
 - [Runbook: failover](#runbook-failover)
 - [Runbook: rebuilding after failover](#runbook-rebuilding-after-failover)
 - [HA infra test suite](#ha-infra-test-suite)
+- [AWS bring-up checklist](AWS_BRINGUP.md)
 - [What is not automated](#what-is-not-automated)
 
 ---
@@ -710,11 +711,18 @@ IAM user for Caddy DNS-01.
 ```
 cd terraform/aws
 cp terraform.tfvars.example terraform.tfvars    # bucket, SSH key, dns_zone=
-terraform init && terraform apply
-terraform output -raw inventory_fragment >> ../../deploy/inventory.env
-# If you created a zone: delegate the registrar to dns_nameservers, then store
-# acme_access_key_id / acme_secret_access_key as AWS_ACME_* GitHub secrets.
+./bring-up.sh                                   # init + apply + merge inventory
+# or: terraform init && terraform apply
+#     terraform output -raw inventory_fragment >> ../../deploy/inventory.env
 ```
+
+Track what is done (infra through app) without needing a working UI:
+
+```
+./deploy/scripts/doctor.sh
+```
+
+See [AWS bring-up checklist](AWS_BRINGUP.md) for the full automated vs manual list.
 
 DNS for AWS is Route 53 in this same module; netcup DNS stays in `terraform/`.
 They share no state. The module deliberately does not manage the Elastic IP
