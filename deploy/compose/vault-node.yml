@@ -19,15 +19,20 @@ services:
     command: server -config=/vault/config/raft.hcl
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
-      # Deliberately no SKIP_CHOWN. Vault runs as uid 100 and Docker creates the
-      # data volume owned by root, so the entrypoint's chown is what makes
-      # /vault/data writable at all - skipping it leaves the member in a restart
-      # loop on "failed to open bolt file: permission denied". The read-only
-      # config mount below does not obstruct it; the single-host stack in
-      # docker-compose.prod.yml has run this way from the start.
+      # Deliberately no SKIP_CHOWN: it gates the ownership fixup below.
     volumes:
       - ../config/vault/raft.hcl:/vault/config/raft.hcl:ro
-      - vault_raft:/vault/data
+      # Raft data goes in /vault/file, not the more obvious /vault/data.
+      #
+      # The image creates /vault/config, /vault/logs and /vault/file owned by
+      # the vault user, and its entrypoint chowns exactly those three before
+      # dropping to that user. A named volume inherits ownership from the image
+      # directory it covers, so a volume mounted here arrives owned by vault.
+      # Mount it at /vault/data instead - a path the image never creates and the
+      # entrypoint never chowns - and Docker makes it root-owned, leaving the
+      # member in a restart loop on "failed to open bolt file: permission
+      # denied". The path in config/vault/raft.hcl.tpl must agree with this.
+      - vault_raft:/vault/file
     ports:
       - "${NODE_WG_IP:?NODE_WG_IP is required}:8200:8200"
       - "${NODE_WG_IP}:8201:8201"
