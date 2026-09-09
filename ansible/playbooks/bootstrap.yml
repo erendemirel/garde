@@ -65,8 +65,13 @@
         ansible_host: >-
           {{ item.admin_host if garde.admin_access == 'tunnel'
              else (item.wg_ip if (use_mesh | bool) else item.public_ip) }}
+        # HostKeyAlias travels with the ProxyCommand. Without it the host key
+        # is pinned to the provider's id for the machine, which the shell
+        # tooling never uses and which changes whenever an instance is
+        # replaced - so Ansible would reject a host the deploy scripts trust.
         ansible_ssh_common_args: >-
           {{ '-o ProxyCommand="' ~ item.admin_proxy_command ~ '"'
+             ~ ' -o HostKeyAlias=' ~ item.admin_alias
              if garde.admin_access == 'tunnel' else '' }}
         ansible_user: "{{ garde.bootstrap_user }}"
         ansible_port: "{{ garde.ssh_port }}"
