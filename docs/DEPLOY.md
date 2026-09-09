@@ -21,6 +21,7 @@ to survive losing a host.
 - [Runbook: unsealing Vault](#runbook-unsealing-vault)
 - [Runbook: failover](#runbook-failover)
 - [Runbook: rebuilding after failover](#runbook-rebuilding-after-failover)
+- [HA infra test suite](#ha-infra-test-suite)
 - [What is not automated](#what-is-not-automated)
 
 ---
@@ -511,6 +512,41 @@ Once the old primary is healthy again, it becomes the new standby.
 
 Failing back later is a normal failover in the other direction — same script,
 same cooldown.
+
+---
+
+## HA infra test suite
+
+Live-cluster drills live under `deploy/tests/`. Two suites:
+
+| Suite | Path | Impact |
+|-------|------|--------|
+| Deploy verification | `deploy/tests/deploy/` | None — mesh, health, roles, EIP location, snapshot, dry-run |
+| HA / failover | `deploy/tests/ha/` | Mixed — see table below |
+
+```bash
+export REDIS_PASSWORD=... ASSUME_YES=true
+export VAULT_UNSEAL_KEYS_FILE=/path/to/unseal-keys.txt   # hard / vault drills
+export SUPERUSER_EMAIL=... SUPERUSER_PASSWORD=...       # auth drills
+
+./deploy/tests/run.sh deploy           # post-deploy smoke
+./deploy/tests/run.sh all-safe         # deploy + ha no-outage + service-stays-up
+./deploy/tests/run.sh ha soft
+./deploy/tests/run.sh ha hard
+```
+
+HA blast-radius slices:
+
+| Suite | Impact | Examples |
+|-------|--------|----------|
+| `no-outage` | None | healthcheck, failover `--dry-run` |
+| `service-stays-up` | App stays up | stop Vault on witness or Raft leader |
+| `soft` | Brief planned cutover | soft fence round-trip; auth + SQLite/Redis RPO |
+| `hard` | Brief planned cutover | provider `power.sh off` + `--power-off` failover |
+
+See `deploy/tests/README.md`, `deploy/tests/deploy/README.md`, and
+`deploy/tests/ha/README.md`.
+
 
 ---
 
