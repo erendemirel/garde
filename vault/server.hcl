@@ -7,7 +7,11 @@
 # to the public internet.
 
 storage "file" {
-  path = "/vault/data"
+  # /vault/file, not /vault/data: the image creates and chowns this one, so a
+  # named volume mounted here is writable by the vault user the entrypoint
+  # drops to. /vault/data would arrive owned by root and Vault could not open
+  # its own storage. Must agree with the mount in docker-compose.prod.yml.
+  path = "/vault/file"
 }
 
 listener "tcp" {

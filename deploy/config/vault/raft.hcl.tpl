@@ -7,7 +7,9 @@
 # address only. Never publish 8200/8201 to a public interface.
 
 storage "raft" {
-  path    = "/vault/data"
+  # /vault/file, not /vault/data: the only storage path the image prepares and
+  # its entrypoint chowns. See the note in deploy/compose/vault-node.yml.
+  path    = "/vault/file"
   node_id = "@@VAULT_NODE_ID@@"
 
 @@RETRY_JOIN@@

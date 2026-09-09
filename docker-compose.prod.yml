@@ -29,7 +29,8 @@ services:
       VAULT_ADDR: http://127.0.0.1:8200
     volumes:
       - ./vault/server.hcl:/vault/config/server.hcl:ro
-      - vault_data:/vault/data
+      # /vault/file - see the note in vault/server.hcl
+      - vault_data:/vault/file
     # Bind to localhost only — never expose Vault to the public internet
     ports:
       - "127.0.0.1:8200:8200"
