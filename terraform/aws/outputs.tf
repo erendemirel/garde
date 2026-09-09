@@ -1,6 +1,16 @@
 output "failover_ip" {
-  description = "The Elastic IP. Point your DNS records here."
+  description = "The Elastic IP. app/api A records point here (see Route 53 resources when dns_zone is set)."
   value       = aws_eip.failover.public_ip
+}
+
+output "dns_nameservers" {
+  description = "Delegate the domain to these when Terraform created the hosted zone."
+  value       = try(aws_route53_zone.main[0].name_servers, [])
+}
+
+output "dns_zone_id" {
+  description = "Hosted zone id Caddy / ops tools may need."
+  value       = local.manage_dns ? local.hosted_zone_id : null
 }
 
 output "instance_ids" {
@@ -14,13 +24,24 @@ output "private_ips" {
 }
 
 output "ci_access_key_id" {
-  description = "Store as the AWS_ACCESS_KEY_ID secret."
+  description = "Store as the AWS_ACCESS_KEY_ID secret (compute / failover)."
   value       = aws_iam_access_key.ci.id
 }
 
 output "ci_secret_access_key" {
   description = "Store as the AWS_SECRET_ACCESS_KEY secret."
   value       = aws_iam_access_key.ci.secret
+  sensitive   = true
+}
+
+output "acme_access_key_id" {
+  description = "Store as AWS_ACME_ACCESS_KEY_ID (Caddy DNS-01 only). Empty when dns_zone is unset."
+  value       = try(aws_iam_access_key.acme[0].id, null)
+}
+
+output "acme_secret_access_key" {
+  description = "Store as AWS_ACME_SECRET_ACCESS_KEY."
+  value       = try(aws_iam_access_key.acme[0].secret, null)
   sensitive   = true
 }
 

@@ -8,9 +8,12 @@
 # Prometheus config and the per-host .env. Application code never lands on a
 # host — images are shipped separately by ship-image.sh.
 #
-# Secrets consumed from the environment (supplied by CI or your shell):
-#   REDIS_PASSWORD, NETCUP_CUSTOMER_NUMBER, NETCUP_API_KEY, NETCUP_API_PASSWORD,
-#   GRAFANA_ADMIN_PASSWORD
+# Secrets consumed from the environment (supplied by CI or your shell),
+# depending on DNS_PROVIDER (defaults to PROVIDER):
+#   always:     REDIS_PASSWORD, GRAFANA_ADMIN_PASSWORD
+#   netcup:     NETCUP_CUSTOMER_NUMBER, NETCUP_API_KEY, NETCUP_API_PASSWORD
+#   aws:        AWS_ACME_ACCESS_KEY_ID, AWS_ACME_SECRET_ACCESS_KEY
+#               (plus AWS_REGION from inventory)
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -21,7 +24,7 @@ TARGETS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) TARGETS="$NODES"; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) TARGETS="$TARGETS $1"; shift ;;
   esac
 done
@@ -42,6 +45,80 @@ render() {
   printf '%s\n' "$content" >"$out"
 }
 
+# DNS follows the compute provider. Override with DNS_PROVIDER only when the
+# zone genuinely lives somewhere else (rare; not the supported path).
+dns_provider() { printf '%s' "${DNS_PROVIDER:-${PROVIDER:?PROVIDER missing from inventory}}"; }
+
+# Emit the Caddy acme_dns block for the active DNS provider. Credentials stay
+# as Caddy env placeholders; the values land in the node .env below.
+acme_dns_block() {
+  case "$(dns_provider)" in
+    netcup)
+      cat <<'EOF'
+	acme_dns netcup {
+		customer_number {$NETCUP_CUSTOMER_NUMBER}
+		api_key {$NETCUP_API_KEY}
+		api_password {$NETCUP_API_PASSWORD}
+	}
+EOF
+      ;;
+    aws)
+      # Dedicated ACME IAM user (not the compute CI key). Region comes from
+      # inventory / AWS_REGION so Route53 API calls land in the right place.
+      cat <<'EOF'
+	acme_dns route53 {
+		access_key_id {$AWS_ACME_ACCESS_KEY_ID}
+		secret_access_key {$AWS_ACME_SECRET_ACCESS_KEY}
+		region {$AWS_REGION}
+	}
+EOF
+      ;;
+    *)
+      die "DNS provider '$(dns_provider)' has no ACME DNS-01 wiring yet.
+     DNS follows PROVIDER (or DNS_PROVIDER). Supported today: netcup, aws.
+     To add one: compile its caddy-dns module in deploy/images/caddy/Dockerfile,
+     add a branch here, pass credentials into the node .env, and add a
+     terraform/<provider>/ DNS root that points app/api at FAILOVER_IP."
+      ;;
+  esac
+}
+
+require_dns_secrets() {
+  local placeholder=false
+  if printf '%s' "${API_DOMAIN:-}${APP_DOMAIN:-}" | grep -qiE 'example\.(com|org|net)'; then
+    placeholder=true
+  fi
+
+  case "$(dns_provider)" in
+    netcup)
+      if [ -z "${NETCUP_CUSTOMER_NUMBER:-}" ] || [ -z "${NETCUP_API_KEY:-}" ] || [ -z "${NETCUP_API_PASSWORD:-}" ]; then
+        if [ "$placeholder" = "true" ]; then
+          warn "NETCUP_* unset; placeholder domains — DNS-01 will not issue certificates yet"
+          NETCUP_CUSTOMER_NUMBER="${NETCUP_CUSTOMER_NUMBER:-0}"
+          NETCUP_API_KEY="${NETCUP_API_KEY:-unused}"
+          NETCUP_API_PASSWORD="${NETCUP_API_PASSWORD:-unused}"
+        else
+          die "NETCUP_CUSTOMER_NUMBER / NETCUP_API_KEY / NETCUP_API_PASSWORD required for DNS-01"
+        fi
+      fi
+      ;;
+    aws)
+      if [ -z "${AWS_ACME_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_ACME_SECRET_ACCESS_KEY:-}" ]; then
+        if [ "$placeholder" = "true" ]; then
+          warn "AWS_ACME_* unset; placeholder domains — DNS-01 will not issue certificates yet"
+          AWS_ACME_ACCESS_KEY_ID="${AWS_ACME_ACCESS_KEY_ID:-unused}"
+          AWS_ACME_SECRET_ACCESS_KEY="${AWS_ACME_SECRET_ACCESS_KEY:-unused}"
+        else
+          die "AWS_ACME_ACCESS_KEY_ID / AWS_ACME_SECRET_ACCESS_KEY required for Route53 DNS-01"
+        fi
+      fi
+      : "${AWS_REGION:?AWS_REGION required for Route53 DNS-01 (set in inventory)}"
+      ;;
+  esac
+}
+
+require_dns_secrets
+
 for node in $TARGETS; do
   require_node "$node"
   role="$(node_role "$node")"
@@ -54,7 +131,15 @@ for node in $TARGETS; do
            "$STAGE/config/redis" "$STAGE/config/prometheus" "$STAGE/config/grafana"
 
   cp "$DEPLOY_DIR"/compose/*.yml "$STAGE/compose/"
-  cp "$DEPLOY_DIR"/config/caddy/Caddyfile "$STAGE/config/caddy/"
+
+  # Caddyfile is rendered per DNS provider so the standby renews against the
+  # same API the A records live in. The ACME block is spliced in rather than
+  # passed through render(): multiline values break @@KEY@@ substitution.
+  {
+    sed '/@@ACME_DNS_BLOCK@@/q' "$DEPLOY_DIR/config/caddy/Caddyfile.tpl" | sed '$d'
+    acme_dns_block
+    sed '1,/@@ACME_DNS_BLOCK@@/d' "$DEPLOY_DIR/config/caddy/Caddyfile.tpl"
+  } >"$STAGE/config/caddy/Caddyfile"
 
   # --- Vault Raft config: peers are every other node -----------------------
   retry_join=""
@@ -112,10 +197,20 @@ for node in $TARGETS; do
     printf 'API_DOMAIN=%s\n' "${API_DOMAIN:-}"
     printf 'ACME_EMAIL=%s\n' "${ACME_EMAIL:-}"
     printf 'REDIS_PASSWORD=%s\n' "${REDIS_PASSWORD:-}"
-    printf 'NETCUP_CUSTOMER_NUMBER=%s\n' "${NETCUP_CUSTOMER_NUMBER:-}"
-    printf 'NETCUP_API_KEY=%s\n' "${NETCUP_API_KEY:-}"
-    printf 'NETCUP_API_PASSWORD=%s\n' "${NETCUP_API_PASSWORD:-}"
     printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "${GRAFANA_ADMIN_PASSWORD:-}"
+    printf 'DNS_PROVIDER=%s\n' "$(dns_provider)"
+    case "$(dns_provider)" in
+      netcup)
+        printf 'NETCUP_CUSTOMER_NUMBER=%s\n' "${NETCUP_CUSTOMER_NUMBER}"
+        printf 'NETCUP_API_KEY=%s\n' "${NETCUP_API_KEY}"
+        printf 'NETCUP_API_PASSWORD=%s\n' "${NETCUP_API_PASSWORD}"
+        ;;
+      aws)
+        printf 'AWS_REGION=%s\n' "${AWS_REGION}"
+        printf 'AWS_ACME_ACCESS_KEY_ID=%s\n' "${AWS_ACME_ACCESS_KEY_ID}"
+        printf 'AWS_ACME_SECRET_ACCESS_KEY=%s\n' "${AWS_ACME_SECRET_ACCESS_KEY}"
+        ;;
+    esac
   } >"$STAGE/.env"
   chmod 600 "$STAGE/.env"
 
@@ -157,5 +252,5 @@ for node in $TARGETS; do
     fi
   fi
 
-  ok "$node config synced"
+  ok "$node config synced (DNS=$(dns_provider))"
 done

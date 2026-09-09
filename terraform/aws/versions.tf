@@ -1,15 +1,19 @@
 # Provisions the AWS side of a garde cluster: three hosts, the failover address,
-# the tunnel the control plane arrives through, and the bucket images are staged
-# in. Everything above the operating system is Ansible's job, not this module's.
+# the tunnel the control plane arrives through, the bucket images are staged
+# in, and (when dns_zone is set) Route 53 A records plus an ACME IAM user.
+# Everything above the operating system is Ansible's job, not this module's.
 #
 #   cd terraform/aws
 #   cp terraform.tfvars.example terraform.tfvars   # edit it
-#   terraform init && terraform apply
-#   terraform output -raw inventory_fragment >> ../../deploy/inventory.env
+#   ./bring-up.sh                                  # preferred: apply + merge inventory
+#   # or: terraform init && terraform apply
+#   #     terraform output -raw inventory_fragment >> ../../deploy/inventory.env
 #
-# A separate root module from terraform/, which drives netcup DNS. They share no
-# state and no provider, so keep them apart rather than teaching one module to
-# span two clouds.
+# Track remaining host/app steps with ../../deploy/scripts/doctor.sh
+# (see docs/AWS_BRINGUP.md).
+#
+# DNS lives with the compute provider: netcup clusters use terraform/ (CCP DNS);
+# AWS clusters use this module's Route 53 resources. They share no state.
 #
 # Tear it down with `terraform destroy` when the test is over. The only resource
 # that survives is anything you put in the bucket, which the lifecycle rule

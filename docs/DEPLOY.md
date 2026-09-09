@@ -1,7 +1,8 @@
-# Deploying garde on three netcup hosts
+# Deploying garde on three hosts (HA)
 
 A production layout with Vault HA, a warm application standby, and a single
-control point in GitHub Actions.
+control point in GitHub Actions. Hosting and DNS follow `PROVIDER` (netcup,
+AWS, …) — see [Switching hosting provider](#switching-hosting-provider).
 
 This is one of several ways to run garde. If you want a single VPS with one
 Compose file, use [Deploying to a VPS](INSTALLATION.md#deploying-to-a-vps)
@@ -20,6 +21,8 @@ to survive losing a host.
 - [Runbook: unsealing Vault](#runbook-unsealing-vault)
 - [Runbook: failover](#runbook-failover)
 - [Runbook: rebuilding after failover](#runbook-rebuilding-after-failover)
+- [HA infra test suite](#ha-infra-test-suite)
+- [AWS bring-up checklist](AWS_BRINGUP.md)
 - [What is not automated](#what-is-not-automated)
 
 ---
@@ -66,9 +69,8 @@ least five minutes.
   vault raft member 2                                      
 ```
 
-Sizing: netcup **RS** (dedicated cores) suits node1 and node2, which carry TLS
-termination and Argon2 password hashing. A **VPS** is enough for node3, which
-runs a Vault member and monitoring.
+Sizing: give node1 and node2 enough CPU for TLS termination and Argon2 password
+hashing; node3 only needs a Vault member and monitoring.
 
 Everything except Caddy's 80/443 is bound to the WireGuard address. Redis,
 Vault, the metrics exporters and SSH are unreachable from the internet.
@@ -93,8 +95,10 @@ out of the emergency path.
 
 **Certificates are issued over DNS-01, not HTTP-01.** The standby never holds
 the public IP, so it could not answer an HTTP-01 challenge, and its certificates
-would expire exactly when failover needs them. Caddy is built with the netcup
-DNS module so both nodes renew independently.
+would expire exactly when failover needs them. **DNS follows the hosting
+provider:** Caddy renews against that provider's DNS API (netcup CCP, AWS Route
+53, …) so both app nodes can renew independently without holding the failover
+address.
 
 **No registry.** CI builds images and streams them with `docker save` over SSH
 into `docker load` on the far side. The hosts hold no registry credentials, no
@@ -106,11 +110,12 @@ the other two hold quorum. Unseal keys never enter GitHub — a workflow input i
 visible in run metadata.
 
 **The hosting provider sits behind one seam.** Everything provider-specific
-reaches the outside world through three verbs — route traffic to a node, report
-where traffic is, set a host's power — plus five declared facts. Drivers live in
-`deploy/scripts/providers/`; `netcup`, `hetzner`, `ovh`, `ionos`, `scaleway`,
-`aws` and `gcp` ship today, selected by `PROVIDER` in the inventory. Nothing
-outside that directory names a provider.
+*about compute and traffic* reaches the outside world through three verbs —
+route traffic to a node, report where traffic is, set a host's power — plus
+five declared facts. Drivers live in `deploy/scripts/providers/`; `netcup`,
+`hetzner`, `ovh`, `ionos`, `scaleway`, `aws` and `gcp` ship today, selected by
+`PROVIDER` in the inventory. Nothing outside that directory names a compute
+provider.
 
 The verbs are intent rather than mechanism: "route traffic to this node", not
 "assign the failover IP". A floating IP is how both current providers do it, but
@@ -134,9 +139,13 @@ before it promotes — so they stay as scripts in `deploy/scripts/`. Ansible als
 never runs from CI: it needs root, and CI deliberately only holds a non-sudo
 key.
 
-**Terraform manages DNS only.** netcup cannot create servers through its API,
-and letting Terraform own the failover IP would mean a plan/apply cycle in the
-middle of an emergency, plus state that fights the failover script.
+**DNS lives with the hosting provider, not behind the compute seam.** Failover
+moves the address under stable `app.` / `api.` names; Terraform only creates
+those A records (and never owns failover routing). Each provider has its own
+small DNS surface — `terraform/` for netcup CCP, Route 53 inside
+`terraform/aws/` — plus a matching Caddy `acme_dns` module selected by
+`PROVIDER` (override with `DNS_PROVIDER` only if the zone truly lives
+elsewhere). DNS API credentials are separate from compute credentials.
 
 **SQLite stays SQLite.** `permissions.db` is around 40 KB of rarely changing
 catalog. It is snapshotted with `VACUUM INTO`, which produces a consistent file
@@ -147,9 +156,12 @@ snapshot interval; sessions and users live in Redis and replicate continuously.
 
 ## Prerequisites
 
-- Three netcup servers (Ubuntu 24.04 or similar), ordered manually
-- One netcup **failover IP** with `editable: true`, ordered as an add-on
-- A domain whose nameservers are netcup's (needed for DNS-01 and the DNS module)
+- Three hosts (Ubuntu 24.04 or similar) on the chosen provider — see
+  [Switching hosting provider](#switching-hosting-provider)
+- One movable public address (failover IP / Elastic IP / floating IP) that DNS
+  will point at
+- A domain on **that provider's DNS** (netcup CCP nameservers, Route 53, …) so
+  ACME DNS-01 and the A records share one API
 - On your workstation: `bash`, `wg`, `rsync`, `jq`, `docker`, `ssh`, and
   `ansible` (2.15+) with `ansible-galaxy collection install -r ansible/requirements.yml`
 - A GitHub repository with Actions enabled
@@ -251,23 +263,38 @@ permanently, and there is no auto-unseal to fall back on.
 
 ### 6. Point DNS at the failover IP
 
+DNS follows `PROVIDER`. Failover never updates these records — it only moves
+the address underneath them.
+
+**netcup** (`terraform/`):
+
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars && $EDITOR terraform.tfvars
 terraform init && terraform apply
 ```
 
+**AWS** (Route 53 inside `terraform/aws/` — set `dns_zone` or `dns_zone_id`):
+
+```bash
+cd terraform/aws
+# dns_zone = "example.com"  in terraform.tfvars
+terraform apply
+terraform output dns_nameservers   # delegate the registrar if the zone is new
+terraform output -raw acme_access_key_id
+terraform output -raw acme_secret_access_key   # store as AWS_ACME_* secrets
+```
+
 Then route traffic to the primary once:
 
 ```bash
-NETCUP_SCP_REFRESH_TOKEN=... ./deploy/scripts/traffic.sh route node1
+./deploy/scripts/traffic.sh route node1
 ./deploy/scripts/traffic.sh status
 ```
 
-The bootstrap playbook has already bound the address on both app nodes, so this
-takes effect immediately. `traffic.sh route` refuses to proceed if the target
-has not bound it, because a provider that routes rather than delivers the
-address drops traffic for one the host does not know about.
+On providers that route rather than NAT the address, the bootstrap playbook has
+already bound it on both app nodes. `traffic.sh route` refuses to proceed if
+the target has not bound it.
 
 ### 7. Configure GitHub
 
@@ -280,18 +307,19 @@ address drops traffic for one the host does not know about.
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan` output for the three mesh IPs |
 | `WG_CI_CONF` | Contents of `deploy/.wg/ci.conf` |
 | `REDIS_PASSWORD` | Same value as `REDIS_PASSWORD` in `prod.secrets` |
-| `NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`, `NETCUP_API_PASSWORD` | CCP DNS API, used by Caddy and Terraform |
+| `NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`, `NETCUP_API_PASSWORD` | netcup DNS-01 + Terraform DNS (`PROVIDER=netcup`) |
 | `NETCUP_SCP_REFRESH_TOKEN` | netcup driver: traffic routing and power control |
 | `HCLOUD_TOKEN` | Hetzner Cloud driver, if `PROVIDER=hetzner` |
 | `OVH_APPLICATION_KEY`, `OVH_APPLICATION_SECRET`, `OVH_CONSUMER_KEY` | OVHcloud driver, if `PROVIDER=ovh` |
 | `IONOS_TOKEN` | IONOS Cloud driver, if `PROVIDER=ionos` |
 | `SCW_SECRET_KEY` | Scaleway driver, if `PROVIDER=scaleway` |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | AWS driver, if `PROVIDER=aws` |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | AWS compute driver (EIP / fence / tunnel / S3) |
+| `AWS_ACME_ACCESS_KEY_ID`, `AWS_ACME_SECRET_ACCESS_KEY` | AWS Route 53 DNS-01 for Caddy (from `terraform output acme_*`) |
 | `GCP_SERVICE_ACCOUNT_KEY` | Google driver, if `PROVIDER=gcp`; the workflow writes it to a file and points `GOOGLE_APPLICATION_CREDENTIALS` at it |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin |
 
 **Variables:** `API_DOMAIN` (used by the deploy workflow), plus `DNS_ZONE` and
-`FAILOVER_IP` (used by the infra workflow). `AWS_REGION` and
+`FAILOVER_IP` (used by the infra workflow). `AWS_REGION`, `AWS_IMAGE_BUCKET` and
 `GOOGLE_CLOUD_PROJECT` if you deploy to either hyperscaler.
 
 `WG_CI_CONF` is not required on AWS or GCP: the runner does not join the mesh
@@ -413,8 +441,9 @@ leader and the others rejoin.
 
 ## Runbook: failover
 
-**Before you start:** failing over is one-way for at least 301 seconds. Confirm
-the primary is genuinely unhealthy rather than briefly slow.
+**Before you start:** failing over may be one-way for a cooldown the provider
+declares (netcup: 301 seconds; AWS/Hetzner: none). Confirm the primary is
+genuinely unhealthy rather than briefly slow.
 
 Run the **Failover** workflow with a reason, or from a workstation:
 
@@ -426,23 +455,26 @@ Run the **Failover** workflow with a reason, or from a workstation:
 
 What happens, in order:
 
-1. **Verify** the standby is warm, holds the failover IP, has Vault quorum and a
-   recent snapshot
+1. **Verify** the standby is warm, has Vault quorum and a recent snapshot
+   (and, on providers that route rather than NAT, that the failover address is
+   bound on the target)
 2. **Fence** the old primary so it cannot keep writing
 3. **Install** the newest `permissions.db` snapshot on the new primary
-4. **Promote** Redis there, permanently (`REPLICAOF NO ONE` plus `CONFIG REWRITE`)
-5. **Move** the failover IP through the netcup API
-6. **Verify** the public path end to end
+4. **Promote** Redis there, permanently (`REPLICAOF NO ONE` plus rewriting
+   `redis.conf`)
+5. **Move** the failover IP through the provider driver
+6. **Verify** traffic location (and `https://$API_DOMAIN/health` when DNS is real)
 
 Fencing comes before promotion deliberately. Two live primaries diverge, and
 nothing merges a split brain afterwards. If the old primary is unreachable over
-the mesh, the script stops rather than guessing — `--power-off` stops the server
-through the netcup API, which is the only fencing left when SSH is gone.
+the mesh, the script stops rather than guessing — `--power-off` stops the
+server through the provider API, which is the only fencing left when SSH is
+gone.
 
-**Immediately afterwards**, swap `PRIMARY_NODE`/`STANDBY_NODE` and the matching
-`NODE*_ROLE` values in `deploy/inventory.env`, and update the
-`DEPLOY_INVENTORY` secret to match. If you skip this, the next deploy renders a
-`replicaof` line onto the new primary's Redis config.
+**Immediately afterwards**, `failover.sh` updates `PRIMARY_NODE` /
+`STANDBY_NODE` and the matching `NODE*_ROLE` values in a writable
+`inventory.env`. Still update the `DEPLOY_INVENTORY` secret to match. If you
+skip the secret, the next CI deploy can render the wrong Redis role.
 
 Then re-run the baseline so the host-level pieces follow the roles:
 
@@ -459,24 +491,65 @@ Until it runs, the only snapshots you get are from the scheduled workflow.
 
 Once the old primary is healthy again, it becomes the new standby.
 
-1. Bring the host back, unseal its Vault member, and re-run the baseline
-   playbook if the host was rebuilt from scratch.
-2. Reset its Redis to replicate from the new primary:
+1. Bring the host back and unseal its Vault member
+   (`./deploy/scripts/unseal.sh <node>`). Re-run the baseline playbook if the
+   host was rebuilt from scratch.
+2. Confirm the inventory lists it as standby (`NODE*_ROLE=app-standby`,
+   `STANDBY_NODE=...`). `failover.sh` updates these when it can write
+   `inventory.env`; still update the `DEPLOY_INVENTORY` secret.
+3. Demote Redis so the revived host cannot stay a second master. A powered-off
+   primary keeps its old primary `redis.conf` and comes back with an in-memory
+   master role; `sync-config` will not overwrite that file, and `compose up`
+   will not restart a running Redis:
 
 ```bash
-ssh deploy@<old-primary-mesh-ip>
-cd /opt/garde
-docker compose --env-file .env -f compose/app.yml -p garde-app stop redis
-rm config/redis/redis.conf     # sync-config will render a replica config
+./deploy/scripts/redis-replicate.sh node1   # former primary
+./deploy/scripts/sync-config.sh node1
+./deploy/scripts/deploy.sh app --node node1
 ```
 
-3. Confirm the inventory now lists it with `NODE*_ROLE=app-standby`.
-4. Run the **Deploy** workflow with `stack: app`.
-5. Verify: `./deploy/scripts/healthcheck.sh --all` should show one master, one
+4. Verify: `./deploy/scripts/healthcheck.sh --all` should show one master, one
    replica with `link up`, and no split-brain warning.
 
 Failing back later is a normal failover in the other direction — same script,
 same cooldown.
+
+---
+
+## HA infra test suite
+
+Live-cluster drills live under `deploy/tests/`. Suites:
+
+| Suite | Path | Impact |
+|-------|------|--------|
+| Bring-up / doctor | `deploy/tests/bringup/` | None — bring-up.sh offline + doctor |
+| Deploy verification | `deploy/tests/deploy/` | None — mesh, health, roles, EIP location, snapshot, dry-run |
+| HA / failover | `deploy/tests/ha/` | Mixed — see table below |
+
+```bash
+export REDIS_PASSWORD=... ASSUME_YES=true
+export VAULT_UNSEAL_KEYS_FILE=/path/to/unseal-keys.txt   # hard / vault drills
+export SUPERUSER_EMAIL=... SUPERUSER_PASSWORD=...       # auth drills
+
+./deploy/tests/run.sh bringup          # bring-up offline + doctor
+./deploy/tests/run.sh deploy           # post-deploy smoke
+./deploy/tests/run.sh all-safe         # bringup + deploy + ha no-outage + service-stays-up
+./deploy/tests/run.sh ha soft
+./deploy/tests/run.sh ha hard
+```
+
+HA blast-radius slices:
+
+| Suite | Impact | Examples |
+|-------|--------|----------|
+| `no-outage` | None | healthcheck, failover `--dry-run` |
+| `service-stays-up` | App stays up | stop Vault on witness or Raft leader |
+| `soft` | Brief planned cutover | soft fence round-trip; auth + SQLite/Redis RPO |
+| `hard` | Brief planned cutover | provider `power.sh off` + `--power-off` failover |
+
+See `deploy/tests/README.md`, `deploy/tests/bringup/README.md`,
+`deploy/tests/deploy/README.md`, and `deploy/tests/ha/README.md`.
+
 
 ---
 
@@ -632,35 +705,50 @@ demoted node returns with a fresh address of its own.
 
 `terraform/aws/` builds all of the above: the VPC and its three subnets, both
 security groups, the Instance Connect Endpoint, three instances, the Elastic IP,
-the staging bucket with its gateway endpoint and expiry rule, and a CI user
-whose policy is scoped to exactly the calls the driver makes.
+the staging bucket with its gateway endpoint and expiry rule, a CI user whose
+policy is scoped to exactly the calls the driver makes, and — when `dns_zone`
+(or `dns_zone_id`) is set — Route 53 `app`/`api` A records plus a separate ACME
+IAM user for Caddy DNS-01.
 
 ```
 cd terraform/aws
-cp terraform.tfvars.example terraform.tfvars    # bucket name and your SSH key
-terraform init && terraform apply
-terraform output -raw inventory_fragment >> ../../deploy/inventory.env
+cp terraform.tfvars.example terraform.tfvars    # bucket, SSH key, dns_zone=
+./bring-up.sh                                   # init + apply + merge inventory
+# or: terraform init && terraform apply
+#     terraform output -raw inventory_fragment >> ../../deploy/inventory.env
 ```
 
-It is a separate root module from `terraform/`, which drives netcup DNS; they
-share no state and no provider. Note that it deliberately does not manage the
-Elastic IP *association* after creation — `ignore_changes` covers it, because
-Terraform and `failover.sh` both believing they decide where traffic goes would
-mean the next `apply` quietly reverting a failover.
+Track what is done (infra through app) without needing a working UI:
 
-Three things are **not** behind the seam, deliberately, because they are
-declarations rather than calls and a common schema for them would fit nobody:
+```
+./deploy/scripts/doctor.sh
+```
 
-- **Caddy's ACME DNS module**, compiled into the image in
-  `deploy/images/caddy/Dockerfile` and configured by the `acme_dns` block in the
-  Caddyfile. Both need editing by hand — the module path and the credential
-  field names differ per provider.
-- **Terraform**, in `terraform/`. Provider schemas differ enough that rewriting
-  the four small files is cheaper than maintaining a generic DNS module.
-- **DNS API credentials**, which are separate from the compute API credentials
-  on both providers.
+See [AWS bring-up checklist](AWS_BRINGUP.md) for the full automated vs manual list.
 
-Adding another provider means one new file in `deploy/scripts/providers/`
+DNS for AWS is Route 53 in this same module; netcup DNS stays in `terraform/`.
+They share no state. The module deliberately does not manage the Elastic IP
+*association* after creation — `ignore_changes` covers it, because Terraform
+and `failover.sh` both believing they decide where traffic goes would mean the
+next `apply` quietly reverting a failover.
+
+#### DNS path (every provider)
+
+DNS is **not** behind `deploy/scripts/providers/`. Compute failover moves an
+address; public names stay put. The supported path is always “this provider’s
+own DNS”:
+
+| Surface | What you change when adding a provider |
+| --- | --- |
+| `deploy/images/caddy/Dockerfile` | `xcaddy --with` that vendor’s `caddy-dns/*` module |
+| `deploy/scripts/sync-config.sh` | `acme_dns` branch + node `.env` credentials |
+| Terraform | A records for `app`/`api` → `FAILOVER_IP` (never `_acme-challenge`) |
+| CI secrets | DNS API keys, separate from compute keys |
+
+Supported DNS wiring today: **netcup** and **aws** (Route 53). Other compute
+drivers still move traffic; add their DNS row before expecting public HTTPS.
+
+Adding a **compute** provider means one new file in `deploy/scripts/providers/`
 implementing the three verbs and declaring the five facts. `load_provider()`
 verifies the contract at load time, so a half-implemented driver fails
 immediately rather than two steps into a failover.

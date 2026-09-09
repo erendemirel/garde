@@ -104,9 +104,15 @@ services:
       APP_DOMAIN: "${APP_DOMAIN:?APP_DOMAIN is required}"
       API_DOMAIN: "${API_DOMAIN:?API_DOMAIN is required}"
       ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"
-      NETCUP_CUSTOMER_NUMBER: "${NETCUP_CUSTOMER_NUMBER:?required for DNS-01}"
-      NETCUP_API_KEY: "${NETCUP_API_KEY:?required for DNS-01}"
-      NETCUP_API_PASSWORD: "${NETCUP_API_PASSWORD:?required for DNS-01}"
+      # DNS-01 credentials — which subset is populated depends on DNS_PROVIDER
+      # (see sync-config.sh). Unused keys stay empty; Caddy only reads the
+      # ones referenced by the rendered acme_dns block.
+      NETCUP_CUSTOMER_NUMBER: "${NETCUP_CUSTOMER_NUMBER:-}"
+      NETCUP_API_KEY: "${NETCUP_API_KEY:-}"
+      NETCUP_API_PASSWORD: "${NETCUP_API_PASSWORD:-}"
+      AWS_ACME_ACCESS_KEY_ID: "${AWS_ACME_ACCESS_KEY_ID:-}"
+      AWS_ACME_SECRET_ACCESS_KEY: "${AWS_ACME_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-}"
     volumes:
       - ../config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -198,15 +198,21 @@ on_node() {
   local node="$1"; shift
   require_node "$node"
   local -a SSH_ARGS; ssh_args_for "$node"
-  ssh "${SSH_ARGS[@]}" "$(ssh_target "$node")" "$@"
+  # -n: do not read stdin. Without it, a caller that does
+  #   while read ...; do on_node ...; done <file
+  # loses the rest of the file to ssh on the first iteration.
+  ssh -n "${SSH_ARGS[@]}" "$(ssh_target "$node")" "$@"
 }
 
-# Same as on_node but feeds stdin through (used by ship-image.sh).
+# Same as on_node but feeds stdin through.
+# Prefer this only when the remote command must read a stream. For short secrets
+# that fit on a command line, on_node with a quoted argument is safer under
+# ControlMaster (multiplexed sessions do not always forward stdin).
 on_node_stdin() {
   local node="$1"; shift
   require_node "$node"
   local -a SSH_ARGS; ssh_args_for "$node"
-  ssh "${SSH_ARGS[@]}" "$(ssh_target "$node")" "$@"
+  ssh "${SSH_ARGS[@]}" -o ControlMaster=no -o ControlPath=none "$(ssh_target "$node")" "$@"
 }
 
 rsync_to_node() {

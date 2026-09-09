@@ -1,8 +1,11 @@
-# DNS for the garde deployment.
+# DNS for the garde deployment on netcup.
 #
-# Both hostnames resolve to the netcup failover IP. Failover moves that IP
-# between servers through the SCP API, so DNS stays untouched during a cutover
-# and there is no TTL to wait out.
+# Both hostnames resolve to the failover IP. Failover moves that IP between
+# servers through the SCP API, so DNS stays untouched during a cutover and
+# there is no TTL to wait out.
+#
+# DNS follows the hosting provider: this root is for PROVIDER=netcup only.
+# AWS clusters manage Route 53 inside terraform/aws/ instead.
 #
 # What Terraform does NOT manage here is the failover IP routing itself. A
 # `netcup_scp_failover_ip_v4` resource would record "the IP belongs to node1" in

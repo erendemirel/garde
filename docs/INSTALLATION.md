@@ -76,7 +76,7 @@
 
 **Single VPS with Docker Compose:** A supported production pattern is running everything on one host with Docker Compose (Vault server, Vault Agent, Redis, garde, and the web UI). The stack is defined in `docker-compose.prod.yml`. It does **not** use `vault server -dev`. For Vault/Agent details, see [vault/README.md](https://github.com/erendemirel/garde/blob/master/vault/README.md).
 
-**Three hosts with HA and failover:** If losing a single host is unacceptable, see [Deploying on three netcup hosts](DEPLOY.md). That layout runs a 3-member Vault Raft cluster, a warm application standby with Redis replication, and a scripted failover, all driven from GitHub Actions. It is considerably more machinery than the single-VPS stack, so only take it on if you need it.
+**Three hosts with HA and failover:** If losing a single host is unacceptable, see [Deploying on three hosts (HA)](DEPLOY.md). That layout runs a 3-member Vault Raft cluster, a warm application standby with Redis replication, and a scripted failover, all driven from GitHub Actions. DNS and ACME follow whichever hosting provider you choose. It is considerably more machinery than the single-VPS stack, so only take it on if you need it.
 
 ### Deploying to a VPS
 

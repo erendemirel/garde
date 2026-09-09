@@ -75,3 +75,48 @@ resource "aws_iam_user_policy" "ci" {
 resource "aws_iam_access_key" "ci" {
   user = aws_iam_user.ci.name
 }
+
+# --- ACME / Route53 --------------------------------------------------------
+# Separate from the compute CI user on purpose: Caddy on the hosts needs
+# ChangeResourceRecordSets for DNS-01, and that must not ride on the same key
+# that can fence instances and move the Elastic IP.
+
+data "aws_iam_policy_document" "acme" {
+  count = local.manage_dns ? 1 : 0
+
+  statement {
+    sid = "ChangeChallengeRecords"
+    actions = [
+      "route53:ChangeResourceRecordSets",
+      "route53:ListResourceRecordSets",
+      "route53:GetChange",
+    ]
+    resources = [
+      local.hosted_zone_arn,
+      "arn:aws:route53:::change/*",
+    ]
+  }
+
+  statement {
+    sid       = "FindTheZone"
+    actions   = ["route53:ListHostedZones", "route53:ListHostedZonesByName"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_user" "acme" {
+  count = local.manage_dns ? 1 : 0
+  name  = "${var.name}-acme"
+}
+
+resource "aws_iam_user_policy" "acme" {
+  count  = local.manage_dns ? 1 : 0
+  name   = "${var.name}-acme"
+  user   = aws_iam_user.acme[0].name
+  policy = data.aws_iam_policy_document.acme[0].json
+}
+
+resource "aws_iam_access_key" "acme" {
+  count = local.manage_dns ? 1 : 0
+  user  = aws_iam_user.acme[0].name
+}
