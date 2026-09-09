@@ -32,7 +32,7 @@
     update_cache: true
 
 - name: Cap container log growth
-  # Without this a chatty container can fill a small netcup disk, which takes
+  # Without this a chatty container can fill a small root volume, which takes
   # Vault's storage down with it.
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
