@@ -67,7 +67,9 @@ staged_image_url() {
   [ -n "$STAGE_DIR" ] || STAGE_DIR="$(mktemp -d)"
   file="$STAGE_DIR/$(printf '%s' "$image" | tr '/:' '__').tar.$comp"
 
-  log "staging $image for the hosts to fetch"
+  # Log on stderr: this function's stdout is the URL, and capturing a log
+  # line into it makes curl treat '[' as a bad range specifier.
+  log "staging $image for the hosts to fetch" >&2
   case "$comp" in
     zstd) docker save "$image" | zstd -T0 -3 -c >"$file" ;;
     gzip) docker save "$image" | gzip -1 -c >"$file" ;;
@@ -98,10 +100,13 @@ for node in $TARGETS; do
     started="$(date +%s)"
     if [ "${PROVIDER_IMAGE_TRANSPORT:-ssh}" = "url" ]; then
       staged="$(staged_image_url "$image" "$comp")"
-      # The URL is secret while it lives, so it goes over stdin rather than in
-      # a command line that would show up in `ps` on the host.
-      printf '%s' "$staged" | on_node_stdin "$node" \
-        "read -r url && curl -fsSL \"\$url\" | $comp -d -c | docker load"
+      # Pass the URL as a quoted remote argument rather than on stdin. Tunnel
+      # mode enables SSH multiplexing, and a reused ControlMaster session does
+      # not reliably forward stdin — `read` then gets an empty URL and curl
+      # fails immediately. The URL expires in 15 minutes; accepting it briefly
+      # in `ps` on the host is the lesser problem.
+      on_node "$node" \
+        "curl -fsSL $(printf '%q' "$staged") | $comp -d -c | docker load"
     else
       case "$comp" in
         zstd)

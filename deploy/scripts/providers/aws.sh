@@ -160,12 +160,21 @@ provider_admin_proxy_command() {
 # Give the VPC an S3 *gateway* endpoint - they are free - so instances with no
 # public address and no NAT gateway can still reach the bucket.
 provider_publish_image() {
-  local file="$1" key="garde-images/$(basename "$file")" url
+  local file="$1" key url
+  # key must be assigned after file: bash evaluates all locals before any of
+  # them is visible, so basename "$file" in the same local line is unbound.
+  key="garde-images/$(basename "$file")"
   provider_preflight
   : "${AWS_IMAGE_BUCKET:?set AWS_IMAGE_BUCKET in the inventory to stage images}"
 
-  _aws s3 cp "$file" "s3://$AWS_IMAGE_BUCKET/$key" --only-show-errors >/dev/null
-  url="$(_aws s3 presign "s3://$AWS_IMAGE_BUCKET/$key" --expires-in 900)"
+  # Do not route these through _aws: that helper forces --output text and
+  # merges stderr into the captured string, which would corrupt the URL.
+  if ! aws --region "$(_aws_region)" s3 cp "$file" "s3://$AWS_IMAGE_BUCKET/$key" \
+        --only-show-errors; then
+    die "failed to upload $file to s3://$AWS_IMAGE_BUCKET/$key"
+  fi
+  url="$(aws --region "$(_aws_region)" s3 presign "s3://$AWS_IMAGE_BUCKET/$key" --expires-in 900)" \
+    || die "could not presign s3://$AWS_IMAGE_BUCKET/$key"
   [ -n "$url" ] || die "could not presign s3://$AWS_IMAGE_BUCKET/$key"
   printf '%s' "$url"
 }

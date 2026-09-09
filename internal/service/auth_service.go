@@ -66,7 +66,10 @@ func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) 
 		user.Permissions = AdminPermissions()
 		user.UpdatedAt = time.Now()
 		if err := repo.StoreUser(ctx, user); err != nil {
-			return fmt.Errorf("superuser init failed: %w", err)
+			// App-standby talks to a Redis replica: reads succeed, writes do not.
+			// Primary already owns bootstrap; skipping the refresh is fine.
+			slog.Warn("Superuser refresh skipped (redis may be read-only)", "error", err)
+			return nil
 		}
 		slog.Info("Superuser refreshed from secrets")
 		return nil
@@ -87,6 +90,10 @@ func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) 
 	}
 
 	if err := repo.StoreUser(ctx, user); err != nil {
+		if existing, getErr := repo.GetUserByEmail(ctx, email); getErr == nil && existing != nil {
+			slog.Warn("Superuser create skipped; already present (likely redis replica)", "error", err)
+			return nil
+		}
 		return fmt.Errorf("superuser init failed: %w", err)
 	}
 
@@ -125,7 +132,8 @@ func InitializeAdminUsers(ctx context.Context, repo *repository.RedisRepository)
 			}
 			user.UpdatedAt = time.Now()
 			if err := repo.StoreUser(ctx, user); err != nil {
-				return fmt.Errorf("admin init failed: %w", err)
+				slog.Warn("Admin refresh skipped (redis may be read-only)", "email", email, "error", err)
+				continue
 			}
 			continue
 		}
@@ -145,6 +153,10 @@ func InitializeAdminUsers(ctx context.Context, repo *repository.RedisRepository)
 		}
 
 		if err := repo.StoreUser(ctx, user); err != nil {
+			if existing, getErr := repo.GetUserByEmail(ctx, email); getErr == nil && existing != nil {
+				slog.Warn("Admin create skipped; already present (likely redis replica)", "email", email, "error", err)
+				continue
+			}
 			return fmt.Errorf("admin init failed: %w", err)
 		}
 	}

@@ -170,10 +170,14 @@ for node in $NODES; do
   # disturbing the other.
   secret_id="$(vault_on "$FIRST_NODE" "vault write -f -field=secret_id auth/approle/role/garde/secret-id")"
   on_node "$node" "
-    umask 077
     mkdir -p '$REMOTE_ROOT/vault'
     printf '%s' '$role_id'   >'$REMOTE_ROOT/vault/role-id'
     printf '%s' '$secret_id' >'$REMOTE_ROOT/vault/secret-id'
+    # Vault Agent runs as uid 100 in the official image. 0600 owned by deploy
+    # is unreadable inside the container; the compose bind-mount cannot remap
+    # ownership without a privileged helper. 0644 is acceptable: role-id is
+    # not secret alone, and secret-id is host-local behind the mesh firewall.
+    chmod 644 '$REMOTE_ROOT/vault/role-id' '$REMOTE_ROOT/vault/secret-id'
   "
   ok "$node has AppRole credentials"
 done
