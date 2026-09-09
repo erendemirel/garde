@@ -36,6 +36,10 @@
       ansible.builtin.command: bash {{ playbook_dir }}/../inventory-to-json.sh
       register: inventory_json
       changed_when: false
+      # Reads a local file and changes nothing, but command tasks are skipped
+      # under --check by default. Skipping it leaves the next task parsing an
+      # empty string, so --check could never get as far as the hosts.
+      check_mode: false
 
     - name: Parse it
       ansible.builtin.set_fact:
