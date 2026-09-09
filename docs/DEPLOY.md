@@ -413,8 +413,9 @@ leader and the others rejoin.
 
 ## Runbook: failover
 
-**Before you start:** failing over is one-way for at least 301 seconds. Confirm
-the primary is genuinely unhealthy rather than briefly slow.
+**Before you start:** failing over may be one-way for a cooldown the provider
+declares (netcup: 301 seconds; AWS/Hetzner: none). Confirm the primary is
+genuinely unhealthy rather than briefly slow.
 
 Run the **Failover** workflow with a reason, or from a workstation:
 
@@ -426,23 +427,26 @@ Run the **Failover** workflow with a reason, or from a workstation:
 
 What happens, in order:
 
-1. **Verify** the standby is warm, holds the failover IP, has Vault quorum and a
-   recent snapshot
+1. **Verify** the standby is warm, has Vault quorum and a recent snapshot
+   (and, on providers that route rather than NAT, that the failover address is
+   bound on the target)
 2. **Fence** the old primary so it cannot keep writing
 3. **Install** the newest `permissions.db` snapshot on the new primary
-4. **Promote** Redis there, permanently (`REPLICAOF NO ONE` plus `CONFIG REWRITE`)
-5. **Move** the failover IP through the netcup API
-6. **Verify** the public path end to end
+4. **Promote** Redis there, permanently (`REPLICAOF NO ONE` plus rewriting
+   `redis.conf`)
+5. **Move** the failover IP through the provider driver
+6. **Verify** traffic location (and `https://$API_DOMAIN/health` when DNS is real)
 
 Fencing comes before promotion deliberately. Two live primaries diverge, and
 nothing merges a split brain afterwards. If the old primary is unreachable over
-the mesh, the script stops rather than guessing — `--power-off` stops the server
-through the netcup API, which is the only fencing left when SSH is gone.
+the mesh, the script stops rather than guessing — `--power-off` stops the
+server through the provider API, which is the only fencing left when SSH is
+gone.
 
-**Immediately afterwards**, swap `PRIMARY_NODE`/`STANDBY_NODE` and the matching
-`NODE*_ROLE` values in `deploy/inventory.env`, and update the
-`DEPLOY_INVENTORY` secret to match. If you skip this, the next deploy renders a
-`replicaof` line onto the new primary's Redis config.
+**Immediately afterwards**, `failover.sh` updates `PRIMARY_NODE` /
+`STANDBY_NODE` and the matching `NODE*_ROLE` values in a writable
+`inventory.env`. Still update the `DEPLOY_INVENTORY` secret to match. If you
+skip the secret, the next CI deploy can render the wrong Redis role.
 
 Then re-run the baseline so the host-level pieces follow the roles:
 
@@ -459,20 +463,24 @@ Until it runs, the only snapshots you get are from the scheduled workflow.
 
 Once the old primary is healthy again, it becomes the new standby.
 
-1. Bring the host back, unseal its Vault member, and re-run the baseline
-   playbook if the host was rebuilt from scratch.
-2. Reset its Redis to replicate from the new primary:
+1. Bring the host back and unseal its Vault member
+   (`./deploy/scripts/unseal.sh <node>`). Re-run the baseline playbook if the
+   host was rebuilt from scratch.
+2. Confirm the inventory lists it as standby (`NODE*_ROLE=app-standby`,
+   `STANDBY_NODE=...`). `failover.sh` updates these when it can write
+   `inventory.env`; still update the `DEPLOY_INVENTORY` secret.
+3. Demote Redis so the revived host cannot stay a second master. A powered-off
+   primary keeps its old primary `redis.conf` and comes back with an in-memory
+   master role; `sync-config` will not overwrite that file, and `compose up`
+   will not restart a running Redis:
 
 ```bash
-ssh deploy@<old-primary-mesh-ip>
-cd /opt/garde
-docker compose --env-file .env -f compose/app.yml -p garde-app stop redis
-rm config/redis/redis.conf     # sync-config will render a replica config
+./deploy/scripts/redis-replicate.sh node1   # former primary
+./deploy/scripts/sync-config.sh node1
+./deploy/scripts/deploy.sh app --node node1
 ```
 
-3. Confirm the inventory now lists it with `NODE*_ROLE=app-standby`.
-4. Run the **Deploy** workflow with `stack: app`.
-5. Verify: `./deploy/scripts/healthcheck.sh --all` should show one master, one
+4. Verify: `./deploy/scripts/healthcheck.sh --all` should show one master, one
    replica with `link up`, and no split-brain warning.
 
 Failing back later is a normal failover in the other direction — same script,

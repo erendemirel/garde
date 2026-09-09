@@ -158,13 +158,17 @@ else
 fi
 
 # garde must not be running while its database file is replaced.
+# The data directory is root-owned (written by the container), and the deploy
+# user has no sudo, so the copy runs through a throwaway container.
 run on_node "$TO_NODE" "
   set -e
   cd '$REMOTE_ROOT'
   docker compose --env-file .env -f compose/app.yml -p garde-app stop garde >/dev/null 2>&1 || true
-  cp '$REMOTE_ROOT/backup/permissions.db' '$REMOTE_ROOT/data/permissions.db'
-  # WAL/SHM sidecars belong to the old copy and must not outlive it.
-  rm -f '$REMOTE_ROOT/data/permissions.db-wal' '$REMOTE_ROOT/data/permissions.db-shm'
+  docker run --rm \
+    -v '$REMOTE_ROOT/backup/permissions.db:/src/permissions.db:ro' \
+    -v '$REMOTE_ROOT/data:/data' \
+    alpine:3.19 \
+    sh -c 'cp /src/permissions.db /data/permissions.db && rm -f /data/permissions.db-wal /data/permissions.db-shm && chmod 644 /data/permissions.db'
 "
 ok "permissions.db installed"
 
@@ -198,9 +202,39 @@ if [ "$DRY_RUN" = "false" ]; then
   verify_attempts=$(( (PROVIDER_TRAFFIC_PROPAGATION_SECONDS * 3) / 5 ))
   [ "$verify_attempts" -lt 12 ] && verify_attempts=12
 
-  if retry_until "$verify_attempts" 5 sh -c "curl -sf --max-time 10 'https://${API_DOMAIN}/health' >/dev/null"; then
-    ok "https://${API_DOMAIN}/health is serving from $TO_NODE"
-  else
+  public_ok=false
+  if [ -n "${API_DOMAIN:-}" ] && [ "$API_DOMAIN" != "app.example.com" ] \
+      && ! printf '%s' "$API_DOMAIN" | grep -qiE 'example\.(com|org|net)$'; then
+    if retry_until "$verify_attempts" 5 sh -c "curl -sf --max-time 10 'https://${API_DOMAIN}/health' >/dev/null"; then
+      ok "https://${API_DOMAIN}/health is serving from $TO_NODE"
+      public_ok=true
+    fi
+  fi
+
+  # Domains are often still placeholders during a first provider bring-up.
+  # Prefer the provider's own location check (EIP association on AWS), then
+  # fall back to probing the failover address so cutovers are verified without
+  # real DNS/ACME.
+  if [ "$public_ok" = "false" ]; then
+    loc="$(provider_traffic_location 2>/dev/null || true)"
+    if [ -n "$loc" ] && [ "$loc" = "$TO_NODE" ]; then
+      ok "$PROVIDER_NAME reports traffic on $TO_NODE"
+      public_ok=true
+    fi
+  fi
+
+  if [ "$public_ok" = "false" ] && [ -n "${FAILOVER_IP:-}" ]; then
+    if retry_until "$verify_attempts" 5 \
+         sh -c "curl -sf --max-time 10 -H 'Host: ${API_DOMAIN:-localhost}' \
+           'http://${FAILOVER_IP}/health' >/dev/null \
+           || curl -skf --max-time 10 -H 'Host: ${API_DOMAIN:-localhost}' \
+           'https://${FAILOVER_IP}/health' >/dev/null"; then
+      ok "failover IP $FAILOVER_IP answers /health after the move"
+      public_ok=true
+    fi
+  fi
+
+  if [ "$public_ok" = "false" ]; then
     warn "the public health check did not pass yet"
     warn "$PROVIDER_NAME applies the route asynchronously (up to ${PROVIDER_TRAFFIC_PROPAGATION_SECONDS}s); re-check shortly"
   fi
@@ -212,15 +246,20 @@ elapsed=$(( $(date +%s) - started ))
 
 if [ "$DRY_RUN" = "false" ]; then
   step "Updating inventory role pointers"
+  to_role_key="$(printf '%s' "$TO_NODE" | tr '[:lower:]' '[:upper:]')_ROLE"
+  from_role_key="$(printf '%s' "$FROM_NODE" | tr '[:lower:]' '[:upper:]')_ROLE"
   if [ -w "$INVENTORY_FILE" ]; then
     sed -i.bak \
       -e "s/^PRIMARY_NODE=.*/PRIMARY_NODE=$TO_NODE/" \
-      -e "s/^STANDBY_NODE=.*/STANDBY_NODE=$FROM_NODE/" "$INVENTORY_FILE"
-    ok "inventory now records $TO_NODE as primary"
+      -e "s/^STANDBY_NODE=.*/STANDBY_NODE=$FROM_NODE/" \
+      -e "s/^${to_role_key}=.*/${to_role_key}=app-primary/" \
+      -e "s/^${from_role_key}=.*/${from_role_key}=app-standby/" \
+      "$INVENTORY_FILE"
+    ok "inventory now records $TO_NODE as primary (and NODE*_ROLE swapped)"
   fi
-  warn "roles have swapped. Update these before the next deploy:"
-  warn "  - the DEPLOY_INVENTORY secret (PRIMARY_NODE=$TO_NODE, STANDBY_NODE=$FROM_NODE)"
-  warn "  - NODE*_ROLE values, so sync-config renders the right redis.conf on a rebuild"
+  warn "roles have swapped. Update the DEPLOY_INVENTORY secret to match:"
+  warn "  PRIMARY_NODE=$TO_NODE STANDBY_NODE=$FROM_NODE"
+  warn "  ${to_role_key}=app-primary ${from_role_key}=app-standby"
 fi
 
 printf '\n'
@@ -236,4 +275,4 @@ else
   summary "- $PROVIDER_NAME has no cooldown; failing back is possible immediately"
 fi
 summary ""
-summary "Next: rebuild $FROM_NODE as the standby (docs/DEPLOY.md, 'Rebuilding after failover')."
+summary "Next: revive $FROM_NODE as standby with redis-replicate.sh (docs/DEPLOY.md, 'Rebuilding after failover')."
