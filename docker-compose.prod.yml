@@ -24,7 +24,10 @@ services:
     image: hashicorp/vault:1.15
     cap_add:
       - IPC_LOCK
-    command: server -config=/vault/config/server.hcl
+    # No -config: the entrypoint already adds -config=/vault/config, which picks
+    # up server.hcl below. Passing it again loads the file twice and the
+    # duplicate listener fails to bind. See deploy/compose/vault-node.yml.
+    command: server
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
     volumes:
