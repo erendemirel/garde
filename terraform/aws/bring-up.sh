@@ -13,7 +13,7 @@
 # Prerequisites:
 #   - terraform.tfvars filled in (from terraform.tfvars.example)
 #   - AWS credentials in the environment or ~/.aws
-#   - terraform >= 1.6, aws CLI optional but useful for doctor
+#   - terraform >= 1.6, aws CLI optional but useful for docto
 
 set -euo pipefail
 
@@ -38,7 +38,6 @@ while [ $# -gt 0 ]; do
 done
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "required command not found: $1" >&2; exit 1; }; }
-need terraform
 
 [ -f "$TFVARS" ] || {
   echo "missing $TFVARS" >&2
@@ -46,6 +45,8 @@ need terraform
   echo "  # edit image_bucket_name, ssh_public_key, optional dns_zone" >&2
   exit 1
 }
+
+need terraform
 
 if grep -q 'garde-images-CHANGEME\|AAAA\.\.\.' "$TFVARS" 2>/dev/null; then
   echo "warn: terraform.tfvars still looks like the example — edit bucket name and ssh_public_key" >&2

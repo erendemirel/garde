@@ -518,10 +518,11 @@ same cooldown.
 
 ## HA infra test suite
 
-Live-cluster drills live under `deploy/tests/`. Two suites:
+Live-cluster drills live under `deploy/tests/`. Suites:
 
 | Suite | Path | Impact |
 |-------|------|--------|
+| Bring-up / doctor | `deploy/tests/bringup/` | None — bring-up.sh offline + doctor |
 | Deploy verification | `deploy/tests/deploy/` | None — mesh, health, roles, EIP location, snapshot, dry-run |
 | HA / failover | `deploy/tests/ha/` | Mixed — see table below |
 
@@ -530,8 +531,9 @@ export REDIS_PASSWORD=... ASSUME_YES=true
 export VAULT_UNSEAL_KEYS_FILE=/path/to/unseal-keys.txt   # hard / vault drills
 export SUPERUSER_EMAIL=... SUPERUSER_PASSWORD=...       # auth drills
 
+./deploy/tests/run.sh bringup          # bring-up offline + doctor
 ./deploy/tests/run.sh deploy           # post-deploy smoke
-./deploy/tests/run.sh all-safe         # deploy + ha no-outage + service-stays-up
+./deploy/tests/run.sh all-safe         # bringup + deploy + ha no-outage + service-stays-up
 ./deploy/tests/run.sh ha soft
 ./deploy/tests/run.sh ha hard
 ```
@@ -545,8 +547,8 @@ HA blast-radius slices:
 | `soft` | Brief planned cutover | soft fence round-trip; auth + SQLite/Redis RPO |
 | `hard` | Brief planned cutover | provider `power.sh off` + `--power-off` failover |
 
-See `deploy/tests/README.md`, `deploy/tests/deploy/README.md`, and
-`deploy/tests/ha/README.md`.
+See `deploy/tests/README.md`, `deploy/tests/bringup/README.md`,
+`deploy/tests/deploy/README.md`, and `deploy/tests/ha/README.md`.
 
 
 ---

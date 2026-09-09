@@ -6,7 +6,7 @@
 #   ./deploy/scripts/doctor.sh --provider aws    # also check terraform/aws state
 #
 # Stages (automated evidence where possible; otherwise missing/skipped):
-#   infra → inventory → dns → access → host-baseline → vault → images → app
+#   infra -> inventory -> dns -> access -> host-baseline -> vault -> images -> app
 #
 # Manual checklist that pairs with this: docs/AWS_BRINGUP.md
 
@@ -34,12 +34,11 @@ reachable=0
 if [ -f "$INVENTORY_FILE" ]; then
   # load_inventory calls die on hard errors; isolate that in a subshell.
   if ( load_inventory ); then
-    # Re-load in this shell so on_node / provider helpers work.
     load_inventory
     INV_OK=true
   else
     # shellcheck disable=SC1090
-    set -a; . <(tr -d '\r' <"$INVENTORY_FILE"); set +a
+    set -a; . <(sed 's/\r$//' "$INVENTORY_FILE"); set +a
     INV_OK=true
     warn "load_inventory failed — continuing with raw inventory (access checks may fail)"
   fi
@@ -53,20 +52,30 @@ printf '\n==> 1/8 infra (cloud resources)\n'
 case "$PROVIDER_NAME_EFFECTIVE" in
   aws)
     TF_DIR="$REPO_ROOT/terraform/aws"
+    tf_ok=false
     if [ -d "$TF_DIR/.terraform" ] || [ -f "$TF_DIR/terraform.tfstate" ] \
         || [ -f "$TF_DIR/terraform.tfstate.d/default/terraform.tfstate" ]; then
       if command -v terraform >/dev/null 2>&1; then
         count="$(cd "$TF_DIR" && terraform state list 2>/dev/null | wc -l | tr -d ' ')"
         if [ "${count:-0}" -gt 0 ]; then
           have "terraform/aws state has $count resources"
+          tf_ok=true
         else
-          miss "terraform/aws initialized but state is empty — run bring-up.sh"
+          note "terraform/aws initialized but state is empty"
         fi
       else
-        note "terraform CLI not installed; cannot list state (inventory may still be fine)"
+        note "terraform CLI not installed; cannot list state"
       fi
     else
-      miss "no terraform/aws state — run ./terraform/aws/bring-up.sh"
+      note "no local terraform/aws state (ok if apply ran elsewhere / remote backend)"
+    fi
+    if [ -n "${NODE1_PROVIDER_ID:-}" ] && [ -n "${NODE2_PROVIDER_ID:-}" ] && [ -n "${NODE3_PROVIDER_ID:-}" ] \
+        && [ -n "${FAILOVER_IP:-}" ]; then
+      have "inventory has 3 instance ids + FAILOVER_IP (infra was provisioned)"
+      tf_ok=true
+    fi
+    if [ "$tf_ok" != "true" ]; then
+      miss "no terraform state and no AWS instance ids in inventory — run ./terraform/aws/bring-up.sh"
     fi
     ;;
   "")
@@ -138,7 +147,7 @@ else
 fi
 
 printf '\n==> 5/8 host baseline (Ansible outcomes)\n'
-if [ "${reachable:-0}" -gt 0 ]; then
+if [ "$reachable" -gt 0 ]; then
   for node in $NODES; do
     on_node "$node" "true" 2>/dev/null || continue
     if on_node "$node" "command -v docker >/dev/null"; then
@@ -162,7 +171,7 @@ else
 fi
 
 printf '\n==> 6/8 vault\n'
-if [ "${reachable:-0}" -gt 0 ]; then
+if [ "$reachable" -gt 0 ]; then
   vault_nodes=0; unsealed=0; inited=0
   for node in $NODES; do
     on_node "$node" "true" 2>/dev/null || continue
@@ -192,7 +201,7 @@ else
 fi
 
 printf '\n==> 7/8 images\n'
-if [ "${reachable:-0}" -gt 0 ]; then
+if [ "$reachable" -gt 0 ]; then
   for node in ${PRIMARY_NODE:-} ${STANDBY_NODE:-}; do
     [ -n "$node" ] || continue
     on_node "$node" "true" 2>/dev/null || continue
@@ -217,7 +226,6 @@ else
   skip "primary not reachable — app stage later"
 fi
 
-# Secrets presence (names only)
 printf '\n==> secrets in this environment (presence only)\n'
 for key in REDIS_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ACME_ACCESS_KEY_ID; do
   eval "val=\${$key:-}"

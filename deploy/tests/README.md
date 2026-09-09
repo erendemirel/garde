@@ -5,6 +5,7 @@ nodes and sometimes cause a brief outage on purpose.
 
 | Suite | Path | Default impact |
 |-------|------|----------------|
+| **Bring-up / doctor** | `deploy/tests/bringup/` | None (offline + read-only probes) |
 | **Deploy verification** | `deploy/tests/deploy/` | None (read-only / dry-run) |
 | **HA / failover** | `deploy/tests/ha/` | Mixed — see that suite's README |
 
@@ -12,10 +13,11 @@ nodes and sometimes cause a brief outage on purpose.
 export REDIS_PASSWORD=... ASSUME_YES=true
 # plus provider credentials (AWS_*, etc.) already in the environment
 
+./deploy/tests/run.sh bringup         # bring-up.sh offline + doctor
 ./deploy/tests/run.sh deploy          # post-deploy / smoke
 ./deploy/tests/run.sh ha no-outage    # safe HA slice
 ./deploy/tests/run.sh ha soft         # planned soft cutover
-./deploy/tests/run.sh all-safe        # deploy + ha no-outage + service-stays-up
+./deploy/tests/run.sh all-safe        # bringup + deploy + ha no-outage + service-stays-up
 ```
 
 Shared helpers live in `ha/lib.sh` (sourced by both suites for now).

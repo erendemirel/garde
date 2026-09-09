@@ -37,8 +37,9 @@ Tick items as you complete them. `doctor.sh` marks many of these automatically.
 
 ```bash
 ./deploy/scripts/doctor.sh           # stages 1–8
+./deploy/tests/run.sh bringup        # bring-up offline checks + doctor --strict
 ./deploy/tests/run.sh deploy         # post-deploy smoke (no outage)
-./deploy/tests/run.sh all-safe       # when you want Vault member drills too
+./deploy/tests/run.sh all-safe       # bringup + deploy + safe HA slices
 ```
 
 App `/health` is stage 8 — optional for early bring-up tracking.
