@@ -19,8 +19,10 @@ if [ ! -f "$INVENTORY_FILE" ]; then
   exit 1
 fi
 
+# Carriage returns stripped for the same reason lib.sh strips them: this file is
+# routinely pasted between Windows editors and CI secrets.
 # shellcheck disable=SC1090
-set -a; . "$INVENTORY_FILE"; set +a
+set -a; . <(tr -d '\r' <"$INVENTORY_FILE"); set +a
 
 # Provider capabilities are declared by the driver, so read them from there
 # rather than duplicating them in the inventory. Goes through the shell library
