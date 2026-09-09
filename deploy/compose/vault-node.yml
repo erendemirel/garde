@@ -16,7 +16,13 @@ services:
     container_name: garde-vault
     cap_add:
       - IPC_LOCK
-    command: server -config=/vault/config/raft.hcl
+    # Just `server`, with no -config. The image's entrypoint expands a bare
+    # `server` into `vault server -config=/vault/config ...`, which loads every
+    # file in that directory - including the raft.hcl mounted below. Passing
+    # -config as well loads it a second time, and because listeners merge as a
+    # list rather than overriding, Vault then tries to bind 8200 twice and dies
+    # with "address already in use".
+    command: server
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
       # Deliberately no SKIP_CHOWN: it gates the ownership fixup below.
