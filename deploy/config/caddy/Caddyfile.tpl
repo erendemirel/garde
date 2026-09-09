@@ -1,22 +1,20 @@
-# Public edge. Runs on both app nodes; only the one holding the netcup failover
-# IP actually receives traffic.
+# Public edge. Runs on both app nodes; only the one holding the failover
+# address actually receives traffic.
 #
-# Certificates are issued over DNS-01 against the netcup CCP DNS API, not
-# HTTP-01. That is deliberate: the standby has no public traffic routed to it,
-# so it could never answer an HTTP-01 challenge, and its certificates would go
-# stale exactly when failover needs them.
+# Certificates are issued over DNS-01, not HTTP-01. That is deliberate: the
+# standby has no public traffic routed to it, so it could never answer an
+# HTTP-01 challenge, and its certificates would go stale exactly when failover
+# needs them. The ACME DNS block below is selected by DNS_PROVIDER (defaults to
+# PROVIDER) when sync-config renders this file — each hosting provider uses its
+# own DNS API.
 #
-# Sites are matched by Host header, so hitting a node's raw public IP does not
+# Sites are matched by Host header, so hitting a node's raw address does not
 # serve the application.
 
 {
 	email {$ACME_EMAIL}
 
-	acme_dns netcup {
-		customer_number {$NETCUP_CUSTOMER_NUMBER}
-		api_key {$NETCUP_API_KEY}
-		api_password {$NETCUP_API_PASSWORD}
-	}
+@@ACME_DNS_BLOCK@@
 }
 
 (hardening) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the three images this deployment ships: the API, the UI and a Caddy
-# with the netcup DNS module compiled in.
+# with the DNS-01 provider modules compiled in (selected at sync by PROVIDER).
 #
 #   ./deploy/scripts/build-images.sh                 # tag from git sha
 #   ./deploy/scripts/build-images.sh --tag v1.2.3
