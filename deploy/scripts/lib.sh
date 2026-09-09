@@ -37,8 +37,19 @@ summary() {
 
 load_inventory() {
   [ -f "$INVENTORY_FILE" ] || die "inventory not found: $INVENTORY_FILE (copy deploy/inventory.example.env)"
+
+  # Carriage returns are stripped rather than tolerated. This file travels by
+  # copy-paste - through an editor, through a GitHub secret - and a Windows
+  # checkout stores it with CRLF endings legitimately. Sourcing that as-is is
+  # worse than failing outright: a few lines error loudly while every other
+  # value silently gains a trailing carriage return, so FAILOVER_IP stops
+  # matching any address the provider has heard of, with nothing in any error
+  # message to say why.
+  #
+  # Done silently and unconditionally, because on Windows there is nothing here
+  # for anyone to fix.
   # shellcheck disable=SC1090
-  set -a; . "$INVENTORY_FILE"; set +a
+  set -a; . <(tr -d '\r' <"$INVENTORY_FILE"); set +a
   : "${NODES:?NODES missing from inventory}"
   : "${SSH_USER:?SSH_USER missing from inventory}"
   : "${REMOTE_ROOT:?REMOTE_ROOT missing from inventory}"

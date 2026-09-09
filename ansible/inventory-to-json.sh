@@ -19,8 +19,10 @@ if [ ! -f "$INVENTORY_FILE" ]; then
   exit 1
 fi
 
+# Carriage returns stripped for the same reason lib.sh strips them: this file is
+# routinely pasted between Windows editors and CI secrets.
 # shellcheck disable=SC1090
-set -a; . "$INVENTORY_FILE"; set +a
+set -a; . <(tr -d '\r' <"$INVENTORY_FILE"); set +a
 
 # Provider capabilities are declared by the driver, so read them from there
 # rather than duplicating them in the inventory. Goes through the shell library
@@ -76,8 +78,13 @@ for node in ${NODES:?NODES missing from inventory}; do
   # Resolved before printing, and checked. A driver rejects a malformed
   # NODE*_PROVIDER_ID here, and swallowing that would hand Ansible an empty
   # host to connect to instead of telling you what is wrong.
-  admin_host=""; admin_proxy=""
+  admin_host=""; admin_proxy=""; admin_name=""
   if is_tunnel; then
+    # The same alias the shell tooling pins host keys to. Ansible connects to
+    # the provider's id for the host, which changes whenever an instance is
+    # replaced; pinning to that instead would invalidate DEPLOY_KNOWN_HOSTS
+    # every time, and the two tools would disagree about the same host.
+    admin_name="$(admin_alias "$node")"
     admin_host="$(provider_admin_host "$node")" \
       || { echo "error: cannot resolve the admin host for $node" >&2; exit 1; }
     admin_proxy="$(provider_admin_proxy_command "$node")" \
@@ -95,6 +102,7 @@ for node in ${NODES:?NODES missing from inventory}; do
     "$(json_escape "$(node_var "$node" MESH_ENDPOINT)")"
   printf '"vault_id": "%s", '  "$(json_escape "$(node_var "$node" VAULT_ID)")"
   printf '"admin_host": "%s", '  "$(json_escape "$admin_host")"
+  printf '"admin_alias": "%s", ' "$(json_escape "$admin_name")"
   printf '"admin_proxy_command": "%s", ' "$(json_escape "$admin_proxy")"
   printf '"provider_id": "%s"' "$(json_escape "$(node_var "$node" PROVIDER_ID)")"
   printf '}'
