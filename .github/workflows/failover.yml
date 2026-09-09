@@ -1,0 +1,104 @@
+name: Failover
+
+# Promotes the standby node to primary. This causes a short outage, most of it
+# spent waiting for the hosting provider to move public traffic; how long, and
+# whether it can be reversed immediately, is the provider's business and is
+# declared by its driver rather than assumed here.
+#
+# Guarded by the `failover` environment, which should require a reviewer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: Node to promote (blank = STANDBY_NODE from the inventory)
+        type: string
+        default: ""
+      reason:
+        description: Why this failover is happening (recorded in the summary)
+        type: string
+        required: true
+      power_off:
+        description: >-
+          Power the old primary off through the hosting provider's API. Use when
+          it is unreachable and cannot be fenced over SSH.
+        type: boolean
+        default: false
+      dry_run:
+        description: Run every precondition check and stop before making changes
+        type: boolean
+        default: false
+
+concurrency:
+  group: cluster-mutation
+  cancel-in-progress: false
+
+jobs:
+  failover:
+    name: Fail over
+    runs-on: ubuntu-latest
+    environment: failover
+    # Set on the job, not the step: providers that tunnel need these to open a
+    # connection at all, so the reachability check inside mesh-access needs them
+    # just as much as the failover itself does.
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/mesh-access
+        with:
+          wg-config: ${{ secrets.WG_CI_CONF }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          inventory: ${{ secrets.DEPLOY_INVENTORY }}
+          gcp-service-account-key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          # A failover usually runs because a node is down. Do not block on it.
+          require-all-nodes: "false"
+
+      - name: Pre-flight state
+        run: ./deploy/scripts/healthcheck.sh --all || true
+
+      - name: Fail over
+        env:
+          # Every provider's credentials are passed; the driver selected by
+          # PROVIDER in the inventory consumes the ones it declares and ignores
+          # the rest, so the workflow never needs to know which is in play.
+          NETCUP_SCP_REFRESH_TOKEN: ${{ secrets.NETCUP_SCP_REFRESH_TOKEN }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          OVH_APPLICATION_KEY: ${{ secrets.OVH_APPLICATION_KEY }}
+          OVH_APPLICATION_SECRET: ${{ secrets.OVH_APPLICATION_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          IONOS_TOKEN: ${{ secrets.IONOS_TOKEN }}
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          ASSUME_YES: "true"
+        run: |
+          args="--reason '${{ inputs.reason }}'"
+          [ -n "${{ inputs.to }}" ] && args="$args --to ${{ inputs.to }}"
+          [ "${{ inputs.power_off }}" = "true" ] && args="$args --power-off"
+          [ "${{ inputs.dry_run }}" = "true" ] && args="$args --dry-run"
+          eval "./deploy/scripts/failover.sh $args"
+
+      - name: Post-failover state
+        if: ${{ inputs.dry_run != true }}
+        run: ./deploy/scripts/healthcheck.sh --all --public || true
+
+      - name: Remind about inventory drift
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          {
+            echo "### Follow-up required"
+            echo ""
+            echo "The roles have swapped, but the DEPLOY_INVENTORY secret still describes the old layout."
+            echo "Update it now, otherwise the next deploy will render a replicaof line onto the new primary:"
+            echo ""
+            echo '- `PRIMARY_NODE` and `STANDBY_NODE`'
+            echo '- the matching `NODE*_ROLE` values'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Leave the mesh
+        if: always()
+        run: sudo wg-quick down wg0 || true

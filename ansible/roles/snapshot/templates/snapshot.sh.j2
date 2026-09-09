@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Snapshot permissions.db and push it to the peers.
+#
+# MANAGED BY ANSIBLE - edits here are overwritten by roles/snapshot.
+# Generated for {{ node_name }} ({{ node_role }}).
+#
+# This is the single implementation of the snapshot procedure. Both callers use
+# it: the garde-snapshot.timer on this host, and deploy/scripts/sqlite-snapshot.sh
+# from the control machine, which runs this script over SSH.
+#
+# `VACUUM INTO` is what makes the copy safe. It asks SQLite to write a new,
+# internally consistent database file while the application keeps writing to
+# the original; cp or rsync against a live database can capture a torn page.
+
+set -euo pipefail
+
+REMOTE_ROOT="{{ remote_root }}"
+DEPLOY_USER="{{ deploy_user }}"
+PEERS="{{ snapshot_peers | join(' ') }}"
+
+SNAPSHOT="$REMOTE_ROOT/backup/permissions.db"
+STAGING="/app/data/.snapshot.db"
+CONTAINER="garde-api"
+
+log() { printf '%s snapshot: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+if ! docker inspect -f '{{ '{{' }}.State.Running{{ '}}' }}' "$CONTAINER" 2>/dev/null | grep -q true; then
+  log "$CONTAINER is not running, nothing to snapshot"
+  exit 0
+fi
+
+log "creating snapshot"
+docker exec "$CONTAINER" sh -c "rm -f '$STAGING' && \
+  sqlite3 /app/data/permissions.db \"VACUUM INTO '$STAGING'\""
+
+check="$(docker exec "$CONTAINER" sqlite3 "$STAGING" 'pragma integrity_check;' | head -n1)"
+if [ "$check" != "ok" ]; then
+  log "integrity check failed: $check"
+  docker exec "$CONTAINER" rm -f "$STAGING" || true
+  exit 1
+fi
+
+docker cp "$CONTAINER:$STAGING" "$SNAPSHOT.tmp"
+docker exec "$CONTAINER" rm -f "$STAGING"
+mv "$SNAPSHOT.tmp" "$SNAPSHOT"
+log "snapshot ready ($(stat -c %s "$SNAPSHOT") bytes)"
+
+for peer in $PEERS; do
+  if rsync -az -e "ssh -o BatchMode=yes -o ConnectTimeout=10" "$SNAPSHOT" "$DEPLOY_USER@$peer:$SNAPSHOT"; then
+    log "sent to $peer"
+  else
+    # One unreachable peer must not stop the others from getting a copy.
+    log "WARNING could not send to $peer"
+  fi
+done

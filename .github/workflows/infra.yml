@@ -1,0 +1,74 @@
+name: Infra
+
+# Terraform for the netcup DNS records. Deliberately small: netcup cannot
+# create servers through its API, so the machines are ordered by hand and
+# adopted, and failover IP routing is owned by the failover script rather than
+# by Terraform state.
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to run
+        type: choice
+        default: plan
+        options: [plan, apply]
+
+concurrency:
+  group: terraform
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    name: ${{ inputs.action || 'plan' }}
+    runs-on: ubuntu-latest
+    # apply requires the production environment; plan does not.
+    environment: ${{ inputs.action == 'apply' && 'production' || '' }}
+    defaults:
+      run:
+        working-directory: terraform
+    env:
+      TF_VAR_netcup_customer_number: ${{ secrets.NETCUP_CUSTOMER_NUMBER }}
+      TF_VAR_netcup_api_key: ${{ secrets.NETCUP_API_KEY }}
+      TF_VAR_netcup_api_password: ${{ secrets.NETCUP_API_PASSWORD }}
+      TF_VAR_netcup_scp_refresh_token: ${{ secrets.NETCUP_SCP_REFRESH_TOKEN }}
+      TF_VAR_zone: ${{ vars.DNS_ZONE }}
+      TF_VAR_failover_ip: ${{ vars.FAILOVER_IP }}
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        id: plan
+        run: terraform plan -input=false -no-color -out=tfplan
+
+      - name: Summarise plan
+        run: |
+          {
+            echo '### Terraform plan'
+            echo ''
+            echo '```'
+            terraform show -no-color tfplan | tail -n 100
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply
+        if: ${{ inputs.action == 'apply' }}
+        run: terraform apply -input=false -auto-approve tfplan

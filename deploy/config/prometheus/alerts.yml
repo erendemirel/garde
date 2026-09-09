@@ -1,0 +1,82 @@
+groups:
+  - name: garde-vault
+    rules:
+      - alert: VaultSealed
+        expr: vault_core_unsealed == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Vault member {{ $labels.instance }} is sealed"
+          description: >-
+            There is no auto-unseal in this deployment. Run
+            deploy/scripts/unseal.sh against this member. The cluster keeps
+            serving while 2 of 3 members are unsealed.
+
+      - alert: VaultRaftQuorumAtRisk
+        expr: count(up{job="vault"} == 1) < 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Only {{ $value }} of 3 Vault members are reachable"
+          description: "Losing one more member loses quorum and Vault stops serving."
+
+      - alert: VaultLeaderMissing
+        expr: absent(vault_core_active == 1)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No active Vault leader"
+          description: "Raft has not elected a leader; check member connectivity over the mesh."
+
+  - name: garde-hosts
+    rules:
+      - alert: NodeDown
+        expr: up{job="node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.instance }} is not responding"
+          description: "If this is the app primary, consider running the failover workflow."
+
+      - alert: DiskFilling
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"}
+            / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}) < 0.15
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Less than 15% disk free on {{ $labels.instance }}"
+
+      - alert: MemoryPressure
+        expr: |
+          (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Less than 10% memory available on {{ $labels.instance }}"
+
+  - name: garde-containers
+    rules:
+      - alert: ContainerRestartLoop
+        expr: rate(container_start_time_seconds{name=~"garde-.*"}[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} keeps restarting"
+
+      - alert: ContainerMissing
+        expr: |
+          absent(container_last_seen{name="garde-api"})
+          or absent(container_last_seen{name="garde-redis"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A core garde container is not running"

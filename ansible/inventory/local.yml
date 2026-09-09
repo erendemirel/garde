@@ -1,0 +1,8 @@
+# The real hosts are added at run time by the first play in bootstrap.yml,
+# which reads deploy/inventory.env. Keeping a single source of truth matters
+# more here than having a conventional static inventory: a second copy of the
+# topology is a second thing to forget after a failover.
+all:
+  hosts:
+    localhost:
+      ansible_connection: local

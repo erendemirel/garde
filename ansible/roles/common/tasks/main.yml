@@ -1,0 +1,41 @@
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - wireguard
+      - wireguard-tools
+      - zstd          # image streaming compresses with this
+      - rsync         # config sync and snapshot distribution
+      - sqlite3       # host-side inspection of permissions.db
+      - jq
+      - ufw
+      - unattended-upgrades
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Enable unattended security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+- name: Harden sshd
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/99-garde.conf
+    mode: "0644"
+    # Root login stays available by key, because this playbook needs it and the
+    # deploy user has no sudo. The firewall limits SSH to the mesh.
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin prohibit-password
+      KbdInteractiveAuthentication no
+  notify: Reload sshd
+
+- name: Validate the sshd config before anything reloads it
+  ansible.builtin.command: sshd -t
+  changed_when: false

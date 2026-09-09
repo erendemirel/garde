@@ -1,0 +1,54 @@
+# Prometheus + Grafana. Deployed to the witness node only, which is otherwise
+# idle apart from its Vault Raft member.
+#
+# Both listen on the WireGuard address: reach Grafana with an SSH tunnel or
+# from a workstation that is a mesh peer. Nothing here is public.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: garde-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - ../config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../config/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${NODE_WG_IP:?NODE_WG_IP is required}:9090:9090"
+    restart: unless-stopped
+    networks:
+      - monitoring_net
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: garde-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "http://${NODE_WG_IP}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../config/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    ports:
+      - "${NODE_WG_IP}:3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - monitoring_net
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  monitoring_net:
+    name: garde_monitoring_net
+    driver: bridge

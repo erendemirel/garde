@@ -1,0 +1,39 @@
+- name: Locate this node's generated WireGuard config
+  ansible.builtin.set_fact:
+    wg_source: "{{ playbook_dir }}/../../deploy/.wg/{{ node_name }}.conf"
+
+- name: Fail if the mesh has not been generated
+  ansible.builtin.assert:
+    that: wg_source is exists
+    fail_msg: >-
+      {{ wg_source }} is missing. Run ./deploy/scripts/wg-gen.sh first; it
+      generates one config per node plus the ci and ops peers.
+  delegate_to: localhost
+
+- name: Install the interface config
+  ansible.builtin.copy:
+    src: "{{ wg_source }}"
+    dest: /etc/wireguard/wg0.conf
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart wireguard
+
+- name: Enable the interface
+  ansible.builtin.service:
+    name: wg-quick@wg0
+    state: started
+    enabled: true
+
+- name: Flush handlers so the mesh is up before the firewall closes public SSH
+  ansible.builtin.meta: flush_handlers
+
+- name: Confirm the interface has the expected address
+  ansible.builtin.command: wg show wg0
+  register: wg_show
+  changed_when: false
+  failed_when: wg_show.rc != 0
+
+- name: Report peer count
+  ansible.builtin.debug:
+    msg: "{{ node_name }} has {{ wg_show.stdout | regex_findall('peer:') | length }} WireGuard peers"

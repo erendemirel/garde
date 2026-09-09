@@ -1,0 +1,17 @@
+# MANAGED BY ANSIBLE - roles/snapshot
+#
+# Enabled on the app-primary only. The recovery point for the permission
+# catalog equals this interval: changes made after the last snapshot are lost
+# on failover.
+[Unit]
+Description=Periodic garde permissions.db snapshot
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec={{ garde_facts.snapshot_interval | default('5min') }}
+# Avoid every host firing at the same second if the role ever spreads.
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

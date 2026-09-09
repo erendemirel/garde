@@ -1,0 +1,43 @@
+name: Snapshot and verify
+
+# Takes a consistent permissions.db snapshot from the primary, distributes it,
+# and reports on cluster health.
+#
+# The schedule is a safety net, not the primary mechanism: GitHub's cron is
+# best-effort and can be delayed. For a tighter recovery point, install the
+# systemd timer described in docs/DEPLOY.md, which runs the same script on the
+# primary every few minutes.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: snapshot
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    name: Snapshot permissions.db
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/mesh-access
+        with:
+          wg-config: ${{ secrets.WG_CI_CONF }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          inventory: ${{ secrets.DEPLOY_INVENTORY }}
+          require-all-nodes: "false"
+
+      - name: Snapshot
+        run: ./deploy/scripts/sqlite-snapshot.sh
+
+      - name: Health check
+        run: ./deploy/scripts/healthcheck.sh --all
+
+      - name: Leave the mesh
+        if: always()
+        run: sudo wg-quick down wg0 || true

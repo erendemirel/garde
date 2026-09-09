@@ -1,0 +1,49 @@
+output "failover_ip" {
+  description = "The Elastic IP. Point your DNS records here."
+  value       = aws_eip.failover.public_ip
+}
+
+output "instance_ids" {
+  description = "In node order. These are NODE*_PROVIDER_ID and the hostnames the tunnel addresses."
+  value       = aws_instance.nodes[*].id
+}
+
+output "private_ips" {
+  description = "In node order. These are NODE*_MESH_ENDPOINT."
+  value       = aws_instance.nodes[*].private_ip
+}
+
+output "ci_access_key_id" {
+  description = "Store as the AWS_ACCESS_KEY_ID secret."
+  value       = aws_iam_access_key.ci.id
+}
+
+output "ci_secret_access_key" {
+  description = "Store as the AWS_SECRET_ACCESS_KEY secret."
+  value       = aws_iam_access_key.ci.secret
+  sensitive   = true
+}
+
+# Everything the inventory needs for this provider, ready to paste. Generated
+# rather than transcribed, because an instance id copied wrongly fails in a way
+# that looks like a permissions problem.
+output "inventory_fragment" {
+  description = "Append to deploy/inventory.env with `terraform output -raw inventory_fragment`"
+  value       = <<-EOT
+    PROVIDER=aws
+    AWS_REGION=${var.region}
+    ADMIN_SSH_SOURCES=${var.vpc_cidr}
+    AWS_IMAGE_BUCKET=${aws_s3_bucket.images.id}
+    BOOTSTRAP_SSH_USER=ubuntu
+
+    FAILOVER_IP=${aws_eip.failover.public_ip}
+
+    NODE1_PROVIDER_ID=${aws_instance.nodes[0].id}
+    NODE2_PROVIDER_ID=${aws_instance.nodes[1].id}
+    NODE3_PROVIDER_ID=${aws_instance.nodes[2].id}
+
+    NODE1_MESH_ENDPOINT=${aws_instance.nodes[0].private_ip}
+    NODE2_MESH_ENDPOINT=${aws_instance.nodes[1].private_ip}
+    NODE3_MESH_ENDPOINT=${aws_instance.nodes[2].private_ip}
+  EOT
+}

@@ -1,0 +1,148 @@
+# Application stack. Deployed identically to app-primary and app-standby.
+#
+# The only difference between the two nodes lives in config/redis/redis.conf:
+# the standby's copy carries a `replicaof` line, the primary's does not. That
+# means failover changes no secrets and no compose config — Redis is promoted
+# in place and the failover IP moves.
+#
+# Nothing here is published to the public internet except Caddy's 80/443.
+# garde, the UI and Redis are reachable only inside the compose network or over
+# the WireGuard mesh.
+
+services:
+  # Vault Agent renders secrets to a tmpfs volume that garde watches.
+  # `vault` resolves to this node's own Raft member; followers forward writes
+  # to the leader transparently.
+  vault-agent:
+    image: hashicorp/vault:1.15
+    container_name: garde-vault-agent
+    command: vault agent -config=/vault/config/agent.hcl
+    environment:
+      VAULT_ADDR: http://vault:8200
+    extra_hosts:
+      - "vault:${NODE_WG_IP:?NODE_WG_IP is required}"
+    volumes:
+      - ../config/vault/agent-config.hcl:/vault/config/agent.hcl:ro
+      - ../vault/role-id:/vault/config/role-id:ro
+      - ../vault/secret-id:/vault/config/secret-id:ro
+      - ../config/vault/templates:/vault/config/templates:ro
+      - app-secrets:/run/secrets
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -s /run/secrets/redis_host"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: garde-redis
+    # The config file is authoritative and writable: `REPLICAOF NO ONE` plus
+    # `CONFIG REWRITE` during failover removes the replicaof line permanently,
+    # so a promoted Redis stays a primary across restarts.
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - ../config/redis/redis.conf:/etc/redis/redis.conf
+      - redis_data:/data
+    ports:
+      # Replication traffic between nodes travels over the mesh only.
+      - "${NODE_WG_IP}:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  garde:
+    image: "${GARDE_IMAGE:?GARDE_IMAGE is required}:${IMAGE_TAG:-latest}"
+    container_name: garde-api
+    volumes:
+      - ../certs:/app/certs:ro
+      - ../configs:/app/configs:ro
+      - ../data:/app/data
+      - app-secrets:/run/secrets:ro
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  ui:
+    image: "${UI_IMAGE:?UI_IMAGE is required}:${IMAGE_TAG:-latest}"
+    container_name: garde-ui
+    depends_on:
+      - garde
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  # Only the node currently holding the failover IP receives public traffic.
+  # The standby still runs Caddy and renews certificates through DNS-01, so it
+  # can serve immediately when the IP moves.
+  caddy:
+    image: "${CADDY_IMAGE:?CADDY_IMAGE is required}:${IMAGE_TAG:-latest}"
+    container_name: garde-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: "${APP_DOMAIN:?APP_DOMAIN is required}"
+      API_DOMAIN: "${API_DOMAIN:?API_DOMAIN is required}"
+      ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"
+      NETCUP_CUSTOMER_NUMBER: "${NETCUP_CUSTOMER_NUMBER:?required for DNS-01}"
+      NETCUP_API_KEY: "${NETCUP_API_KEY:?required for DNS-01}"
+      NETCUP_API_PASSWORD: "${NETCUP_API_PASSWORD:?required for DNS-01}"
+    volumes:
+      - ../config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - garde
+      - ui
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - app_net
+
+volumes:
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  app-secrets:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      # uid 100 is the Vault image user (writer); world-readable for garde.
+      o: size=2m,uid=100,gid=1000,mode=0755
+
+networks:
+  app_net:
+    name: garde_app_net
+    driver: bridge
+    ipam:
+      config:
+        # Fixed so TRUSTED_PROXIES in Vault can name Caddy's source range.
+        - subnet: "${APP_NET_SUBNET:-172.28.0.0/16}"

@@ -1,0 +1,49 @@
+# Vault Raft member. Deployed to all three nodes.
+#
+# Storage is Integrated Storage (Raft), so the three members replicate to each
+# other and elect a leader. Losing one host leaves a 2/3 quorum and the cluster
+# keeps serving.
+#
+# There is no auto-unseal (no cloud KMS), so a restarted member must be
+# unsealed by an operator with deploy/scripts/unseal.sh. The other two members
+# keep serving while that happens.
+#
+# The API and cluster ports are published on the WireGuard address only.
+
+services:
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: garde-vault
+    cap_add:
+      - IPC_LOCK
+    command: server -config=/vault/config/raft.hcl
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      # Raft joins are retried from the config file; see config/vault/raft.hcl
+      SKIP_CHOWN: "true"
+    volumes:
+      - ../config/vault/raft.hcl:/vault/config/raft.hcl:ro
+      - vault_raft:/vault/data
+    ports:
+      - "${NODE_WG_IP:?NODE_WG_IP is required}:8200:8200"
+      - "${NODE_WG_IP}:8201:8201"
+    healthcheck:
+      # exit 0 = unsealed and active/standby, exit 2 = sealed.
+      # Sealed intentionally fails so dependents wait for an operator.
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - vault_net
+
+volumes:
+  vault_raft:
+    driver: local
+
+networks:
+  vault_net:
+    name: garde_vault_net
+    driver: bridge

@@ -1,0 +1,58 @@
+# Bind the failover IP on both app nodes.
+#
+# netcup and Hetzner both route the failover IP to whichever server owns it, but
+# the target host still has to know the address: if it is not configured on the
+# interface, the kernel drops the packets and the route change achieves nothing.
+# Routing it at the provider is only half of the operation.
+#
+# Whether that is true is the driver's PROVIDER_REQUIRES_IP_BINDING fact; the
+# playbook skips this role where the provider delivers the address instead.
+#
+# Both app nodes hold the address permanently, even though only one receives
+# traffic. That is deliberate. Configuring it during a failover would add a step
+# to the emergency path, and a host that already has the address starts serving
+# the moment the route lands.
+#
+# Nothing is bound on the witness: it has no edge role, and an address there
+# would only invite the IP to be routed somewhere that cannot serve.
+
+- name: Fail if no failover IP is configured
+  ansible.builtin.assert:
+    that:
+      - garde_facts.failover_ip is defined
+      - garde_facts.failover_ip | length > 0
+    fail_msg: >-
+      FAILOVER_IP is not set in deploy/inventory.env. Without it the standby
+      cannot accept traffic after a cutover.
+
+- name: Install the address unit
+  ansible.builtin.template:
+    src: garde-failover-ip.service.j2
+    dest: /etc/systemd/system/garde-failover-ip.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Reload systemd before enabling the unit
+  ansible.builtin.meta: flush_handlers
+
+- name: Bind the address now and on every boot
+  ansible.builtin.systemd:
+    name: garde-failover-ip.service
+    enabled: true
+    state: started
+
+- name: Read back the interface addresses
+  ansible.builtin.command: ip -4 -oneline address show dev {{ ansible_facts.default_ipv4.interface }}
+  register: iface_addresses
+  changed_when: false
+
+- name: Confirm the failover IP is really bound
+  # A unit that started successfully is not proof; this is the assertion that
+  # would have caught the address being missing before a failover needed it.
+  ansible.builtin.assert:
+    that: garde_facts.failover_ip in iface_addresses.stdout
+    fail_msg: >-
+      {{ garde_facts.failover_ip }} is not present on
+      {{ ansible_facts.default_ipv4.interface }} after starting the unit.
+      Traffic routed here would be dropped.
+    success_msg: "{{ garde_facts.failover_ip }} is bound on {{ ansible_facts.default_ipv4.interface }}"

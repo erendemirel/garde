@@ -158,6 +158,8 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 
 See [Installation Guide](docs/INSTALLATION.md)
 
+For a high-availability layout across three hosts (Vault Raft, warm standby, scripted failover, deploys from CI), see [Deploying on three netcup hosts](docs/DEPLOY.md).
+
 
 ## Integration Guide
 
