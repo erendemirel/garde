@@ -1,11 +1,16 @@
 # Host baseline for the garde cluster.
 #
-#   First run, before the mesh exists (connects over the public IP as root):
+#   First run, before the mesh exists:
 #     ansible-playbook playbooks/bootstrap.yml -e use_mesh=false \
 #       -e deploy_pubkey_file=~/.ssh/garde_deploy.pub
 #
 #   Afterwards, over the WireGuard mesh (your workstation must be the ops peer):
 #     ansible-playbook playbooks/bootstrap.yml
+#
+#   Where the provider brokers access instead of the mesh (AWS, GCP), the
+#   tunnel is the only route in and use_mesh does not apply, so both runs are
+#   the same command. The private key for the account BOOTSTRAP_SSH_USER names
+#   has to be findable: --private-key=~/.ssh/whatever.pem, or an agent.
 #
 #   See what has drifted without changing anything:
 #     ansible-playbook playbooks/bootstrap.yml --check --diff
@@ -13,9 +18,11 @@
 #   One host only:
 #     ansible-playbook playbooks/bootstrap.yml --limit node2
 #
-# Connects as root. The deploy user this creates deliberately has no sudo: it
-# only needs the docker socket, and CI only ever uses that account. Privileged
-# host changes go through this playbook instead.
+# Connects as BOOTSTRAP_SSH_USER - root where the provider allows it, and the
+# image's default sudo account (ubuntu, ec2-user, debian) where it does not.
+# The deploy user this creates deliberately has no sudo: it only needs the
+# docker socket, and CI only ever uses that account. Privileged host changes go
+# through this playbook instead.
 
 - name: Load the deployment inventory
   hosts: localhost
