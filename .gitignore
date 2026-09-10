@@ -45,6 +45,9 @@ pnpm-debug.log*
 lerna-debug.log*
 bun-debug.log*
 # Note: bun.lock and bun.lockb should be committed
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # IDE and editor files
 .cursor/
@@ -117,6 +120,9 @@ terraform/tfplan
 *.sqlite3
 data/*.db
 data/*.sqlite
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
 
 # Temporary files
 *.tmp
