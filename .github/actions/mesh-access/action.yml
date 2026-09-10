@@ -57,9 +57,28 @@ runs:
         INVENTORY: ${{ inputs.inventory }}
       run: |
         set -euo pipefail
+        if [ -z "${INVENTORY//[[:space:]]/}" ]; then
+          echo "::error::DEPLOY_INVENTORY secret is empty."
+          exit 1
+        fi
         printf '%s\n' "$INVENTORY" > deploy/inventory.env
         chmod 600 deploy/inventory.env
         chmod +x deploy/scripts/*.sh
+        # Fail here with a clear message — load_inventory's : ${NODES:?} is opaque in CI logs.
+        missing=""
+        for key in NODES SSH_USER REMOTE_ROOT PROVIDER PRIMARY_NODE; do
+          if ! grep -qE "^[[:space:]]*${key}=" deploy/inventory.env; then
+            missing="$missing $key"
+          fi
+        done
+        if [ -n "$missing" ]; then
+          echo "::error::DEPLOY_INVENTORY secrets is missing required keys:$missing"
+          echo "--- first 20 non-comment lines of what CI received ---"
+          grep -vE '^[[:space:]]*(#|$)' deploy/inventory.env | head -20 || true
+          exit 1
+        fi
+        echo "  inventory: $(grep -E '^[[:space:]]*NODES=' deploy/inventory.env | head -1)"
+        echo "  provider:  $(grep -E '^[[:space:]]*PROVIDER=' deploy/inventory.env | head -1)"
 
     - name: Provide Google Cloud credentials
       if: ${{ inputs.gcp-service-account-key != '' }}
