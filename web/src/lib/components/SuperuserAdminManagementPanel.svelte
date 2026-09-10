@@ -183,6 +183,7 @@
 		manageableUsersSearch = '';
 	}
 
+	/** @param {string} adminEmail */
 	async function openManageAdminGroups(adminEmail) {
 		await loadUsers();
 		const admin = $usersCache.find((u) => u.email === adminEmail);
@@ -222,6 +223,7 @@
 		selectedMembers = new Set(selectedMembers);
 	}
 
+	/** @param {CustomEvent} event */
 	function revertMemberChange(event) {
 		const item = event.detail;
 		if (!item?.key) return;
@@ -236,6 +238,7 @@
 		showMembershipSaveConfirm = true;
 	}
 
+	/** @param {string} userId @param {string[]} adds @param {string[]} removes */
 	async function saveAdminGroupsAssignment(userId, adds, removes) {
 		const user = $usersCache.find((u) => u.id === userId);
 		if (!user) return { failed: 1, lastError: 'Admin user not found' };

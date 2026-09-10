@@ -158,6 +158,7 @@
 		return fromOpts?.name || key;
 	}
 
+	/** @param {{ key: string, name: string, description?: string }} perm */
 	function openManageVisibilityGroups(perm) {
 		managingMembership = { type: 'visibility', name: perm.name, key: perm.key };
 		const members = new Set(permissionVisibility[perm.key] || []);
@@ -183,6 +184,7 @@
 		selectedMembers = new Set(selectedMembers);
 	}
 
+	/** @param {CustomEvent} event */
 	function revertMemberChange(event) {
 		const item = event.detail;
 		if (!item?.key) return;
@@ -197,6 +199,7 @@
 		showMembershipSaveConfirm = true;
 	}
 
+	/** @param {string} permKey @param {string} permName @param {string[]} adds @param {string[]} removes */
 	async function saveVisibilityAssignment(permKey, permName, adds, removes) {
 		let failed = 0;
 		let lastError = '';
@@ -282,6 +285,7 @@
 		}
 	}
 
+	/** @param {string} permissionKey @param {string} groupKey */
 	function requestRemoveVisibility(permissionKey, groupKey) {
 		pendingVisibilityRemove = { permissionKey, groupKey };
 		showRemoveVisibilityConfirm = true;
@@ -295,6 +299,7 @@
 		await removeVisibility(permissionKey, groupKey);
 	}
 
+	/** @param {string} permissionKey @param {string} groupKey */
 	async function removeVisibility(permissionKey, groupKey) {
 		const permName = permissions.find((p) => p.key === permissionKey)?.name || permissionKey;
 		const groupNameLabel = groups.find((g) => g.key === groupKey)?.name || groupKey;
@@ -314,6 +319,7 @@
 		}
 	}
 
+	/** @param {string} permissionKey @param {string} groupKey */
 	async function toggleVisibility(permissionKey, groupKey) {
 		const hasVisibility = permissionVisibility[permissionKey]?.includes(groupKey);
 		if (hasVisibility) {
@@ -323,6 +329,7 @@
 		}
 	}
 
+	/** @param {string} permissionKey @param {string} groupKey */
 	async function addVisibilityForGroup(permissionKey, groupKey) {
 		const permName = permissions.find((p) => p.key === permissionKey)?.name || permissionKey;
 		const groupNameLabel = groups.find((g) => g.key === groupKey)?.name || groupKey;

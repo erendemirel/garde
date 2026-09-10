@@ -6,6 +6,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
+	/** @param {Record<string, boolean> | null | undefined} record */
 	const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 
 	/** Public auth routes already hand off into a layout that just called refreshSession. */

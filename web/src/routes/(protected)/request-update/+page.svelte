@@ -14,7 +14,9 @@
 	let catalogError = '';
 	let formReady = false;
 
+	/** @type {import('$lib/api').PermissionInfo[]} */
 	let availablePermissions = [];
+	/** @type {import('$lib/api').GroupInfo[]} */
 	let availableGroups = [];
 	let selectedPermissions = new Set();
 	let selectedGroups = new Set();
@@ -92,6 +94,7 @@
 		}
 	});
 
+	/** @param {string} key */
 	function togglePermission(key) {
 		if (selectedPermissions.has(key)) {
 			selectedPermissions.delete(key);
@@ -101,6 +104,7 @@
 		selectedPermissions = new Set(selectedPermissions);
 	}
 
+	/** @param {string} key */
 	function toggleGroup(key) {
 		if (selectedGroups.has(key)) {
 			selectedGroups.delete(key);
@@ -110,6 +114,7 @@
 		selectedGroups = new Set(selectedGroups);
 	}
 
+	/** @param {CustomEvent} event */
 	function revertChange(event) {
 		const item = event.detail;
 		if (!item?.key || !item?.target) return;

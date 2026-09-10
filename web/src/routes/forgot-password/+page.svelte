@@ -73,7 +73,6 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				onsubmit="return false;"
 				on:submit|preventDefault={handleRequestOtp}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
@@ -110,7 +109,6 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				onsubmit="return false;"
 				on:submit|preventDefault={handleReset}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">

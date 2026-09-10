@@ -50,7 +50,6 @@
 			aria-busy={!formReady}
 			method="post"
 			action="#"
-			onsubmit="return false;"
 			on:submit|preventDefault={handleLogin}
 		>
 			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">

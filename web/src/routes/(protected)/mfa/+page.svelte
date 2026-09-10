@@ -180,7 +180,6 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				onsubmit="return false;"
 				on:submit|preventDefault={handleVerify}
 			>
 				<label class="form-label">
@@ -229,7 +228,6 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				onsubmit="return false;"
 				on:submit|preventDefault={requestDisableConfirmation}
 			>
 				<label class="form-label">

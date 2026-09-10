@@ -203,6 +203,7 @@
 		return searchHitOptions.find((o) => o.key === id)?.name || id;
 	}
 
+	/** @param {CustomEvent} event */
 	async function handleUserSearch(event) {
 		const q = String(event.detail ?? '');
 		if (q.trim().length < 2) {
@@ -222,6 +223,7 @@
 		}
 	}
 
+	/** @param {{ key: string, name: string, description?: string }} item */
 	async function openManageUsers(item) {
 		await loadUsers();
 		const type = mode === 'permissions' ? 'permission' : 'group';
@@ -251,6 +253,7 @@
 		selectedMembers = new Set(selectedMembers);
 	}
 
+	/** @param {CustomEvent} event */
 	function revertMemberChange(event) {
 		const item = event.detail;
 		if (!item?.key) return;
@@ -315,6 +318,7 @@
 		}
 	}
 
+	/** @param {{ key: string, name: string, description?: string } | null} [item] */
 	function openItemModal(item = null) {
 		editingItem = item;
 		if (item) {
@@ -378,6 +382,7 @@
 		}
 	}
 
+	/** @param {{ key: string, name: string, description?: string }} item */
 	function requestDeleteItem(item) {
 		deletingItem = item;
 		showDeleteConfirm = true;
