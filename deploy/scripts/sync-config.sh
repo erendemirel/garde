@@ -93,7 +93,7 @@ EOF
      DNS follows PROVIDER (or DNS_PROVIDER). Supported today: netcup, aws.
      To add one: compile its caddy-dns module in deploy/images/caddy/Dockerfile,
      add a branch here, pass credentials into the node .env, and add a
-     terraform/<provider>/ DNS root that points app/api at FAILOVER_IP."
+     terraform/<provider>/ (or terraform/aws for AWS) DNS root that points app/api at FAILOVER_IP."
       ;;
   esac
 }

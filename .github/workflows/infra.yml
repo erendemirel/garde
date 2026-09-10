@@ -1,25 +1,15 @@
 name: Infra
 
-# Terraform for DNS A records (and, for AWS, the matching ACME IAM user).
-# Compute for AWS also lives under terraform/aws/; netcup servers are ordered
-# by hand so terraform/ is DNS-only for that provider.
-#
-# DNS always follows the hosting provider:
-#   netcup → working-directory terraform
-#   aws    → working-directory terraform/aws  (set dns_zone in tfvars / TF_VAR)
+# Terraform for the AWS garde cluster (compute, IAM, KMS, optional Route 53).
+# Working directory: terraform/aws/
 
 on:
   pull_request:
     paths:
-      - "terraform/**"
+      - "terraform/aws/**"
       - ".github/workflows/infra.yml"
   workflow_dispatch:
     inputs:
-      provider:
-        description: Which provider's Terraform root to run
-        type: choice
-        default: netcup
-        options: [netcup, aws]
       action:
         description: What to run
         type: choice
@@ -27,28 +17,20 @@ on:
         options: [plan, apply]
 
 concurrency:
-  group: terraform-${{ inputs.provider || 'netcup' }}
+  group: terraform-aws
   cancel-in-progress: false
 
 jobs:
   terraform:
-    name: ${{ inputs.provider || 'netcup' }} ${{ inputs.action || 'plan' }}
+    name: aws ${{ inputs.action || 'plan' }}
     runs-on: ubuntu-latest
     # apply requires the production environment; plan does not.
     environment: ${{ inputs.action == 'apply' && 'production' || '' }}
     defaults:
       run:
-        working-directory: ${{ (inputs.provider || 'netcup') == 'aws' && 'terraform/aws' || 'terraform' }}
+        working-directory: terraform/aws
     env:
       TF_IN_AUTOMATION: "true"
-      # netcup DNS root
-      TF_VAR_netcup_customer_number: ${{ secrets.NETCUP_CUSTOMER_NUMBER }}
-      TF_VAR_netcup_api_key: ${{ secrets.NETCUP_API_KEY }}
-      TF_VAR_netcup_api_password: ${{ secrets.NETCUP_API_PASSWORD }}
-      TF_VAR_netcup_scp_refresh_token: ${{ secrets.NETCUP_SCP_REFRESH_TOKEN }}
-      TF_VAR_zone: ${{ vars.DNS_ZONE }}
-      TF_VAR_failover_ip: ${{ vars.FAILOVER_IP }}
-      # aws root (dns_zone empty = compute-only; set DNS_ZONE to manage Route 53)
       TF_VAR_dns_zone: ${{ vars.DNS_ZONE }}
       TF_VAR_region: ${{ vars.AWS_REGION }}
       TF_VAR_image_bucket_name: ${{ vars.AWS_IMAGE_BUCKET }}

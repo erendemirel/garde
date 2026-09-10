@@ -12,8 +12,8 @@ variable "dns_zone" {
     resources (compute-only apply). When set, Terraform creates the zone unless
     dns_zone_id is also set (then it attaches records to that existing zone).
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 variable "dns_zone_id" {
@@ -41,7 +41,7 @@ variable "dns_record_ttl" {
 }
 
 locals {
-  manage_dns     = var.dns_zone != "" || var.dns_zone_id != ""
+  manage_dns      = var.dns_zone != "" || var.dns_zone_id != ""
   create_dns_zone = var.dns_zone != "" && var.dns_zone_id == ""
 }
 
