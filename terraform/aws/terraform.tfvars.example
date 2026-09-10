@@ -8,7 +8,13 @@ image_bucket_name = "garde-images-CHANGEME"
 # The key Ansible bootstraps with, not the deploy key CI uses - the playbook
 # creates that account itself.
 #   ssh-keygen -t ed25519 -f ~/.ssh/garde_bootstrap
-ssh_public_key = "ssh-ed25519 AAAA... you@example.com"
+# ssh_public_key required only when create_bootstrap_key = true (greenfield).
+# create_bootstrap_key = false   # adopt existing ${name}-bootstrap key pair
+
+# When adopting an existing VPC (import), set these to the live CIDRs / IPs.
+# Leave unset for a greenfield apply (derives /24s and host .10).
+# subnet_cidrs = ["10.0.0.0/20", "10.0.16.0/20", "10.0.32.0/20"]
+# node_private_ips = ["10.0.9.185", "10.0.22.97", "10.0.35.224"]
 
 # Route 53: set dns_zone to create a public hosted zone + app/api A records
 # pointing at the Elastic IP, and an ACME IAM user for Caddy DNS-01.

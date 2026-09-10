@@ -31,9 +31,17 @@ variable "root_volume_gb" {
 variable "ssh_public_key" {
   description = <<-EOT
     Public half of the key Ansible bootstraps with, as an authorized_keys line.
-    This is not the deploy key CI uses - the playbook creates that account.
+    Required when create_bootstrap_key is true (greenfield). Ignored when the
+    key already exists and is only looked up by name.
   EOT
-  type        = string
+  type    = string
+  default = ""
+}
+
+variable "create_bootstrap_key" {
+  description = "Create aws_key_pair.bootstrap. Set false when adopting an existing key (import)."
+  type        = bool
+  default     = true
 }
 
 variable "image_bucket_name" {
@@ -45,4 +53,28 @@ variable "image_retention_days" {
   description = "Staged images are disposable; a short expiry keeps the bucket near free."
   type        = number
   default     = 7
+}
+
+# Optional overrides when adopting an existing VPC layout (import). When null,
+# subnets are cidrsubnet(vpc_cidr, 8, 1..3) and private IPs are host .10.
+variable "subnet_cidrs" {
+  description = "Exact /length-3 CIDR list for the three node subnets. Null = derive from vpc_cidr."
+  type        = list(string)
+  default     = null
+
+  validation {
+    condition     = var.subnet_cidrs == null || length(var.subnet_cidrs) == 3
+    error_message = "subnet_cidrs must be null or a list of exactly 3 CIDRs."
+  }
+}
+
+variable "node_private_ips" {
+  description = "Exact private IPs for the three nodes (mesh endpoints). Null = cidrhost(subnet, 10)."
+  type        = list(string)
+  default     = null
+
+  validation {
+    condition     = var.node_private_ips == null || length(var.node_private_ips) == 3
+    error_message = "node_private_ips must be null or a list of exactly 3 addresses."
+  }
 }

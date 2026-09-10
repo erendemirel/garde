@@ -12,12 +12,18 @@
 # Track remaining host/app steps with ../../deploy/scripts/doctor.sh
 # (see docs/AWS_BRINGUP.md).
 #
-# DNS lives with the compute provider: netcup clusters use terraform/ (CCP DNS);
-# AWS clusters use this module's Route 53 resources. They share no state.
+# DNS: leave dns_zone empty for compute-only; set it for Route 53 + ACME IAM.
+# AWS clusters use this module's Route 53 resources when dns_zone is set.
 #
 # Tear it down with `terraform destroy` when the test is over. The only resource
 # that survives is anything you put in the bucket, which the lifecycle rule
 # expires anyway.
+#
+# Remote state (shared by laptop + GitHub Infra):
+#   bucket  garde-tfstate-518040093343-eu-central-1
+#   key     garde/aws/terraform.tfstate
+#   locks   DynamoDB table garde-terraform-locks
+# Use the garde-terraform IAM user (AWS_TF_* secrets), not garde-ci.
 
 terraform {
   required_version = ">= 1.6.0"
@@ -27,6 +33,16 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.40"
     }
+  }
+
+  # Shared state for laptop + GitHub Infra. Bucket/table created once
+  # (see docs/AWS_BRINGUP.md / deploy scripts); do not put credentials here.
+  backend "s3" {
+    bucket         = "garde-tfstate-518040093343-eu-central-1"
+    key            = "garde/aws/terraform.tfstate"
+    region         = "eu-central-1"
+    dynamodb_table = "garde-terraform-locks"
+    encrypt        = true
   }
 }
 

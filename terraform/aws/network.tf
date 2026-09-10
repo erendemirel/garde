@@ -27,6 +27,15 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+locals {
+  subnet_cidrs = var.subnet_cidrs != null ? var.subnet_cidrs : [
+    for i in range(3) : cidrsubnet(var.vpc_cidr, 8, i + 1)
+  ]
+  node_private_ips = var.node_private_ips != null ? var.node_private_ips : [
+    for i in range(3) : cidrhost(local.subnet_cidrs[i], 10)
+  ]
+}
+
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -44,7 +53,7 @@ resource "aws_subnet" "nodes" {
   count = 3
 
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 1)
+  cidr_block        = local.subnet_cidrs[count.index]
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   # See the note above: without this, only the node holding the Elastic IP has
