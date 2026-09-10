@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -23,11 +23,15 @@
 
 	$: usersListHref = $isSuperuser ? '/superuser?tab=users' : '/admin';
 
+	/** @type {import('$lib/api').User | null} */
 	let userData = null;
 	let error = '';
+	let catalogError = '';
 	let loading = true;
 	let saving = false;
 	let accessDenied = false;
+	/** @type {ReturnType<typeof setTimeout> | null} */
+	let redirectTimer = null;
 	let showDeleteConfirm = false;
 	let showSaveConfirm = false;
 	let showMfaEnforceConfirm = false;
@@ -48,7 +52,9 @@
 
 	let mfaCode = '';
 
+	/** @type {import('$lib/api').PermissionInfo[]} */
 	let availablePermissions = [];
+	/** @type {import('$lib/api').GroupInfo[]} */
 	let availableGroups = [];
 
 	/** @type {Set<string>} */
@@ -142,14 +148,17 @@
 		showLeaveConfirm = true;
 	});
 
+	/** @param {string} key */
 	function permissionLabel(key) {
 		return availablePermissions.find((p) => p.key === key)?.name || key;
 	}
 
+	/** @param {string} key */
 	function groupLabel(key) {
 		return availableGroups.find((g) => g.key === key)?.name || key;
 	}
 
+	/** @param {Record<string, boolean> | null | undefined} map */
 	function enabledKeys(map) {
 		return new Set(
 			Object.entries(map || {})
@@ -171,6 +180,7 @@
 		pendingLeaveHref = usersListHref;
 	}
 
+	/** @param {import('$lib/api').User} user */
 	function snapshotBaseline(user) {
 		initialPermissions = enabledKeys(user.permissions);
 		selectedPermissions = new Set(initialPermissions);
@@ -178,11 +188,13 @@
 		selectedGroups = new Set(initialGroups);
 	}
 
+	/** @param {import('$lib/api').User} user */
 	function applyUser(user) {
 		userData = user;
 		snapshotBaseline(user);
 	}
 
+	/** @param {string} key */
 	function togglePermission(key) {
 		if (selectedPermissions.has(key)) {
 			selectedPermissions.delete(key);
@@ -192,6 +204,7 @@
 		selectedPermissions = new Set(selectedPermissions);
 	}
 
+	/** @param {string} key */
 	function toggleGroup(key) {
 		if (selectedGroups.has(key)) {
 			selectedGroups.delete(key);
@@ -201,6 +214,7 @@
 		selectedGroups = new Set(selectedGroups);
 	}
 
+	/** @param {CustomEvent} event */
 	function revertChange(event) {
 		const item = event.detail;
 		if (!item?.key || !item?.target) return;
@@ -228,23 +242,31 @@
 		return { permissions, groups };
 	}
 
+	/** @param {string} id */
 	async function loadDetail(id) {
 		if (!id) return;
 		const gen = ++loadGen;
 		loading = true;
 		accessDenied = false;
 		error = '';
+		catalogError = '';
 		userData = null;
 		try {
-			const [perms, grps, user] = await Promise.all([
-				listPermissions().catch(() => []),
-				listGroups().catch(() => []),
-				getUser(id)
-			]);
+			const user = await getUser(id);
 			if (gen !== loadGen) return;
-			availablePermissions = perms || [];
-			availableGroups = grps || [];
 			applyUser(user);
+			try {
+				const [perms, grps] = await Promise.all([listPermissions(), listGroups()]);
+				if (gen !== loadGen) return;
+				availablePermissions = perms || [];
+				availableGroups = grps || [];
+			} catch (catalogErr) {
+				if (gen !== loadGen) return;
+				catalogError =
+					catalogErr instanceof Error ? catalogErr.message : 'Failed to load permissions/groups';
+				availablePermissions = [];
+				availableGroups = [];
+			}
 		} catch (e) {
 			if (gen !== loadGen) return;
 			if (isApiError(e) && e.status === 401 && isSessionInvalidMessage(e.message)) {
@@ -265,6 +287,7 @@
 	}
 
 	onMount(() => {
+		/** @param {BeforeUnloadEvent} e */
 		const onBeforeUnload = (e) => {
 			if (!dirty) return;
 			e.preventDefault();
@@ -275,6 +298,10 @@
 		return () => {
 			window.removeEventListener('beforeunload', onBeforeUnload);
 		};
+	});
+
+	onDestroy(() => {
+		if (redirectTimer) clearTimeout(redirectTimer);
 	});
 
 	function requestSave() {
@@ -290,6 +317,7 @@
 	}
 
 	async function handleUpdate() {
+		if (!userId) return;
 		saving = true;
 		showSaveConfirm = false;
 		const summary = changeItems.map((i) => i.label).join('; ');
@@ -318,6 +346,7 @@
 	}
 
 	async function handleApproveUpdate() {
+		if (!userId) return;
 		saving = true;
 		showApproveUpdateConfirm = false;
 		try {
@@ -336,6 +365,7 @@
 	}
 
 	async function handleRejectUpdate() {
+		if (!userId) return;
 		saving = true;
 		showRejectUpdateConfirm = false;
 		try {
@@ -362,6 +392,7 @@
 	}
 
 	async function handleRevokeSessions() {
+		if (!userId) return;
 		saving = true;
 		showRevokeConfirm = false;
 		try {
@@ -399,6 +430,7 @@
 	}
 
 	async function handleApproveAccount() {
+		if (!userId) return;
 		saving = true;
 		showApproveConfirm = false;
 		try {
@@ -417,6 +449,7 @@
 	}
 
 	async function handleRejectAccount() {
+		if (!userId) return;
 		saving = true;
 		showRejectAccountConfirm = false;
 		try {
@@ -435,6 +468,7 @@
 	}
 
 	async function handleLockConfirm() {
+		if (!userId) return;
 		saving = true;
 		showLockConfirm = false;
 		try {
@@ -455,6 +489,7 @@
 	}
 
 	async function handleMfaEnforceConfirm() {
+		if (!userId) return;
 		saving = true;
 		showMfaEnforceConfirm = false;
 		try {
@@ -480,13 +515,15 @@
 	}
 
 	async function handleDelete() {
+		if (!userId) return;
 		saving = true;
 		showDeleteConfirm = false;
 		try {
 			await deleteUser(userId);
 			showToast('User deleted successfully!', 'success');
 			allowNextNavigation = true;
-			setTimeout(() => {
+			if (redirectTimer) clearTimeout(redirectTimer);
+			redirectTimer = setTimeout(() => {
 				goto(usersListHref);
 			}, 1500);
 		} catch (e) {
@@ -621,23 +658,33 @@
 				{@const fields = userData.pending_updates.fields || {}}
 
 				{@const permissionChanges = (() => {
+					/** @type {{ perm: string, isAdd: boolean }[]} */
 					const changes = [];
 					if (fields.permissions_add) {
-						fields.permissions_add.forEach((perm) => changes.push({ perm, isAdd: true }));
+						fields.permissions_add.forEach((/** @type {string} */ perm) =>
+							changes.push({ perm, isAdd: true })
+						);
 					}
 					if (fields.permissions_remove) {
-						fields.permissions_remove.forEach((perm) => changes.push({ perm, isAdd: false }));
+						fields.permissions_remove.forEach((/** @type {string} */ perm) =>
+							changes.push({ perm, isAdd: false })
+						);
 					}
 					return changes;
 				})()}
 
 				{@const groupChanges = (() => {
+					/** @type {{ group: string, isAdd: boolean }[]} */
 					const changes = [];
 					if (fields.groups_add) {
-						fields.groups_add.forEach((group) => changes.push({ group, isAdd: true }));
+						fields.groups_add.forEach((/** @type {string} */ group) =>
+							changes.push({ group, isAdd: true })
+						);
 					}
 					if (fields.groups_remove) {
-						fields.groups_remove.forEach((group) => changes.push({ group, isAdd: false }));
+						fields.groups_remove.forEach((/** @type {string} */ group) =>
+							changes.push({ group, isAdd: false })
+						);
 					}
 					return changes;
 				})()}
@@ -717,9 +764,11 @@
 					data-testid="user-detail-access-form"
 					method="post"
 					action="#"
-					onsubmit="return false;"
 					on:submit|preventDefault={requestSave}
 				>
+					{#if catalogError}
+						<p class="error text-sm" data-testid="user-detail-catalog-error">{catalogError}</p>
+					{/if}
 					{#if availablePermissions.length > 0}
 						<div class="edit-section" data-testid="user-detail-permissions">
 							<h3>Permissions</h3>

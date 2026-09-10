@@ -47,6 +47,7 @@ bun-debug.log*
 # Note: bun.lock and bun.lockb should be committed
 
 # IDE and editor files
+.cursor/
 .idea/
 .vscode/
 *.swp

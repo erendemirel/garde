@@ -11,9 +11,12 @@
 
 	let loading = false;
 	let catalogLoading = true;
+	let catalogError = '';
 	let formReady = false;
 
+	/** @type {import('$lib/api').PermissionInfo[]} */
 	let availablePermissions = [];
+	/** @type {import('$lib/api').GroupInfo[]} */
 	let availableGroups = [];
 	let selectedPermissions = new Set();
 	let selectedGroups = new Set();
@@ -51,15 +54,13 @@
 		}))
 	];
 	$: hasChanges = changeItems.length > 0;
-	$: catalogReady = formReady && !catalogLoading;
+	$: catalogReady = formReady && !catalogLoading && !catalogError;
 
 	onMount(async () => {
 		formReady = true;
+		catalogError = '';
 		try {
-			const [perms, grps] = await Promise.all([
-				listPermissions().catch(() => []),
-				listGroups().catch(() => [])
-			]);
+			const [perms, grps] = await Promise.all([listPermissions(), listGroups()]);
 			availablePermissions = perms || [];
 			availableGroups = grps || [];
 
@@ -85,12 +86,15 @@
 				initialGroups = new Set(initialGroups);
 			}
 		} catch (e) {
-			console.error(e);
+			catalogError = e instanceof Error ? e.message : 'Failed to load permissions and groups';
+			availablePermissions = [];
+			availableGroups = [];
 		} finally {
 			catalogLoading = false;
 		}
 	});
 
+	/** @param {string} key */
 	function togglePermission(key) {
 		if (selectedPermissions.has(key)) {
 			selectedPermissions.delete(key);
@@ -100,6 +104,7 @@
 		selectedPermissions = new Set(selectedPermissions);
 	}
 
+	/** @param {string} key */
 	function toggleGroup(key) {
 		if (selectedGroups.has(key)) {
 			selectedGroups.delete(key);
@@ -109,6 +114,7 @@
 		selectedGroups = new Set(selectedGroups);
 	}
 
+	/** @param {CustomEvent} event */
 	function revertChange(event) {
 		const item = event.detail;
 		if (!item?.key || !item?.target) return;
@@ -177,6 +183,8 @@
 
 			{#if catalogLoading}
 				<p class="text-muted text-sm" data-testid="request-update-catalog-loading">Loading options…</p>
+			{:else if catalogError}
+				<p class="error text-sm" data-testid="request-update-catalog-error">{catalogError}</p>
 			{:else if (availablePermissions || []).length === 0}
 				<p class="text-muted text-sm" data-testid="request-update-permissions-empty">No permissions available.</p>
 			{:else}
@@ -193,8 +201,8 @@
 				</div>
 			{/if}
 
-			{#if catalogLoading}
-				<!-- loading message shown above -->
+			{#if catalogLoading || catalogError}
+				<!-- loading/error shown above -->
 			{:else if (availableGroups || []).length === 0}
 				<p class="text-muted text-sm" data-testid="request-update-groups-empty">No groups available.</p>
 			{:else}

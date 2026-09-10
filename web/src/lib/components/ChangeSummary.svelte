@@ -1,7 +1,7 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
 
-	/** @type {{ label: string, kind: 'add' | 'remove' | 'change', target?: string, key?: string }[]} */
+	/** @type {{ label: string, kind: string, target?: string, key?: string }[]} */
 	export let items = [];
 	export let title = 'Changes';
 	export let emptyText = '';
@@ -12,6 +12,7 @@
 	$: removed = items.filter((i) => i.kind === 'remove');
 	$: changed = items.filter((i) => i.kind === 'change');
 
+	/** @param {{ label: string, kind: string, target?: string, key?: string }} item */
 	function handleRevert(item) {
 		dispatch('revert', item);
 	}

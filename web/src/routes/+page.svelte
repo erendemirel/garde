@@ -11,8 +11,6 @@
 	let loading = false;
 	/** True after mount — gates interactivity until Svelte handlers are wired. */
 	let formReady = false;
-	let emailInput;
-	let passwordInput;
 
 	onMount(() => {
 		formReady = true;
@@ -21,11 +19,6 @@
 	async function handleLogin() {
 		if (!formReady || loading) return;
 		error = '';
-		if (!emailInput?.checkValidity() || !passwordInput?.checkValidity()) {
-			emailInput?.reportValidity();
-			passwordInput?.reportValidity();
-			return;
-		}
 		loading = true;
 		try {
 			await login(email, password, mfaCode || undefined);
@@ -41,14 +34,6 @@
 		}
 		loading = false;
 	}
-
-	function onLoginKeydown(e) {
-		if (!formReady || loading) return;
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			void handleLogin();
-		}
-	}
 </script>
 
 <svelte:head>
@@ -63,7 +48,9 @@
 			data-testid="login-form"
 			data-ready={formReady ? 'true' : 'false'}
 			aria-busy={!formReady}
-			on:keydown={onLoginKeydown}
+			method="post"
+			action="#"
+			on:submit|preventDefault={handleLogin}
 		>
 			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
 				Email
@@ -71,7 +58,6 @@
 					class="input"
 					type="email"
 					data-testid="login-email"
-					bind:this={emailInput}
 					bind:value={email}
 					required
 					autocomplete="email"
@@ -84,7 +70,6 @@
 					class="input"
 					type="password"
 					data-testid="login-password"
-					bind:this={passwordInput}
 					bind:value={password}
 					required
 					autocomplete="current-password"
@@ -110,10 +95,9 @@
 			{/if}
 			<button
 				class="btn-secondary w-full justify-center font-bold"
-				type="button"
+				type="submit"
 				data-testid="login-submit"
 				disabled={!formReady || loading}
-				on:click={handleLogin}
 			>
 				{loading ? 'Signing in...' : formReady ? 'Sign In' : 'Loading...'}
 			</button>

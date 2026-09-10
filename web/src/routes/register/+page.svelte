@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { register } from '$lib/api';
 	import { goto } from '$app/navigation';
 
@@ -10,9 +10,15 @@
 	let success = '';
 	let loading = false;
 	let formReady = false;
+	/** @type {ReturnType<typeof setTimeout> | null} */
+	let redirectTimer = null;
 
 	onMount(() => {
 		formReady = true;
+	});
+
+	onDestroy(() => {
+		if (redirectTimer) clearTimeout(redirectTimer);
 	});
 
 	async function handleRegister() {
@@ -30,19 +36,11 @@
 		try {
 			await register(email, password);
 			success = 'Account created! Waiting for admin approval.';
-			setTimeout(() => goto('/'), 3000);
+			redirectTimer = setTimeout(() => goto('/'), 3000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Registration failed';
 		}
 		loading = false;
-	}
-
-	function onRegisterKeydown(e) {
-		if (!formReady || loading) return;
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			void handleRegister();
-		}
 	}
 </script>
 
@@ -63,7 +61,9 @@
 				data-testid="register-form"
 				data-ready={formReady ? 'true' : 'false'}
 				aria-busy={!formReady}
-				on:keydown={onRegisterKeydown}
+				method="post"
+				action="#"
+				on:submit|preventDefault={handleRegister}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Email
@@ -107,10 +107,9 @@
 				{/if}
 				<button
 					class="btn-secondary w-full justify-center"
-					type="button"
+					type="submit"
 					data-testid="register-submit"
 					disabled={!formReady || loading}
-					on:click={handleRegister}
 				>
 					{loading ? 'Creating...' : formReady ? 'Create Account' : 'Loading...'}
 				</button>

@@ -79,7 +79,6 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				onsubmit="return false;"
 				on:submit|preventDefault={requestConfirmation}
 			>
 				<label class="form-label">

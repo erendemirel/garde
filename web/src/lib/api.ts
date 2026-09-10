@@ -2,6 +2,7 @@ import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { ApiError, isSessionInvalidMessage } from './apiError';
 import { clearAuthState } from './stores';
+import { invalidateUsersCache } from './usersCache';
 
 // Use environment variable in production, fallback to /api for development
 const API_BASE = import.meta.env.PUBLIC_API_URL || '/api';
@@ -27,6 +28,7 @@ export function getSessionGeneration() {
 export function invalidateSession() {
 	sessionGeneration++;
 	clearAuthState();
+	invalidateUsersCache();
 }
 
 function handleExpiredSession() {
@@ -194,7 +196,8 @@ export const listUsers = (params?: {
 	);
 };
 
-export const getUser = (user_id: string) => request<User>(`/users/${user_id}`);
+export const getUser = (user_id: string) =>
+	request<User>(`/users/${encodeURIComponent(user_id)}`);
 
 export const updateUser = (
 	user_id: string,
@@ -207,7 +210,7 @@ export const updateUser = (
 		reject_update?: boolean;
 	}
 ) =>
-	request<User>(`/users/${user_id}`, {
+	request<User>(`/users/${encodeURIComponent(user_id)}`, {
 		method: 'PUT',
 		body: JSON.stringify(updates)
 	});
@@ -219,7 +222,7 @@ export const revokeSessions = (user_id: string, mfa_code?: string) =>
 	});
 
 export const deleteUser = (user_id: string) =>
-	request(`/users/${user_id}`, {
+	request(`/users/${encodeURIComponent(user_id)}`, {
 		method: 'DELETE'
 	});
 
@@ -248,13 +251,13 @@ export const createPermission = (name: string, definition: string) =>
 	});
 
 export const updatePermission = (permission_name: string, definition: string) =>
-	request<PermissionInfo>(`/admin/permissions/${permission_name}`, {
+	request<PermissionInfo>(`/admin/permissions/${encodeURIComponent(permission_name)}`, {
 		method: 'PUT',
 		body: JSON.stringify({ definition })
 	});
 
 export const deletePermission = (permission_name: string) =>
-	request(`/admin/permissions/${permission_name}`, {
+	request(`/admin/permissions/${encodeURIComponent(permission_name)}`, {
 		method: 'DELETE'
 	});
 
@@ -265,13 +268,13 @@ export const createGroup = (name: string, definition: string) =>
 	});
 
 export const updateGroup = (group_name: string, definition: string) =>
-	request<GroupInfo>(`/admin/groups/${group_name}`, {
+	request<GroupInfo>(`/admin/groups/${encodeURIComponent(group_name)}`, {
 		method: 'PUT',
 		body: JSON.stringify({ definition })
 	});
 
 export const deleteGroup = (group_name: string) =>
-	request(`/admin/groups/${group_name}`, {
+	request(`/admin/groups/${encodeURIComponent(group_name)}`, {
 		method: 'DELETE'
 	});
 
@@ -281,11 +284,13 @@ export const addPermissionVisibility = (permission_name: string, group_name: str
 		body: JSON.stringify({ permission_name, group_name })
 	});
 
-export const removePermissionVisibility = (permission_name: string, group_name: string) =>
-	request('/admin/permissions/visibility', {
-		method: 'DELETE',
-		body: JSON.stringify({ permission_name, group_name })
+/** Uses query params (not a JSON body) so proxies that strip DELETE bodies still work. */
+export const removePermissionVisibility = (permission_name: string, group_name: string) => {
+	const sp = new URLSearchParams({ permission_name, group_name });
+	return request(`/admin/permissions/visibility?${sp}`, {
+		method: 'DELETE'
 	});
+};
 
 export const getAllPermissionVisibility = () =>
 	request<Record<string, string[]>>('/admin/permissions/visibility');

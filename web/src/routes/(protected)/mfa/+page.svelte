@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { setupMfa, verifyMfa, disableMfa } from '$lib/api';
 	import { user } from '$lib/stores';
 	import { refreshSession } from '$lib/session';
@@ -10,16 +10,42 @@
 	let step = 'choice';
 	let secret = '';
 	let qrCodeUrl = '';
-	let code = '';
+	let verifyCode = '';
+	let disableCode = '';
 	let error = '';
 	let success = '';
 	let loading = false;
 	let showConfirmModal = false;
 	let formReady = false;
+	/** @type {ReturnType<typeof setTimeout> | null} */
+	let redirectTimer = null;
+
+	$: safeQrSrc =
+		typeof qrCodeUrl === 'string' &&
+		(qrCodeUrl.startsWith('data:image/') || qrCodeUrl.startsWith('https://'))
+			? qrCodeUrl
+			: '';
 
 	onMount(() => {
 		formReady = true;
 	});
+
+	onDestroy(() => {
+		if (redirectTimer) clearTimeout(redirectTimer);
+	});
+
+	function clearSetupState() {
+		secret = '';
+		qrCodeUrl = '';
+		verifyCode = '';
+	}
+
+	function goToChoice() {
+		clearSetupState();
+		disableCode = '';
+		error = '';
+		step = 'choice';
+	}
 
 	async function handleSetup() {
 		if (!formReady || loading) return;
@@ -29,6 +55,7 @@
 			const res = await setupMfa();
 			secret = res.secret;
 			qrCodeUrl = res.qr_code_url;
+			verifyCode = '';
 			step = 'verify';
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'MFA setup failed';
@@ -41,10 +68,11 @@
 		error = '';
 		loading = true;
 		try {
-			await verifyMfa(code);
+			await verifyMfa(verifyCode);
+			clearSetupState();
 			success = 'MFA enabled successfully!';
 			await refreshSession();
-			setTimeout(() => goto('/dashboard'), 2000);
+			redirectTimer = setTimeout(() => goto('/dashboard'), 2000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Verification failed';
 		}
@@ -60,10 +88,11 @@
 		error = '';
 		loading = true;
 		try {
-			await disableMfa(code);
+			await disableMfa(disableCode);
+			disableCode = '';
 			success = 'MFA disabled successfully!';
 			await refreshSession();
-			setTimeout(() => goto('/dashboard'), 2000);
+			redirectTimer = setTimeout(() => goto('/dashboard'), 2000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to disable MFA';
 		}
@@ -103,7 +132,11 @@
 						class="btn-danger"
 						type="button"
 						data-testid="mfa-disable-start"
-						on:click={() => (step = 'disable')}
+						on:click={() => {
+							disableCode = '';
+							error = '';
+							step = 'disable';
+						}}
 						><ShieldOff size={18} />Disable MFA</button
 					>
 				{/if}
@@ -132,7 +165,11 @@
 		{:else if step === 'verify'}
 			<p class="text-sm text-text mb-3">Scan this QR code with your authenticator app:</p>
 			<div class="qr-code" data-testid="mfa-qr">
-				<img src={qrCodeUrl} alt="MFA QR Code" width="200" height="200" />
+				{#if safeQrSrc}
+					<img src={safeQrSrc} alt="MFA QR Code" width="200" height="200" />
+				{:else}
+					<p class="text-sm text-muted">QR code unavailable. Use the secret below.</p>
+				{/if}
 			</div>
 			<p class="text-sm text-muted my-3">Or enter this secret manually:</p>
 			<p class="secret-key" data-testid="mfa-secret">{secret}</p>
@@ -143,7 +180,6 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				onsubmit="return false;"
 				on:submit|preventDefault={handleVerify}
 			>
 				<label class="form-label">
@@ -152,24 +188,36 @@
 						class="input"
 						type="text"
 						data-testid="mfa-code"
-						bind:value={code}
+						bind:value={verifyCode}
 						placeholder="6-digit code"
 						required
+						autocomplete="one-time-code"
 						disabled={!formReady}
 					/>
 				</label>
 				{#if error}
 					<p class="error" data-testid="mfa-error">{error}</p>
 				{/if}
-				<button
-					class="btn-secondary"
-					type="submit"
-					data-testid="mfa-verify-submit"
-					disabled={!formReady || loading}
-				>
-					<CheckCircle size={18} />
-					{loading ? 'Verifying...' : formReady ? 'Verify & Enable' : 'Loading...'}
-				</button>
+				<div class="flex flex-wrap gap-3">
+					<button
+						class="btn-secondary"
+						type="submit"
+						data-testid="mfa-verify-submit"
+						disabled={!formReady || loading}
+					>
+						<CheckCircle size={18} />
+						{loading ? 'Verifying...' : formReady ? 'Verify & Enable' : 'Loading...'}
+					</button>
+					<button
+						type="button"
+						class="btn-secondary"
+						data-testid="mfa-verify-cancel"
+						on:click={goToChoice}
+						disabled={loading}
+					>
+						<X size={18} />Cancel
+					</button>
+				</div>
 			</form>
 		{:else if step === 'disable'}
 			<p class="text-sm text-text mb-3">Enter your MFA code to disable:</p>
@@ -180,7 +228,6 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				onsubmit="return false;"
 				on:submit|preventDefault={requestDisableConfirmation}
 			>
 				<label class="form-label">
@@ -189,9 +236,10 @@
 						class="input"
 						type="text"
 						data-testid="mfa-code"
-						bind:value={code}
+						bind:value={disableCode}
 						placeholder="6-digit code"
 						required
+						autocomplete="one-time-code"
 						disabled={!formReady}
 					/>
 				</label>
@@ -212,7 +260,7 @@
 						type="button"
 						class="btn-secondary"
 						data-testid="mfa-disable-cancel"
-						on:click={() => (step = 'choice')}
+						on:click={goToChoice}
 						><X size={18} />Cancel</button
 					>
 				</div>
@@ -230,4 +278,3 @@
 	confirmClass="btn-danger"
 	on:confirm={handleDisable}
 />
-

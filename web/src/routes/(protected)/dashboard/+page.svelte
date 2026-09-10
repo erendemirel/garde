@@ -1,14 +1,20 @@
 <script>
-	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { user, isSuperuser } from '$lib/stores';
 	import { refreshSession } from '$lib/session';
 	import { ShieldCheck, KeyRound, MailQuestion } from 'lucide-svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
+	/** @param {Record<string, boolean> | null | undefined} record */
 	const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 
-	onMount(() => {
+	/** Public auth routes already hand off into a layout that just called refreshSession. */
+	const PUBLIC_FROM = new Set(['/', '/register', '/forgot-password']);
+
+	afterNavigate(({ from }) => {
+		// Skip first paint / login handoff — (protected)/+layout already refreshed.
+		if (!from || PUBLIC_FROM.has(from.url.pathname)) return;
 		void refreshSession().catch(() => undefined);
 	});
 </script>
