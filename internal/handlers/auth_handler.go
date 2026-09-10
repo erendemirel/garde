@@ -1461,9 +1461,14 @@ func (h *AuthHandler) AddPermissionVisibility(c *gin.Context) {
 // @Router /admin/permissions/visibility [delete]
 func (h *AuthHandler) RemovePermissionVisibility(c *gin.Context) {
 	var req models.RemovePermissionVisibilityRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
-		return
+	// Prefer query params so clients/proxies that strip DELETE bodies still work.
+	req.PermissionName = c.Query("permission_name")
+	req.GroupName = c.Query("group_name")
+	if req.PermissionName == "" || req.GroupName == "" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+			return
+		}
 	}
 	if err := validation.ValidatePermissionOrGroupName(req.PermissionName); err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))

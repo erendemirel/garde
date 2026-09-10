@@ -1,8 +1,21 @@
 <script>
 	import { onMount } from 'svelte';
-	import { listPermissions, listGroups, updateUser } from '$lib/api';
+	import { listPermissions, listGroups } from '$lib/api';
 	import { showToast } from '$lib/toast';
-	import { loadUsersAllPages, searchUsers } from '$lib/usersLoad';
+	import {
+		ensureUsersCache,
+		mergeUsersIntoCache,
+		searchUsers,
+		setUsersCache,
+		usersCache,
+		usersCacheError
+	} from '$lib/usersLoad';
+	import {
+		applyMembershipUpdates,
+		countMemberships,
+		memberIdsForKey,
+		membershipDiff
+	} from '$lib/membership';
 	import { user } from '$lib/stores';
 	import { Users, X } from 'lucide-svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -18,9 +31,6 @@
 	let error = '';
 	/** @type {{ key: string, name: string, description?: string }[]} */
 	let catalog = [];
-	/** @type {{ id: string, email: string, status?: string, permissions?: Record<string, boolean>, groups?: Record<string, boolean> }[]} */
-	let manageableUsers = [];
-	let usersLoadPromise = /** @type {Promise<void> | null} */ (null);
 	let search = '';
 	let catalogPage = 1;
 	let catalogPageSize = 30;
@@ -71,23 +81,12 @@
 		return filteredCatalog.slice(start, start + size);
 	})();
 
-	$: userCounts = (() => {
-		/** @type {Record<string, number>} */
-		const counts = {};
-		for (const u of manageableUsers) {
-			const map = mode === 'permissions' ? u.permissions : u.groups;
-			for (const [key, enabled] of Object.entries(map || {})) {
-				if (!enabled) continue;
-				counts[key] = (counts[key] || 0) + 1;
-			}
-		}
-		return counts;
-	})();
+	$: userCounts = countMemberships($usersCache, mode);
 
 	$: pickerOptions = (() => {
 		/** @type {Map<string, { key: string, name: string, description?: string }>} */
 		const byId = new Map();
-		for (const u of manageableUsers) {
+		for (const u of $usersCache) {
 			if (selectedMembers.has(u.id) || initialMembers.has(u.id)) {
 				byId.set(u.id, {
 					key: u.id,
@@ -102,8 +101,8 @@
 		return [...byId.values()];
 	})();
 
-	$: memberAdds = [...selectedMembers].filter((id) => !initialMembers.has(id));
-	$: memberRemoves = [...initialMembers].filter((id) => !selectedMembers.has(id));
+	$: memberAdds = membershipDiff(selectedMembers, initialMembers).adds;
+	$: memberRemoves = membershipDiff(selectedMembers, initialMembers).removes;
 	$: memberChangeItems = [
 		...memberAdds.map((id) => ({
 			label: userEmail(id),
@@ -133,7 +132,7 @@
 	onMount(() => {
 		void (async () => {
 			await reloadCatalog();
-			ensureUsersLoaded();
+			await loadUsers();
 		})();
 	});
 
@@ -143,8 +142,7 @@
 		search = '';
 		void (async () => {
 			await reloadCatalog();
-			usersLoadPromise = null;
-			ensureUsersLoaded();
+			await loadUsers();
 		})();
 	}
 
@@ -167,40 +165,28 @@
 		loading = false;
 	}
 
-	function ensureUsersLoaded() {
-		if (usersLoadPromise) return usersLoadPromise;
-		usersLoadPromise = (async () => {
-			try {
-				manageableUsers = await loadUsersAllPages();
-			} catch {
-				manageableUsers = [];
+	async function loadUsers() {
+		try {
+			await ensureUsersCache();
+		} catch (e) {
+			if (!$usersCacheError) {
+				showToast(e instanceof Error ? e.message : 'Failed to load users', 'error');
 			}
-		})();
-		return usersLoadPromise;
+		}
 	}
 
 	async function refreshUsersCache() {
-		usersLoadPromise = null;
-		await ensureUsersLoaded();
-	}
-
-	function enabledKeys(/** @type {Record<string, boolean> | undefined} */ map) {
-		return Object.fromEntries(Object.entries(map || {}).filter(([, enabled]) => enabled));
+		try {
+			await ensureUsersCache({ force: true });
+		} catch {
+			/* usersCacheError store holds the message */
+		}
 	}
 
 	function userEmail(/** @type {string} */ id) {
-		const fromCache = manageableUsers.find((u) => u.id === id)?.email;
+		const fromCache = $usersCache.find((u) => u.id === id)?.email;
 		if (fromCache) return fromCache;
 		return searchHitOptions.find((o) => o.key === id)?.name || id;
-	}
-
-	function mergeUsersIntoCache(
-		/** @type {{ id: string, email: string, status?: string, permissions?: Record<string, boolean>, groups?: Record<string, boolean> }[]} */ users
-	) {
-		if (!users.length) return;
-		const byId = new Map(manageableUsers.map((u) => [u.id, u]));
-		for (const u of users) byId.set(u.id, u);
-		manageableUsers = [...byId.values()];
 	}
 
 	async function handleUserSearch(event) {
@@ -223,16 +209,10 @@
 	}
 
 	async function openManageUsers(item) {
-		await ensureUsersLoaded();
+		await loadUsers();
 		const type = mode === 'permissions' ? 'permission' : 'group';
 		managingMembership = { type, name: item.name };
-		const members = new Set(
-			manageableUsers
-				.filter((u) =>
-					type === 'permission' ? u.permissions?.[item.name] : u.groups?.[item.name]
-				)
-				.map((u) => u.id)
-		);
+		const members = memberIdsForKey($usersCache, type, item.name);
 		initialMembers = new Set(members);
 		selectedMembers = new Set(members);
 		searchHitOptions = [];
@@ -279,50 +259,17 @@
 		const targetType = managingMembership.type;
 		const adds = [...memberAdds];
 		const removes = [...memberRemoves];
-		let failed = 0;
-		let lastError = '';
 
 		try {
-			for (const id of adds) {
-				const u = manageableUsers.find((x) => x.id === id);
-				if (!u) continue;
-				try {
-					if (targetType === 'permission') {
-						const permissions = { ...enabledKeys(u.permissions), [targetName]: true };
-						await updateUser(id, { permissions });
-						u.permissions = permissions;
-					} else {
-						const groups = { ...enabledKeys(u.groups), [targetName]: true };
-						await updateUser(id, { groups });
-						u.groups = groups;
-					}
-				} catch (e) {
-					failed += 1;
-					lastError = e instanceof Error ? e.message : 'Update failed';
-				}
-			}
-			for (const id of removes) {
-				const u = manageableUsers.find((x) => x.id === id);
-				if (!u) continue;
-				try {
-					if (targetType === 'permission') {
-						const permissions = { ...enabledKeys(u.permissions) };
-						delete permissions[targetName];
-						await updateUser(id, { permissions });
-						u.permissions = permissions;
-					} else {
-						const groups = { ...enabledKeys(u.groups) };
-						delete groups[targetName];
-						await updateUser(id, { groups });
-						u.groups = groups;
-					}
-				} catch (e) {
-					failed += 1;
-					lastError = e instanceof Error ? e.message : 'Update failed';
-				}
-			}
-
-			manageableUsers = [...manageableUsers];
+			const users = $usersCache.map((u) => ({ ...u }));
+			const { failed, lastError } = await applyMembershipUpdates({
+				users,
+				targetType,
+				targetName,
+				adds,
+				removes
+			});
+			setUsersCache(users);
 
 			if (failed > 0) {
 				showToast(
@@ -331,15 +278,10 @@
 				);
 				await refreshUsersCache();
 				if (managingMembership) {
-					const name = managingMembership.name;
-					const members = new Set(
-						manageableUsers
-							.filter((u) =>
-								managingMembership.type === 'permission'
-									? u.permissions?.[name]
-									: u.groups?.[name]
-							)
-							.map((u) => u.id)
+					const members = memberIdsForKey(
+						$usersCache,
+						managingMembership.type,
+						managingMembership.name
 					);
 					initialMembers = new Set(members);
 					selectedMembers = new Set(members);
@@ -370,6 +312,8 @@
 		<p class="text-muted" data-testid="admin-catalog-loading">Loading...</p>
 	{:else if error}
 		<p class="error" data-testid="admin-catalog-error">{error}</p>
+	{:else if $usersCacheError}
+		<p class="error" data-testid="admin-catalog-users-error">{$usersCacheError}</p>
 	{:else}
 		<label class="form-label max-w-md">
 			<span>Search</span>

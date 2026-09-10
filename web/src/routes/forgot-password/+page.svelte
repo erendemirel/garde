@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { requestOtp, resetPassword } from '$lib/api';
 	import { goto } from '$app/navigation';
 
@@ -13,9 +13,15 @@
 	let success = '';
 	let loading = false;
 	let formReady = false;
+	/** @type {ReturnType<typeof setTimeout> | null} */
+	let redirectTimer = null;
 
 	onMount(() => {
 		formReady = true;
+	});
+
+	onDestroy(() => {
+		if (redirectTimer) clearTimeout(redirectTimer);
 	});
 
 	async function handleRequestOtp() {
@@ -43,7 +49,7 @@
 		try {
 			await resetPassword(email, otp, newPassword, mfaCode || undefined);
 			success = 'Password reset successful. Waiting for admin approval.';
-			setTimeout(() => goto('/'), 3000);
+			redirectTimer = setTimeout(() => goto('/'), 3000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Password reset failed';
 		}

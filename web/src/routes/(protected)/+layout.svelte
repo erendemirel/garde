@@ -5,6 +5,7 @@
 	import { page } from '$app/stores';
 	import { logout } from '$lib/api';
 	import { user, isAdmin, isSuperuser, clearAuthState } from '$lib/stores';
+	import { invalidateUsersCache } from '$lib/usersCache';
 	import { refreshSession } from '$lib/session';
 	import { LogOut } from 'lucide-svelte';
 
@@ -32,6 +33,7 @@
 			}
 		} catch (e) {
 			clearAuthState();
+			invalidateUsersCache();
 			bootError = e instanceof Error ? e.message : 'Session expired';
 			goto('/');
 		} finally {
@@ -44,6 +46,7 @@
 			await logout();
 		} catch {}
 		clearAuthState();
+		invalidateUsersCache();
 		goto('/');
 	}
 </script>

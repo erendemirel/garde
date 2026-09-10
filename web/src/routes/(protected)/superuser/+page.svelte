@@ -4,19 +4,15 @@
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
 	import { isSuperuser } from '$lib/stores';
+	import { onTabListKeydown } from '$lib/tabs';
 	import { Users, Ungroup, Blocks, Combine, ShieldUser } from 'lucide-svelte';
 	import UsersListPanel from '$lib/components/UsersListPanel.svelte';
 	import SuperuserCatalogPanel from '$lib/components/SuperuserCatalogPanel.svelte';
 	import SuperuserVisibilityPanel from '$lib/components/SuperuserVisibilityPanel.svelte';
 	import SuperuserAdminManagementPanel from '$lib/components/SuperuserAdminManagementPanel.svelte';
 
-	const SUPERUSER_TABS = new Set([
-		'users',
-		'permissions',
-		'groups',
-		'visibility',
-		'admin-management'
-	]);
+	const TAB_IDS = ['users', 'permissions', 'groups', 'visibility', 'admin-management'];
+	const SUPERUSER_TABS = new Set(TAB_IDS);
 
 	let activeTab = 'users';
 	let accessDenied = false;
@@ -61,10 +57,20 @@
 				</p>
 			</div>
 
-			<div class="flex gap-2 border-b border-borderc flex-wrap" data-testid="superuser-tabs" role="tablist">
+			<div
+				class="flex gap-2 border-b border-borderc flex-wrap"
+				data-testid="superuser-tabs"
+				role="tablist"
+				tabindex="-1"
+				aria-label="Superuser sections"
+				on:keydown={(e) => onTabListKeydown(e, TAB_IDS, activeTab, setActiveTab)}
+			>
 				<button
 					type="button"
 					role="tab"
+					id="tab-users"
+					aria-controls="panel-users"
+					tabindex={activeTab === 'users' ? 0 : -1}
 					data-testid="superuser-tab-users"
 					aria-selected={activeTab === 'users'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'users'
@@ -78,6 +84,9 @@
 				<button
 					type="button"
 					role="tab"
+					id="tab-permissions"
+					aria-controls="panel-permissions"
+					tabindex={activeTab === 'permissions' ? 0 : -1}
 					data-testid="superuser-tab-permissions"
 					aria-selected={activeTab === 'permissions'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'permissions'
@@ -91,6 +100,9 @@
 				<button
 					type="button"
 					role="tab"
+					id="tab-groups"
+					aria-controls="panel-groups"
+					tabindex={activeTab === 'groups' ? 0 : -1}
 					data-testid="superuser-tab-groups"
 					aria-selected={activeTab === 'groups'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'groups'
@@ -104,6 +116,9 @@
 				<button
 					type="button"
 					role="tab"
+					id="tab-visibility"
+					aria-controls="panel-visibility"
+					tabindex={activeTab === 'visibility' ? 0 : -1}
 					data-testid="superuser-tab-visibility"
 					aria-selected={activeTab === 'visibility'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'visibility'
@@ -117,6 +132,9 @@
 				<button
 					type="button"
 					role="tab"
+					id="tab-admin-management"
+					aria-controls="panel-admin-management"
+					tabindex={activeTab === 'admin-management' ? 0 : -1}
 					data-testid="superuser-tab-admin-management"
 					aria-selected={activeTab === 'admin-management'}
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'admin-management'
@@ -130,7 +148,13 @@
 			</div>
 
 			{#if activeTab === 'users'}
-				<div class="space-y-4" data-testid="superuser-users-panel">
+				<div
+					class="space-y-4"
+					role="tabpanel"
+					id="panel-users"
+					aria-labelledby="tab-users"
+					data-testid="superuser-users-panel"
+				>
 					<div>
 						<h2 class="section-title">Users</h2>
 						<p class="text-sm text-muted mt-1">
@@ -141,13 +165,41 @@
 					<UsersListPanel detailBase="/admin/users" />
 				</div>
 			{:else if activeTab === 'permissions'}
-				<SuperuserCatalogPanel mode="permissions" />
+				<div
+					role="tabpanel"
+					id="panel-permissions"
+					aria-labelledby="tab-permissions"
+					data-testid="superuser-panel-permissions"
+				>
+					<SuperuserCatalogPanel mode="permissions" />
+				</div>
 			{:else if activeTab === 'groups'}
-				<SuperuserCatalogPanel mode="groups" />
+				<div
+					role="tabpanel"
+					id="panel-groups"
+					aria-labelledby="tab-groups"
+					data-testid="superuser-panel-groups"
+				>
+					<SuperuserCatalogPanel mode="groups" />
+				</div>
 			{:else if activeTab === 'visibility'}
-				<SuperuserVisibilityPanel />
+				<div
+					role="tabpanel"
+					id="panel-visibility"
+					aria-labelledby="tab-visibility"
+					data-testid="superuser-panel-visibility"
+				>
+					<SuperuserVisibilityPanel />
+				</div>
 			{:else if activeTab === 'admin-management'}
-				<SuperuserAdminManagementPanel />
+				<div
+					role="tabpanel"
+					id="panel-admin-management"
+					aria-labelledby="tab-admin-management"
+					data-testid="superuser-panel-admin-management"
+				>
+					<SuperuserAdminManagementPanel />
+				</div>
 			{/if}
 		{/if}
 	</div>

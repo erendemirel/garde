@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { listGroups, updateUser, getAdminUserManagement } from '$lib/api';
 	import { showToast } from '$lib/toast';
-	import { loadUsersAllPages } from '$lib/usersLoad';
+	import { ensureUsersCache, setUsersCache, usersCache, usersCacheError } from '$lib/usersLoad';
+	import { enabledKeys } from '$lib/membership';
 	import { Eye, UserPen, X } from 'lucide-svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -14,9 +15,6 @@
 	let error = '';
 	/** @type {Record<string, string[]>} */
 	let adminUserManagement = {};
-	/** @type {{ id: string, email: string, status?: string, is_admin?: boolean, groups?: Record<string, boolean> }[]} */
-	let usersCache = [];
-	let usersLoadPromise = /** @type {Promise<void> | null} */ (null);
 	/** @type {{ key: string, name: string, description?: string }[]} */
 	let groups = [];
 
@@ -51,7 +49,7 @@
 		for (const [adminEmail, userEmails] of Object.entries(adminUserManagement)) {
 			byEmail.set(adminEmail, Array.isArray(userEmails) ? userEmails : []);
 		}
-		for (const user of usersCache) {
+		for (const user of $usersCache) {
 			if (!user.is_admin) continue;
 			if (!byEmail.has(user.email)) byEmail.set(user.email, []);
 		}
@@ -124,13 +122,13 @@
 		error = '';
 		try {
 			const [mgmt, grps] = await Promise.all([
-				getAdminUserManagement().catch(() => ({})),
-				listGroups().catch(() => [])
+				getAdminUserManagement(),
+				listGroups()
 			]);
 			adminUserManagement = mgmt || {};
 			groups = grps || [];
 			// Admins with no manageable users only appear once usersCache is populated.
-			await ensureUsersLoaded();
+			await loadUsers();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
 			adminUserManagement = {};
@@ -139,33 +137,33 @@
 		loading = false;
 	}
 
-	function ensureUsersLoaded() {
-		if (usersLoadPromise) return usersLoadPromise;
-		usersLoadPromise = (async () => {
-			try {
-				usersCache = await loadUsersAllPages();
-			} catch {
-				usersCache = [];
+	async function loadUsers() {
+		try {
+			await ensureUsersCache();
+		} catch (e) {
+			if (!$usersCacheError) {
+				showToast(e instanceof Error ? e.message : 'Failed to load users', 'error');
 			}
-		})();
-		return usersLoadPromise;
+		}
 	}
 
 	async function refreshUsersCache() {
-		usersLoadPromise = null;
-		await ensureUsersLoaded();
+		try {
+			await ensureUsersCache({ force: true });
+		} catch {
+			/* usersCacheError store holds the message */
+		}
 	}
 
 	async function loadAdminUserManagement() {
 		try {
 			adminUserManagement = await getAdminUserManagement();
-		} catch {
-			adminUserManagement = {};
+		} catch (e) {
+			showToast(
+				e instanceof Error ? e.message : 'Failed to refresh admin management data',
+				'error'
+			);
 		}
-	}
-
-	function enabledKeys(/** @type {Record<string, boolean> | undefined} */ map) {
-		return Object.fromEntries(Object.entries(map || {}).filter(([, enabled]) => enabled));
 	}
 
 	function assignmentLabelForKey(/** @type {string} */ key) {
@@ -186,8 +184,8 @@
 	}
 
 	async function openManageAdminGroups(adminEmail) {
-		await ensureUsersLoaded();
-		const admin = usersCache.find((u) => u.email === adminEmail);
+		await loadUsers();
+		const admin = $usersCache.find((u) => u.email === adminEmail);
 		if (!admin) {
 			showToast('Admin user not found in user list', 'error');
 			return;
@@ -239,7 +237,7 @@
 	}
 
 	async function saveAdminGroupsAssignment(userId, adds, removes) {
-		const user = usersCache.find((u) => u.id === userId);
+		const user = $usersCache.find((u) => u.id === userId);
 		if (!user) return { failed: 1, lastError: 'Admin user not found' };
 		const groupsMap = { ...enabledKeys(user.groups) };
 		for (const groupName of adds) groupsMap[groupName] = true;
@@ -247,7 +245,7 @@
 		try {
 			await updateUser(userId, { groups: groupsMap });
 			user.groups = groupsMap;
-			usersCache = [...usersCache];
+			setUsersCache([...$usersCache]);
 			await loadAdminUserManagement();
 			return { failed: 0, lastError: '' };
 		} catch (e) {
@@ -277,7 +275,7 @@
 				);
 				await refreshUsersCache();
 				await loadAdminUserManagement();
-				const admin = usersCache.find((u) => u.id === managingMembership?.userId);
+				const admin = $usersCache.find((u) => u.id === managingMembership?.userId);
 				const members = new Set(
 					Object.entries(admin?.groups || {})
 						.filter(([, enabled]) => enabled)
@@ -314,6 +312,8 @@
 		<p class="text-muted" data-testid="admin-mgmt-loading">Loading...</p>
 	{:else if error}
 		<p class="error" data-testid="admin-mgmt-error">{error}</p>
+	{:else if $usersCacheError}
+		<p class="error" data-testid="admin-mgmt-users-error">{$usersCacheError}</p>
 	{:else}
 		<label class="form-label max-w-md">
 			<span>Search</span>

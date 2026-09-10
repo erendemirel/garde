@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -25,9 +25,12 @@
 
 	let userData = null;
 	let error = '';
+	let catalogError = '';
 	let loading = true;
 	let saving = false;
 	let accessDenied = false;
+	/** @type {ReturnType<typeof setTimeout> | null} */
+	let redirectTimer = null;
 	let showDeleteConfirm = false;
 	let showSaveConfirm = false;
 	let showMfaEnforceConfirm = false;
@@ -234,17 +237,24 @@
 		loading = true;
 		accessDenied = false;
 		error = '';
+		catalogError = '';
 		userData = null;
 		try {
-			const [perms, grps, user] = await Promise.all([
-				listPermissions().catch(() => []),
-				listGroups().catch(() => []),
-				getUser(id)
-			]);
+			const user = await getUser(id);
 			if (gen !== loadGen) return;
-			availablePermissions = perms || [];
-			availableGroups = grps || [];
 			applyUser(user);
+			try {
+				const [perms, grps] = await Promise.all([listPermissions(), listGroups()]);
+				if (gen !== loadGen) return;
+				availablePermissions = perms || [];
+				availableGroups = grps || [];
+			} catch (catalogErr) {
+				if (gen !== loadGen) return;
+				catalogError =
+					catalogErr instanceof Error ? catalogErr.message : 'Failed to load permissions/groups';
+				availablePermissions = [];
+				availableGroups = [];
+			}
 		} catch (e) {
 			if (gen !== loadGen) return;
 			if (isApiError(e) && e.status === 401 && isSessionInvalidMessage(e.message)) {
@@ -275,6 +285,10 @@
 		return () => {
 			window.removeEventListener('beforeunload', onBeforeUnload);
 		};
+	});
+
+	onDestroy(() => {
+		if (redirectTimer) clearTimeout(redirectTimer);
 	});
 
 	function requestSave() {
@@ -486,7 +500,8 @@
 			await deleteUser(userId);
 			showToast('User deleted successfully!', 'success');
 			allowNextNavigation = true;
-			setTimeout(() => {
+			if (redirectTimer) clearTimeout(redirectTimer);
+			redirectTimer = setTimeout(() => {
 				goto(usersListHref);
 			}, 1500);
 		} catch (e) {
@@ -720,6 +735,9 @@
 					onsubmit="return false;"
 					on:submit|preventDefault={requestSave}
 				>
+					{#if catalogError}
+						<p class="error text-sm" data-testid="user-detail-catalog-error">{catalogError}</p>
+					{/if}
 					{#if availablePermissions.length > 0}
 						<div class="edit-section" data-testid="user-detail-permissions">
 							<h3>Permissions</h3>

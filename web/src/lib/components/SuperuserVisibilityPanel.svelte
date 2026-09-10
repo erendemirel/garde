@@ -121,15 +121,14 @@
 		loading = true;
 		error = '';
 		try {
-			const [perms, grps] = await Promise.all([
-				listPermissions().catch(() => []),
-				listGroups().catch(() => [])
-			]);
+			const [perms, grps] = await Promise.all([listPermissions(), listGroups()]);
 			permissions = perms || [];
 			groups = grps || [];
 			await loadVisibilityMappings();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
+			permissions = [];
+			groups = [];
 		}
 		loading = false;
 	}
@@ -146,10 +145,11 @@
 					.map((groupName) => groupNameToKey.get(groupName))
 					.filter((key) => key !== undefined);
 			});
-		} catch {
+		} catch (e) {
 			permissions.forEach((perm) => {
 				permissionVisibility[perm.key] = [];
 			});
+			throw e instanceof Error ? e : new Error('Failed to load visibility mappings');
 		}
 	}
 
