@@ -34,8 +34,8 @@ variable "ssh_public_key" {
     Required when create_bootstrap_key is true (greenfield). Ignored when the
     key already exists and is only looked up by name.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 variable "create_bootstrap_key" {
