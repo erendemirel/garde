@@ -87,11 +87,12 @@
 - name: Reload systemd now so the timer state below is accurate
   ansible.builtin.meta: flush_handlers
 
-- name: Run the snapshot timer on the primary only
-  # Enabled here and explicitly stopped elsewhere, so that re-running this
-  # playbook after a failover moves the timer to the node that now owns the
-  # database rather than leaving two nodes pushing at each other.
+- name: Run the snapshot timer on every app node
+  # Both primary and standby keep the timer armed. The service sets
+  # SNAPSHOT_REQUIRE_REDIS_MASTER=1 so only the Redis master actually snapshots;
+  # after failover the new master starts producing copies without waiting for
+  # Ansible. Witness has no live catalog to snapshot.
   ansible.builtin.systemd:
     name: garde-snapshot.timer
-    enabled: "{{ node_role == 'app-primary' }}"
-    state: "{{ 'started' if node_role == 'app-primary' else 'stopped' }}"
+    enabled: "{{ node_role in ['app-primary', 'app-standby'] }}"
+    state: "{{ 'started' if node_role in ['app-primary', 'app-standby'] else 'stopped' }}"

@@ -1,15 +1,15 @@
 # MANAGED BY ANSIBLE - roles/snapshot
 #
-# Enabled on the app-primary only. The recovery point for the permission
-# catalog equals this interval: changes made after the last snapshot are lost
-# on failover.
+# Enabled on both app nodes. The service exits quickly on the replica because
+# SNAPSHOT_REQUIRE_REDIS_MASTER=1 — only the Redis master owns the live catalog.
+# Recovery point equals OnUnitActiveSec for changes after the last successful run.
 [Unit]
 Description=Periodic garde permissions.db snapshot
 
 [Timer]
 OnBootSec=5min
 OnUnitActiveSec={{ garde_facts.snapshot_interval | default('5min') }}
-# Avoid every host firing at the same second if the role ever spreads.
+# Avoid every host firing at the same second.
 RandomizedDelaySec=30
 Persistent=true
 

@@ -11,6 +11,11 @@
 # `VACUUM INTO` is what makes the copy safe. It asks SQLite to write a new,
 # internally consistent database file while the application keeps writing to
 # the original; cp or rsync against a live database can capture a torn page.
+#
+# The timer is enabled on both app nodes. When SNAPSHOT_REQUIRE_REDIS_MASTER=1
+# (set by the systemd unit), only the Redis master actually snapshots — so after
+# failover the new primary starts producing copies without waiting for Ansible
+# to move the timer. CI / operators omit that flag to force a snapshot.
 
 set -euo pipefail
 
@@ -23,6 +28,25 @@ STAGING="/app/data/.snapshot.db"
 CONTAINER="garde-api"
 
 log() { printf '%s snapshot: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+if [ "${SNAPSHOT_REQUIRE_REDIS_MASTER:-0}" = "1" ]; then
+  if ! docker inspect -f '{{ '{{' }}.State.Running{{ '}}' }}' garde-redis 2>/dev/null | grep -q true; then
+    log "Redis not running — skipping scheduled snapshot"
+    exit 0
+  fi
+  # ROLE first line is master|slave|sentinel. Password lives in the host .env.
+  redis_role="$(
+    set -a
+    # shellcheck disable=SC1090
+    . "$REMOTE_ROOT/.env"
+    set +a
+    docker exec garde-redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ROLE 2>/dev/null | head -n1
+  )"
+  if [ "$redis_role" != "master" ]; then
+    log "Redis role is '${redis_role:-unknown}' — skipping (not master)"
+    exit 0
+  fi
+fi
 
 if ! docker inspect -f '{{ '{{' }}.State.Running{{ '}}' }}' "$CONTAINER" 2>/dev/null | grep -q true; then
   log "$CONTAINER is not running, nothing to snapshot"

@@ -358,16 +358,19 @@ path.
 
 ### 9. Confirm the snapshot timer
 
-Nothing to do here — the bootstrap playbook already installed it. Worth
-checking once:
+Snapshots are scheduled **on the hosts** (provider VMs), not by GitHub.
+
+The bootstrap playbook installs `garde-snapshot.timer` on both app nodes.
+Only the Redis **master** actually runs `VACUUM INTO` and pushes copies; the
+standby's timer is armed but no-ops until failover promotes Redis there. That
+keeps RPO ≈ `SQLITE_SNAPSHOT_INTERVAL` (default 5 minutes) without depending on
+GitHub cron, and without re-running Ansible after a cutover.
 
 ```bash
 ssh deploy@10.10.0.1 systemctl list-timers garde-snapshot.timer
+# or from the control plane:
+on_node node1 'systemctl list-timers garde-snapshot.timer --no-pager'
 ```
-
-The timer is enabled on the primary and explicitly stopped on the other two, so
-re-running the playbook after a role change moves it rather than leaving two
-nodes pushing snapshots at each other.
 
 The snapshot procedure itself lives on the host at
 `/opt/garde/scripts/snapshot.sh`. Both the timer and
@@ -376,6 +379,9 @@ the integrity check exist in one place. Copies travel node to node over the
 mesh using per-node keys the playbook generates and authorises; they never pass
 through the CI runner.
 
+The **Snapshot and verify** GitHub Action is a **secondary** net only (every
+six hours + manual). It needs the same tunnel/mesh secrets as Deploy. Do not
+treat its schedule as the recovery-point mechanism.
 ---
 
 ## Vault secrets for this topology
@@ -482,8 +488,14 @@ Then re-run the baseline so the host-level pieces follow the roles:
 cd ansible && ansible-playbook playbooks/bootstrap.yml
 ```
 
-That moves the snapshot timer onto the new primary and stops it on the old one.
-Until it runs, the only snapshots you get are from the scheduled workflow.
+That converges host state (firewall, deploy keys, …). The snapshot timer is
+already armed on both app nodes; after Redis promotion the new master starts
+snapshotting on the next timer tick without waiting for this playbook. Still
+run bootstrap when you need other role-tied host state updated.
+
+Until Redis is promoted on the new primary, the only on-demand snapshots you
+get are from `sqlite-snapshot.sh` or the GitHub **Snapshot and verify**
+workflow (secondary safety net).
 
 ---
 

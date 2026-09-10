@@ -9,9 +9,10 @@
 # Keeping one implementation matters: `VACUUM INTO` plus an integrity check is
 # the delicate part, and two copies of it would eventually disagree.
 #
-# The same script is what garde-snapshot.timer runs every few minutes on the
-# primary. This wrapper exists so CI and operators can force a snapshot on
-# demand - before a risky deploy, or as the last act before a planned failover.
+# The same script is what garde-snapshot.timer runs every few minutes on each
+# app node (no-op on the Redis replica). This wrapper exists so CI and operators
+# can force a snapshot on demand - before a risky deploy, or as the last act
+# before a planned failover. Forced runs omit SNAPSHOT_REQUIRE_REDIS_MASTER.
 #
 # Distribution happens node to node over the mesh, using the keys the Ansible
 # role sets up. Nothing travels through the control machine.
