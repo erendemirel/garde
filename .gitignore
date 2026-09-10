@@ -120,6 +120,9 @@ terraform/tfplan
 *.sqlite3
 data/*.db
 data/*.sqlite
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
 
 # Temporary files
 *.tmp
