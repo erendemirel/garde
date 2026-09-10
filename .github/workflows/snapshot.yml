@@ -1,16 +1,19 @@
 name: Snapshot and verify
 
-# Takes a consistent permissions.db snapshot from the primary, distributes it,
-# and reports on cluster health.
+# Secondary safety net for permissions.db — not the primary scheduler.
 #
-# The schedule is a safety net, not the primary mechanism: GitHub's cron is
-# best-effort and can be delayed. For a tighter recovery point, install the
-# systemd timer described in docs/DEPLOY.md, which runs the same script on the
-# primary every few minutes.
+# Primary path (provider / host native): garde-snapshot.timer on each app node
+# runs /opt/garde/scripts/snapshot.sh every SQLITE_SNAPSHOT_INTERVAL (default
+# 5min). Only the Redis master actually snapshots; copies travel peer-to-peer
+# over the mesh. That does not depend on GitHub cron.
+#
+# This workflow is a fallback: force a snapshot + health check on a slower
+# cadence, or on demand. GitHub schedule is best-effort and can lag for hours.
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    # Secondary only — host timer owns RPO. Six hours is enough as a net.
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -21,6 +24,13 @@ jobs:
   snapshot:
     name: Snapshot permissions.db
     runs-on: ubuntu-latest
+    # Tunnel providers (AWS / GCP) need these on the job: mesh-access opens the
+    # connection during reachability, before any later step can set env.
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
     steps:
       - uses: actions/checkout@v5
 
@@ -30,6 +40,7 @@ jobs:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           inventory: ${{ secrets.DEPLOY_INVENTORY }}
+          gcp-service-account-key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
           require-all-nodes: "false"
 
       - name: Snapshot

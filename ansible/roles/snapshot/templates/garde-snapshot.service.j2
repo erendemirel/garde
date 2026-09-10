@@ -8,6 +8,9 @@ Requires=docker.service
 Type=oneshot
 User={{ deploy_user }}
 Group={{ deploy_user }}
+# Gate on Redis master so both app nodes can keep the timer enabled; after
+# failover the new master starts snapshotting without an Ansible re-run.
+Environment=SNAPSHOT_REQUIRE_REDIS_MASTER=1
 ExecStart={{ remote_root }}/scripts/snapshot.sh
 # A snapshot that cannot finish quickly is a snapshot of a sick host.
 TimeoutStartSec=120

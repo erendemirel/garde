@@ -82,6 +82,23 @@ runs:
         echo "mode=$mode" >> "$GITHUB_OUTPUT"
         echo "  access mode: $mode"
 
+    # Tunnel providers drive SSH through the cloud CLI (aws open-tunnel / gcloud).
+    # ubuntu-latest does not guarantee those tools; install only when needed.
+    - name: Install AWS CLI (tunnel)
+      if: steps.access.outputs.mode == 'tunnel'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v aws >/dev/null 2>&1; then
+          aws --version
+          exit 0
+        fi
+        curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        sudo apt-get install -y -qq unzip
+        unzip -q /tmp/awscliv2.zip -d /tmp
+        sudo /tmp/aws/install
+        aws --version
+
     - name: Join the mesh
       if: steps.access.outputs.mode == 'mesh'
       shell: bash
