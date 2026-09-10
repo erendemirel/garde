@@ -304,7 +304,7 @@ the target has not bound it.
 |--------|----------|
 | `DEPLOY_INVENTORY` | The whole `deploy/inventory.env` file |
 | `DEPLOY_SSH_KEY` | Private deploy key |
-| `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan` output for the three mesh IPs |
+| `DEPLOY_KNOWN_HOSTS` | Host keys for the admin aliases (tunnel) or mesh IPs — must match what SSH will pin |
 | `WG_CI_CONF` | Contents of `deploy/.wg/ci.conf` |
 | `REDIS_PASSWORD` | Same value as `REDIS_PASSWORD` in `prod.secrets` |
 | `NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`, `NETCUP_API_PASSWORD` | netcup DNS-01 + Terraform DNS (`PROVIDER=netcup`) |
@@ -326,6 +326,11 @@ the target has not bound it.
 there. Their credentials are set at job level rather than on the deploy step,
 because on those providers even checking whether a host is reachable means
 opening an authorised tunnel.
+
+If `SSH_OPTS` in the inventory pins `-i /root/.ssh/...` (or another
+workstation path), that is fine for local ops; `mesh-access` rewrites
+`IdentityFile` / `UserKnownHostsFile` to the runner's `~/.ssh/id_ed25519` so
+the same `DEPLOY_INVENTORY` secret works in Actions.
 
 `API_DOMAIN` is duplicated here and in the inventory on purpose: the build job
 bakes it into the UI bundle before the inventory secret is loaded. The two must

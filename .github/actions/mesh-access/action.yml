@@ -151,6 +151,52 @@ runs:
         printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
         chmod 600 ~/.ssh/known_hosts
 
+        # Operator inventories often pin IdentityFile / UserKnownHostsFile to a
+        # workstation path (e.g. /root/.ssh/garde_deploy). That breaks CI: the
+        # runner is not root and only has the key we just wrote. Rewrite those
+        # options to the CI paths; keep other SSH_OPTS flags intact.
+        key="$HOME/.ssh/id_ed25519"
+        hosts="$HOME/.ssh/known_hosts"
+        if grep -qE '^[[:space:]]*SSH_OPTS=' deploy/inventory.env; then
+          # shellcheck disable=SC2016
+          awk -v key="$key" -v hosts="$hosts" '
+            BEGIN { done=0 }
+            /^[[:space:]]*SSH_OPTS=/ {
+              line=$0
+              # Drop existing -i / IdentityFile / UserKnownHostsFile clauses
+              # (quoted or bare), then append CI paths.
+              while (match(line, / -i[ =][^" ]+/)) {
+                line = substr(line,1,RSTART-1) substr(line,RSTART+RLENGTH)
+              }
+              while (match(line, / -o IdentityFile=[^" ]+/)) {
+                line = substr(line,1,RSTART-1) substr(line,RSTART+RLENGTH)
+              }
+              while (match(line, / -o UserKnownHostsFile=[^" ]+/)) {
+                line = substr(line,1,RSTART-1) substr(line,RSTART+RLENGTH)
+              }
+              if (line ~ /"$/) {
+                sub(/"$/, " -i " key " -o IdentitiesOnly=yes -o UserKnownHostsFile=" hosts "\"", line)
+              } else {
+                line = line " -i " key " -o IdentitiesOnly=yes -o UserKnownHostsFile=" hosts
+              }
+              print line
+              done=1
+              next
+            }
+            { print }
+            END {
+              if (!done)
+                print "SSH_OPTS=\"-o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i " key " -o IdentitiesOnly=yes -o UserKnownHostsFile=" hosts "\""
+            }
+          ' deploy/inventory.env > deploy/inventory.env.ci
+          mv deploy/inventory.env.ci deploy/inventory.env
+          chmod 600 deploy/inventory.env
+          echo "  SSH_OPTS rewritten for CI identity at $key"
+        else
+          printf 'SSH_OPTS="-o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i %s -o IdentitiesOnly=yes -o UserKnownHostsFile=%s"\n' \
+            "$key" "$hosts" >> deploy/inventory.env
+        fi
+
     # Uses the deploy scripts' own helpers rather than reimplementing the SSH
     # target, so this checks the same path the rest of the job will use.
     - name: Check reachability
