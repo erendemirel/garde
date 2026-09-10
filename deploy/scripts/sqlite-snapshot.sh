@@ -34,6 +34,10 @@ require_node "$FROM_NODE"
 HOST_SCRIPT="$REMOTE_ROOT/scripts/snapshot.sh"
 
 step "Running the snapshot on $FROM_NODE"
+if ! on_node "$FROM_NODE" "true" 2>/dev/null; then
+  die "$FROM_NODE is unreachable over the control plane (check SSH_OPTS IdentityFile paths, tunnel credentials, and DEPLOY_KNOWN_HOSTS).
+     Tip: inventories that set -i /root/.ssh/... work on the operator host but break GitHub Actions; mesh-access rewrites those for CI."
+fi
 if ! on_node "$FROM_NODE" "test -x '$HOST_SCRIPT'"; then
   die "$HOST_SCRIPT is missing on $FROM_NODE.
      Install it with the Ansible baseline:
