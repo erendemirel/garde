@@ -9,9 +9,10 @@ groups:
         annotations:
           summary: "Vault member {{ $labels.instance }} is sealed"
           description: >-
-            There is no auto-unseal in this deployment. Run
-            deploy/scripts/unseal.sh against this member. The cluster keeps
-            serving while 2 of 3 members are unsealed.
+            Member stayed sealed for 2m. On AWS (awskms), check instance
+            profile, IMDS hop limit, and KMS. On Shamir, run
+            deploy/scripts/unseal.sh. The cluster keeps serving while 2 of 3
+            members are unsealed.
 
       - alert: VaultRaftQuorumAtRisk
         expr: count(up{job="vault"} == 1) < 3

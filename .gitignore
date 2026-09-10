@@ -33,6 +33,7 @@ vendor/
 .env.*.local
 .env.production
 .env.development
+.env.bak
 *.secrets
 !dev.secrets
 

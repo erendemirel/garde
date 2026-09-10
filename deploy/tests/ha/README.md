@@ -30,10 +30,13 @@ export ASSUME_YES=true             # skip interactive confirm on failover
 #   AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION
 ```
 
-For tests that unseal after a reboot:
+For tests that bring Vault back after a reboot/fence:
 
 ```bash
+# Shamir (non-AWS): offline unseal key file
 export VAULT_UNSEAL_KEYS_FILE=/path/to/offline-unseal-keys.txt
+
+# AWS awskms: set VAULT_KMS_KEY_ID in inventory instead — drills wait for auto-unseal
 ```
 
 For auth / SQLite permission drills:

@@ -18,7 +18,8 @@ Tick items as you complete them. `doctor.sh` marks many of these automatically.
 - [ ] Key pair + 3 EC2 instances + Elastic IP present
 - [ ] S3 image bucket + gateway endpoint present
 - [ ] CI IAM user created (store access keys as GitHub/`AWS_*` secrets)
-- [ ] `deploy/inventory.env` merged from `inventory_fragment` (`PROVIDER=aws`, instance ids, mesh endpoints, bucket, region)
+- [ ] Vault KMS CMK + EC2 instance profile present (`vault_kms_key_id` output)
+- [ ] `deploy/inventory.env` merged from `inventory_fragment` (`PROVIDER=aws`, instance ids, mesh endpoints, bucket, region, `VAULT_KMS_KEY_ID`)
 - [ ] (Optional) Route 53 zone + `app`/`api` A records + ACME IAM user
 
 ## Manual / human-gated
@@ -28,7 +29,8 @@ Tick items as you complete them. `doctor.sh` marks many of these automatically.
 - [ ] `AWS_ACME_*` in the deploy environment when using Route 53 DNS-01
 - [ ] Ansible bootstrap: `cd ansible && ansible-playbook playbooks/bootstrap.yml`
 - [ ] WireGuard mesh configs installed (`wg-gen` / playbook)
-- [ ] Vault cluster initialized; unseal keys stored **offline** (`VAULT_UNSEAL_KEYS_FILE` for ops only)
+- [ ] Vault cluster initialized with KMS auto-unseal; recovery keys stored **offline**
+- [ ] Existing Shamir cluster? Run `vault-seal-migrate.sh` after sync-config (see DEPLOY.md)
 - [ ] Images built and shipped; `./deploy/scripts/deploy.sh …`
 - [ ] `REDIS_PASSWORD` (and other secrets) available to sync-config / CI
 - [ ] GitHub secrets/vars updated (`DEPLOY_INVENTORY`, compute keys, …)

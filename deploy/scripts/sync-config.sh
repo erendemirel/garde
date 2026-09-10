@@ -13,7 +13,7 @@
 #   always:     REDIS_PASSWORD, GRAFANA_ADMIN_PASSWORD
 #   netcup:     NETCUP_CUSTOMER_NUMBER, NETCUP_API_KEY, NETCUP_API_PASSWORD
 #   aws:        AWS_ACME_ACCESS_KEY_ID, AWS_ACME_SECRET_ACCESS_KEY
-#               (plus AWS_REGION from inventory)
+#               (plus AWS_REGION from inventory; VAULT_KMS_KEY_ID enables awskms)
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -43,6 +43,21 @@ render() {
     content="${content//@@$key@@/$value}"
   done
   printf '%s\n' "$content" >"$out"
+}
+
+# Emit an optional seal stanza. AWS inventories set VAULT_KMS_KEY_ID (from
+# terraform output); without it the cluster stays on Shamir.
+seal_block() {
+  if [ -z "${VAULT_KMS_KEY_ID:-}" ]; then
+    return 0
+  fi
+  : "${AWS_REGION:?AWS_REGION required when VAULT_KMS_KEY_ID is set}"
+  cat <<EOF
+seal "awskms" {
+  region     = "${AWS_REGION}"
+  kms_key_id = "${VAULT_KMS_KEY_ID}"
+}
+EOF
 }
 
 # DNS follows the compute provider. Override with DNS_PROVIDER only when the
@@ -150,8 +165,15 @@ for node in $TARGETS; do
   }
 "
   done
-  render "$DEPLOY_DIR/config/vault/raft.hcl.tpl" "$STAGE/config/vault/raft.hcl" \
+  # SEAL_BLOCK is spliced (not passed through render) so newlines stay intact.
+  {
+    sed '/@@SEAL_BLOCK@@/q' "$DEPLOY_DIR/config/vault/raft.hcl.tpl" | sed '$d'
+    seal_block
+    sed '1,/@@SEAL_BLOCK@@/d' "$DEPLOY_DIR/config/vault/raft.hcl.tpl"
+  } >"$STAGE/config/vault/raft.hcl.partial"
+  render "$STAGE/config/vault/raft.hcl.partial" "$STAGE/config/vault/raft.hcl" \
     "VAULT_NODE_ID=$vault_id" "NODE_WG_IP=$wg_ip" "RETRY_JOIN=${retry_join%$'\n'}"
+  rm -f "$STAGE/config/vault/raft.hcl.partial"
 
   # The Vault Agent config is shared with the single-host stack; the agent
   # reaches its own node's Raft member through an extra_hosts entry.
@@ -199,6 +221,13 @@ for node in $TARGETS; do
     printf 'REDIS_PASSWORD=%s\n' "${REDIS_PASSWORD:-}"
     printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "${GRAFANA_ADMIN_PASSWORD:-}"
     printf 'DNS_PROVIDER=%s\n' "$(dns_provider)"
+    # Vault awskms and the AWS provider both need a region in the host .env
+    # (compose passes AWS_REGION into the Vault container).
+    if [ -n "${VAULT_KMS_KEY_ID:-}" ] || [ "${PROVIDER}" = "aws" ]; then
+      : "${AWS_REGION:?AWS_REGION required for PROVIDER=aws or VAULT_KMS_KEY_ID}"
+      printf 'AWS_REGION=%s\n' "${AWS_REGION}"
+    fi
+    [ -n "${VAULT_KMS_KEY_ID:-}" ] && printf 'VAULT_KMS_KEY_ID=%s\n' "${VAULT_KMS_KEY_ID}"
     case "$(dns_provider)" in
       netcup)
         printf 'NETCUP_CUSTOMER_NUMBER=%s\n' "${NETCUP_CUSTOMER_NUMBER}"
@@ -206,9 +235,13 @@ for node in $TARGETS; do
         printf 'NETCUP_API_PASSWORD=%s\n' "${NETCUP_API_PASSWORD}"
         ;;
       aws)
-        printf 'AWS_REGION=%s\n' "${AWS_REGION}"
         printf 'AWS_ACME_ACCESS_KEY_ID=%s\n' "${AWS_ACME_ACCESS_KEY_ID}"
         printf 'AWS_ACME_SECRET_ACCESS_KEY=%s\n' "${AWS_ACME_SECRET_ACCESS_KEY}"
+        # Region already emitted when PROVIDER=aws or VAULT_KMS_KEY_ID is set.
+        if [ "${PROVIDER}" != "aws" ] && [ -z "${VAULT_KMS_KEY_ID:-}" ]; then
+          : "${AWS_REGION:?AWS_REGION required for Route53 DNS-01}"
+          printf 'AWS_REGION=%s\n' "${AWS_REGION}"
+        fi
         ;;
     esac
   } >"$STAGE/.env"
@@ -257,3 +290,8 @@ for node in $TARGETS; do
 
   ok "$node config synced (DNS=$(dns_provider))"
 done
+
+if [ -n "${VAULT_KMS_KEY_ID:-}" ]; then
+  warn "VAULT_KMS_KEY_ID is set — raft.hcl now has seal awskms."
+  warn "Do not restart Vault until vault-seal-migrate.sh (existing Shamir) or vault-cluster-init.sh (fresh) has run."
+fi

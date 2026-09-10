@@ -49,7 +49,11 @@ for node in $TARGETS; do
       fail "$node: vault not initialized"
     elif [ "$sealed" = "true" ]; then
       # Not fatal on its own: the other two members carry the cluster.
-      warn "$node: vault is SEALED - run deploy/scripts/unseal.sh $node"
+      if [ -n "${VAULT_KMS_KEY_ID:-}" ]; then
+        warn "$node: vault is SEALED - check KMS/IMDS (awskms); Shamir: deploy/scripts/unseal.sh $node"
+      else
+        warn "$node: vault is SEALED - run deploy/scripts/unseal.sh $node"
+      fi
     else
       ok "vault unsealed, leader=${leader:-unknown}"
     fi

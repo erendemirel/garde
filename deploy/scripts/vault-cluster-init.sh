@@ -1,34 +1,31 @@
 #!/usr/bin/env bash
 # One-time initialisation of the 3-member Vault Raft cluster.
-# Operator-only: this handles root tokens and unseal keys, so it never runs in CI.
+# Operator-only: this handles root tokens and recovery/unseal keys, so it never runs in CI.
 #
 #   ./deploy/scripts/vault-cluster-init.sh --secrets prod.secrets
 #
 # What it does, in order:
-#   1. initialises Vault on the first member (5 key shares, threshold 3)
-#   2. unseals that member, waits for the other two to join through retry_join
-#   3. unseals the joined members with the same keys
+#   1. initialises Vault on the first member
+#        - with VAULT_KMS_KEY_ID (awskms): recovery shares (default 5/3); auto-unseals
+#        - without: Shamir unseal shares (default 5/3)
+#   2. waits for members to be unsealed (KMS) or unseals them (Shamir)
+#   3. waits for the other two to join through retry_join
 #   4. enables KV v2 and AppRole, writes the garde policy and role
 #   5. distributes role-id / secret-id to the two application nodes
 #   6. seeds secrets from the given KEY=value file
 #
 # Safe to re-run. Initialising is the one step that cannot be repeated, and the
 # script detects that it already happened and resumes from the unseal instead.
-# That matters because a run can stop halfway for reasons that say nothing about
-# the cluster - a slow member, a dropped connection - and the half-configured
-# state it leaves behind has no Vault in it that the app stack can use.
 #
-# Unseal keys and the root token are written to vault-credentials.json in the
-# repository root, which is gitignored. Move it to offline storage and delete
-# the local copy: losing it means losing the Vault data permanently, and
-# leaving it on a laptop defeats the point of Vault.
+# Credentials are written to vault-credentials.json in the repository root
+# (gitignored). Move it to offline storage and delete the local copy.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 load_inventory
 need_cmd jq
 
-[ -z "${CI:-}" ] || die "refusing to run in CI - this handles root tokens and unseal keys"
+[ -z "${CI:-}" ] || die "refusing to run in CI - this handles root tokens and unseal/recovery keys"
 
 SECRETS_FILE=""; KEY_SHARES=5; KEY_THRESHOLD=3
 while [ $# -gt 0 ]; do
@@ -36,13 +33,15 @@ while [ $# -gt 0 ]; do
     --secrets)   SECRETS_FILE="$2"; shift 2 ;;
     --shares)    KEY_SHARES="$2"; shift 2 ;;
     --threshold) KEY_THRESHOLD="$2"; shift 2 ;;
-    -h|--help)   sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '2,28p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 
 CREDS_FILE="$REPO_ROOT/vault-credentials.json"
 FIRST_NODE="$(printf '%s' "$NODES" | awk '{print $1}')"
+AUTO_UNSEAL=false
+[ -n "${VAULT_KMS_KEY_ID:-}" ] && AUTO_UNSEAL=true
 
 vault_on() {
   local node="$1"; shift
@@ -53,15 +52,10 @@ vault_on() {
 
 step "1/6 Initialising Vault on $FIRST_NODE"
 if vault_on "$FIRST_NODE" "vault status -format=json" 2>/dev/null | jq -e '.initialized == true' >/dev/null 2>&1; then
-  # Resume rather than refuse. Everything from here on is idempotent, and a run
-  # interrupted partway - one member slow to unseal, a dropped connection - used
-  # to leave the cluster initialised but with no AppRole and no secrets, and no
-  # supported way forward. Initialising is the only step that cannot be repeated,
-  # and the check above is what establishes it has already happened.
   [ -f "$CREDS_FILE" ] || die "$FIRST_NODE is already initialised, but $CREDS_FILE is missing.
-     Its unseal keys are the only way into this cluster. Restore that file and
-     re-run. If it is gone for good, so is the data: destroy the raft volumes
-     and start over with
+     Its recovery/unseal keys are the only break-glass path into this cluster.
+     Restore that file and re-run. If it is gone for good, so is the data: destroy
+     the raft volumes and start over with
        ./deploy/scripts/deploy.sh vault --no-ship"
   jq -e '.root_token' "$CREDS_FILE" >/dev/null 2>&1 \
     || die "$CREDS_FILE holds no root token - cannot resume with it"
@@ -69,18 +63,21 @@ if vault_on "$FIRST_NODE" "vault status -format=json" 2>/dev/null | jq -e '.init
 else
   [ -f "$CREDS_FILE" ] && die "$CREDS_FILE already exists - refusing to overwrite existing credentials"
 
-  # Staged through a temp file and moved into place only once it parses. Writing
-  # the redirect straight to CREDS_FILE creates the file before the command runs,
-  # so an init that fails for any reason leaves an empty one behind - and the
-  # guard above then refuses every retry, claiming to protect credentials that do
-  # not exist. The recovery for that looks alarmingly like "delete your unseal
-  # keys", which is not something to ask of anyone mid-incident.
   umask 077
   CREDS_TMP="$CREDS_FILE.partial"
   trap 'rm -f "$CREDS_TMP"' EXIT
 
-  vault_on "$FIRST_NODE" "vault operator init -key-shares=$KEY_SHARES -key-threshold=$KEY_THRESHOLD -format=json" >"$CREDS_TMP" \
-    || die "vault operator init failed on $FIRST_NODE - nothing was written"
+  if $AUTO_UNSEAL; then
+    log "seal awskms ($VAULT_KMS_KEY_ID) — init with recovery keys"
+    vault_on "$FIRST_NODE" \
+      "vault operator init -recovery-shares=$KEY_SHARES -recovery-threshold=$KEY_THRESHOLD -format=json" \
+      >"$CREDS_TMP" || die "vault operator init failed on $FIRST_NODE - nothing was written"
+  else
+    log "Shamir seal — init with unseal keys (set VAULT_KMS_KEY_ID for awskms)"
+    vault_on "$FIRST_NODE" \
+      "vault operator init -key-shares=$KEY_SHARES -key-threshold=$KEY_THRESHOLD -format=json" \
+      >"$CREDS_TMP" || die "vault operator init failed on $FIRST_NODE - nothing was written"
+  fi
   jq -e '.root_token' "$CREDS_TMP" >/dev/null 2>&1 \
     || die "init did not return a root token - nothing was written"
 
@@ -90,45 +87,60 @@ else
   ok "initialised, credentials written to $CREDS_FILE"
 fi
 
-mapfile -t UNSEAL_KEYS < <(jq -r '.unseal_keys_b64[]' "$CREDS_FILE")
 ROOT_TOKEN="$(jq -r '.root_token' "$CREDS_FILE")"
+
+# Prefer recovery keys (awskms); fall back to Shamir unseal keys.
+mapfile -t SHARE_KEYS < <(
+  if jq -e '.recovery_keys_b64 | type == "array"' "$CREDS_FILE" >/dev/null 2>&1; then
+    jq -r '.recovery_keys_b64[]' "$CREDS_FILE"
+  else
+    jq -r '.unseal_keys_b64[]' "$CREDS_FILE"
+  fi
+)
 
 node_is_unsealed() {
   on_node "$1" "docker exec garde-vault vault status >/dev/null 2>&1"
 }
 
-unseal_node() {
+unseal_node_shamir() {
   local node="$1" i=0
   node_is_unsealed "$node" && return 0
 
   while [ "$i" -lt "$KEY_THRESHOLD" ]; do
-    # Errors are tolerated: a member that reached the threshold on an earlier
-    # attempt answers the remaining keys with a status dump, not a failure.
-    on_node "$node" "docker exec -e VAULT_ADDR=http://127.0.0.1:8200 garde-vault vault operator unseal '${UNSEAL_KEYS[$i]}' >/dev/null" || true
+    on_node "$node" "docker exec -e VAULT_ADDR=http://127.0.0.1:8200 garde-vault vault operator unseal '${SHARE_KEYS[$i]}' >/dev/null" || true
     i=$((i + 1))
   done
 
-  # Unsealing finishes asynchronously. A joining member completes its raft join
-  # and enters standby before it reports unsealed, which takes a second or two,
-  # so checking once straight after the final key races that and calls a
-  # perfectly healthy node a failure.
   retry_until 15 2 node_is_unsealed "$node"
+}
+
+wait_auto_unseal() {
+  local node="$1"
+  # KMS unseal happens on process start; give IMDS + KMS a short window.
+  retry_until 30 2 node_is_unsealed "$node"
 }
 
 # --- 2/3. unseal all members ---------------------------------------------
 
-step "2/6 Unsealing $FIRST_NODE"
-unseal_node "$FIRST_NODE" || die "could not unseal $FIRST_NODE"
+step "2/6 Bringing $FIRST_NODE to unsealed"
+if $AUTO_UNSEAL; then
+  wait_auto_unseal "$FIRST_NODE" || die "$FIRST_NODE stayed sealed (check instance profile, IMDS hop limit 2, KMS key $VAULT_KMS_KEY_ID)"
+else
+  unseal_node_shamir "$FIRST_NODE" || die "could not unseal $FIRST_NODE"
+fi
 ok "$FIRST_NODE unsealed and is the Raft leader"
 
 step "3/6 Joining and unsealing the remaining members"
 for node in $NODES; do
   [ "$node" = "$FIRST_NODE" ] && continue
   log "waiting for $node to reach the leader through retry_join"
-  # A joined-but-sealed member reports initialized=true, sealed=true.
   if retry_until 30 4 on_node "$node" \
       "docker exec garde-vault vault status -format=json 2>/dev/null | grep -q '\"initialized\": true'"; then
-    unseal_node "$node" || die "could not unseal $node"
+    if $AUTO_UNSEAL; then
+      wait_auto_unseal "$node" || die "$node stayed sealed after join"
+    else
+      unseal_node_shamir "$node" || die "could not unseal $node"
+    fi
     ok "$node joined and unsealed"
   else
     die "$node never joined the cluster - check mesh connectivity to $(node_wg_ip "$FIRST_NODE"):8200"
@@ -166,17 +178,11 @@ for node in $NODES; do
     app-primary|app-standby) ;;
     *) continue ;;
   esac
-  # Each app node gets its own secret-id, so one can be revoked without
-  # disturbing the other.
   secret_id="$(vault_on "$FIRST_NODE" "vault write -f -field=secret_id auth/approle/role/garde/secret-id")"
   on_node "$node" "
     mkdir -p '$REMOTE_ROOT/vault'
     printf '%s' '$role_id'   >'$REMOTE_ROOT/vault/role-id'
     printf '%s' '$secret_id' >'$REMOTE_ROOT/vault/secret-id'
-    # Vault Agent runs as uid 100 in the official image. 0600 owned by deploy
-    # is unreadable inside the container; the compose bind-mount cannot remap
-    # ownership without a privileged helper. 0644 is acceptable: role-id is
-    # not secret alone, and secret-id is host-local behind the mesh firewall.
     chmod 644 '$REMOTE_ROOT/vault/role-id' '$REMOTE_ROOT/vault/secret-id'
   "
   ok "$node has AppRole credentials"
@@ -204,16 +210,33 @@ fi
 
 unset VAULT_TOKEN
 
-cat <<EOF
+if $AUTO_UNSEAL; then
+  cat <<EOF
 
-Cluster is initialised.
+Cluster is initialised with AWS KMS auto-unseal ($VAULT_KMS_KEY_ID).
+
+Do this now, before anything else:
+  1. Move $CREDS_FILE to offline storage (password manager, encrypted backup).
+  2. Delete the local copy once it is safely stored.
+  3. Keep the recovery keys for break-glass only (generate-root / rekey).
+     Ordinary reboots auto-unseal via KMS; you do not need unseal.sh day-to-day.
+
+EOF
+else
+  cat <<EOF
+
+Cluster is initialised (Shamir seal).
 
 Do this now, before anything else:
   1. Move $CREDS_FILE to offline storage (password manager, encrypted backup).
   2. Delete the local copy once it is safely stored.
   3. Confirm you can read the unseal keys back - a member will need them after
-     every reboot, and there is no auto-unseal in this deployment.
+     every reboot unless you migrate to awskms (see docs/DEPLOY.md).
 
+EOF
+fi
+
+cat <<EOF
 Values that must match this topology, in Vault:
   redis_host       = redis
   use_tls          = false          (Caddy terminates TLS)

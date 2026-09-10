@@ -36,6 +36,7 @@ resource "aws_instance" "nodes" {
   vpc_security_group_ids = [aws_security_group.nodes.id]
   key_name               = aws_key_pair.bootstrap.key_name
   private_ip             = cidrhost(aws_subnet.nodes[count.index].cidr_block, 10)
+  iam_instance_profile   = aws_iam_instance_profile.vault.name
 
   root_block_device {
     volume_size = var.root_volume_gb
@@ -43,17 +44,19 @@ resource "aws_instance" "nodes" {
     encrypted   = true
   }
 
-  # Require IMDSv2. Nothing here reads instance metadata, but leaving the older
-  # unauthenticated version enabled is the difference between a server-side
-  # request bug being noise and it being a credential disclosure.
+  # Require IMDSv2. Hop limit 2 so the Vault container (bridge network) can
+  # reach the metadata service for the instance role used by seal "awskms".
+  # Hop 1 would leave Vault sealed after every reboot with "access denied".
   metadata_options {
-    http_endpoint = "enabled"
-    http_tokens   = "required"
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
   }
 
   tags = {
-    Name = "${var.name}-${count.index + 1}"
-    Role = local.roles[count.index]
+    Name    = "${var.name}-${count.index + 1}"
+    Role    = local.roles[count.index]
+    Project = "garde"
   }
 }
 
