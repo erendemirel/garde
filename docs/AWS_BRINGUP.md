@@ -12,8 +12,9 @@ Tick items as you complete them. `doctor.sh` marks many of these automatically.
 
 ## Automated (Terraform / wrapper)
 
-- [ ] `terraform/aws/terraform.tfvars` filled (bucket, SSH public key, optional `dns_zone`)
-- [ ] `./terraform/aws/bring-up.sh` applied successfully
+- [ ] `terraform/aws/terraform.tfvars` filled (bucket, SSH public key, optional `dns_zone`; for import, `subnet_cidrs` / `node_private_ips`)
+- [ ] Remote state: S3 `garde-tfstate-…` + DynamoDB `garde-terraform-locks` (see `versions.tf` backend)
+- [ ] `./terraform/aws/bring-up.sh` applied successfully (or import of an existing account into that state)
 - [ ] VPC, subnets, security groups, Instance Connect Endpoint present
 - [ ] Key pair + 3 EC2 instances + Elastic IP present
 - [ ] S3 image bucket + gateway endpoint present

@@ -35,13 +35,14 @@ jobs:
       TF_VAR_region: ${{ vars.AWS_REGION }}
       TF_VAR_image_bucket_name: ${{ vars.AWS_IMAGE_BUCKET }}
       TF_VAR_ssh_public_key: ${{ secrets.AWS_BOOTSTRAP_SSH_PUBLIC_KEY }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      # Live layout (CIDRs / IPs) comes from garde-live.auto.tfvars in the repo.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_TF_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_TF_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ vars.AWS_REGION }}
     steps:
       - uses: actions/checkout@v5
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
 

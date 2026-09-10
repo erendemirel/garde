@@ -70,12 +70,12 @@ output "inventory_fragment" {
 
     FAILOVER_IP=${aws_eip.failover.public_ip}
 
-    NODE1_PROVIDER_ID=${aws_instance.nodes[0].id}
-    NODE2_PROVIDER_ID=${aws_instance.nodes[1].id}
-    NODE3_PROVIDER_ID=${aws_instance.nodes[2].id}
+    NODE1_PROVIDER_ID=${try(aws_instance.nodes[0].id, "")}
+    NODE2_PROVIDER_ID=${try(aws_instance.nodes[1].id, "")}
+    NODE3_PROVIDER_ID=${try(aws_instance.nodes[2].id, "")}
 
-    NODE1_MESH_ENDPOINT=${aws_instance.nodes[0].private_ip}
-    NODE2_MESH_ENDPOINT=${aws_instance.nodes[1].private_ip}
-    NODE3_MESH_ENDPOINT=${aws_instance.nodes[2].private_ip}
+    NODE1_MESH_ENDPOINT=${try(aws_instance.nodes[0].private_ip, "")}
+    NODE2_MESH_ENDPOINT=${try(aws_instance.nodes[1].private_ip, "")}
+    NODE3_MESH_ENDPOINT=${try(aws_instance.nodes[2].private_ip, "")}
   EOT
 }

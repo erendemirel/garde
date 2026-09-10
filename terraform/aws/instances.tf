@@ -15,16 +15,27 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+# Greenfield: create the key. Import / adopt: look up the existing key by name
+# (aws_key_pair import cannot store public_key, so managing it ForceNews forever).
 resource "aws_key_pair" "bootstrap" {
+  count = var.create_bootstrap_key ? 1 : 0
+
   key_name   = "${var.name}-bootstrap"
   public_key = var.ssh_public_key
+}
+
+data "aws_key_pair" "bootstrap" {
+  count = var.create_bootstrap_key ? 0 : 1
+
+  key_name = "${var.name}-bootstrap"
 }
 
 locals {
   # Index 0 and 1 are the app pair the Elastic IP moves between; index 2 is the
   # witness, which exists to give Vault's Raft cluster a third vote and never
   # holds the address.
-  roles = ["app-primary", "app-standby", "witness"]
+  roles              = ["app-primary", "app-standby", "witness"]
+  bootstrap_key_name = var.create_bootstrap_key ? aws_key_pair.bootstrap[0].key_name : data.aws_key_pair.bootstrap[0].key_name
 }
 
 resource "aws_instance" "nodes" {
@@ -34,8 +45,8 @@ resource "aws_instance" "nodes" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.nodes[count.index].id
   vpc_security_group_ids = [aws_security_group.nodes.id]
-  key_name               = aws_key_pair.bootstrap.key_name
-  private_ip             = cidrhost(aws_subnet.nodes[count.index].cidr_block, 10)
+  key_name               = local.bootstrap_key_name
+  private_ip             = local.node_private_ips[count.index]
   iam_instance_profile   = aws_iam_instance_profile.vault.name
 
   root_block_device {
@@ -57,6 +68,11 @@ resource "aws_instance" "nodes" {
     Name    = "${var.name}-${count.index + 1}"
     Role    = local.roles[count.index]
     Project = "garde"
+  }
+
+  # AMI / root disk drift must not rebuild live nodes after import.
+  lifecycle {
+    ignore_changes = [ami, root_block_device]
   }
 }
 
