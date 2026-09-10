@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Unseal a Vault member. Operator-only: never run this from CI.
+# Unseal a Vault member (Shamir only). Operator-only: never run this from CI.
 #
 #   ./deploy/scripts/unseal.sh node1
 #   ./deploy/scripts/unseal.sh --all
 #
-# Unseal keys are read interactively or from a file you point at with
-# VAULT_UNSEAL_KEYS_FILE. They must never be stored in GitHub secrets, in this
-# repository, or on the servers: a workflow input is visible in run metadata,
-# and a key sitting next to the data it protects is not a key.
+# With VAULT_KMS_KEY_ID (awskms auto-unseal), members unseal themselves after
+# reboot. This script is then only useful if a member is still sealed (KMS/IMDS
+# failure) — it cannot substitute for fixing IAM/KMS. For Shamir → awskms
+# migration, use deploy/scripts/vault-seal-migrate.sh instead.
 #
-# With a 3-member Raft cluster, a single sealed member is not an outage. The
-# other two keep quorum and keep serving, so unsealing is urgent but not
-# emergency work.
+# Unseal keys are read interactively or from VAULT_UNSEAL_KEYS_FILE. They must
+# never be stored in GitHub secrets or on the servers.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -19,11 +18,17 @@ load_inventory
 
 [ -z "${CI:-}" ] || die "refusing to run in CI - unseal keys must not pass through a pipeline"
 
+if [ -n "${VAULT_KMS_KEY_ID:-}" ]; then
+  warn "inventory has VAULT_KMS_KEY_ID=$VAULT_KMS_KEY_ID (awskms)."
+  warn "Prefer fixing KMS/IMDS if a member stays sealed after reboot."
+  warn "Continuing with Shamir unseal keys only if this cluster has not migrated yet."
+fi
+
 TARGETS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) TARGETS="$NODES"; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) TARGETS="$TARGETS $1"; shift ;;
   esac
 done

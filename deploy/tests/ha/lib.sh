@@ -148,11 +148,26 @@ ha_find_vault_leader() {
 }
 
 ha_require_unseal_keys() {
+  # Shamir-only. AWS awskms drills wait via ha_unseal and must not demand a keys file.
+  if [ -n "${VAULT_KMS_KEY_ID:-}" ]; then
+    return 0
+  fi
   [ -n "${VAULT_UNSEAL_KEYS_FILE:-}" ] && [ -f "$VAULT_UNSEAL_KEYS_FILE" ] \
-    || die "set VAULT_UNSEAL_KEYS_FILE to an offline file of unseal keys (never commit it)"
+    || die "set VAULT_UNSEAL_KEYS_FILE to an offline file of unseal keys (never commit it), or VAULT_KMS_KEY_ID for awskms"
 }
 
+# After reboot/fence: wait for awskms auto-unseal when configured; otherwise Shamir.
 ha_unseal() {
+  if [ -n "${VAULT_KMS_KEY_ID:-}" ]; then
+    local node
+    for node in "$@"; do
+      log "waiting for awskms auto-unseal on $node"
+      retry_until 60 5 on_node "$node" \
+        "docker exec garde-vault vault status >/dev/null 2>&1" \
+        || die "$node stayed sealed under awskms — check KMS/IMDS"
+    done
+    return 0
+  fi
   ha_require_unseal_keys
   "$(ha_scripts)/unseal.sh" "$@"
 }

@@ -45,6 +45,16 @@ output "acme_secret_access_key" {
   sensitive   = true
 }
 
+output "vault_kms_key_id" {
+  description = "Pass to inventory as VAULT_KMS_KEY_ID (alias or key id for seal awskms)."
+  value       = aws_kms_alias.vault.name
+}
+
+output "vault_kms_key_arn" {
+  description = "Full ARN of the Vault auto-unseal CMK."
+  value       = aws_kms_key.vault.arn
+}
+
 # Everything the inventory needs for this provider, ready to paste. Generated
 # rather than transcribed, because an instance id copied wrongly fails in a way
 # that looks like a permissions problem.
@@ -56,6 +66,7 @@ output "inventory_fragment" {
     ADMIN_SSH_SOURCES=${var.vpc_cidr}
     AWS_IMAGE_BUCKET=${aws_s3_bucket.images.id}
     BOOTSTRAP_SSH_USER=ubuntu
+    VAULT_KMS_KEY_ID=${aws_kms_alias.vault.name}
 
     FAILOVER_IP=${aws_eip.failover.public_ip}
 

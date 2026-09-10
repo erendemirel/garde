@@ -4,9 +4,9 @@
 # other and elect a leader. Losing one host leaves a 2/3 quorum and the cluster
 # keeps serving.
 #
-# There is no auto-unseal (no cloud KMS), so a restarted member must be
-# unsealed by an operator with deploy/scripts/unseal.sh. The other two members
-# keep serving while that happens.
+# On AWS (VAULT_KMS_KEY_ID in inventory), seal "awskms" auto-unseals after
+# reboot using the instance profile + KMS CMK. Non-AWS / no key id keeps Shamir
+# and still needs deploy/scripts/unseal.sh after a restart.
 #
 # The API and cluster ports are published on the WireGuard address only.
 
@@ -25,6 +25,9 @@ services:
     command: server
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
+      # Required for seal "awskms" (instance role credentials via IMDSv2).
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-}
       # Deliberately no SKIP_CHOWN: it gates the ownership fixup below.
     volumes:
       - ../config/vault/raft.hcl:/vault/config/raft.hcl:ro
@@ -44,7 +47,8 @@ services:
       - "${NODE_WG_IP}:8201:8201"
     healthcheck:
       # exit 0 = unsealed and active/standby, exit 2 = sealed.
-      # Sealed intentionally fails so dependents wait for an operator.
+      # With awskms, sealed usually means KMS/IMDS failure; with Shamir it means
+      # an operator must run unseal.sh.
       test: ["CMD", "vault", "status"]
       interval: 10s
       timeout: 3s

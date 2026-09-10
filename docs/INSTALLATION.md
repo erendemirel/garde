@@ -138,7 +138,7 @@ docker compose -f docker-compose.prod.yml up -d
 - **Reseed secrets:** edit `prod.secrets`, ensure Vault is unsealed and `VAULT_TOKEN` is set, then `docker compose -f docker-compose.prod.yml --profile init run --rm vault-init`.
 
 > [!IMPORTANT]
-> Production Vault requires operator unseal keys. Losing `vault-credentials.json` without a backup means permanent loss of access to the Vault data volume. Back up the credentials offline (or use auto-unseal / a proper Vault cluster for multi-node HA).
+> Production Vault requires offline credentials (`vault-credentials.json`). On the HA path with AWS KMS auto-unseal, day-to-day reboots do not need Shamir keys; keep recovery keys for break-glass. The single-VPS Compose stack below still uses Shamir unseal after reboot. Losing credentials without a backup means permanent loss of access to the Vault data volume.
 ### Required mandatory secrets in Vault
 | Secret Path | Description |
 |-------------|-------------|

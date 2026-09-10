@@ -7,8 +7,9 @@
 #   ./terraform/aws/bring-up.sh --no-inventory
 #
 # Creates/updates VPC, security groups, key pair, instances, Elastic IP, S3,
-# IAM, and optional Route 53. Then merges terraform outputs into
-# deploy/inventory.env. Does NOT run Ansible, Vault, or app deploy.
+# IAM (CI user + Vault instance profile), KMS (Vault auto-unseal), and optional
+# Route 53. Then merges terraform outputs into deploy/inventory.env. Does NOT
+# run Ansible, Vault, or app deploy.
 #
 # Prerequisites:
 #   - terraform.tfvars filled in (from terraform.tfvars.example)

@@ -1,9 +1,10 @@
 # Deliberately a reload, never a restart.
 #
-# Restarting Docker restarts every container on the host, and a restarted Vault
-# member comes back sealed. A routine drift-correcting run must not be able to
-# seal the cluster. Reload applies daemon.json to newly created containers,
-# which is all the settings here need.
+# Restarting Docker restarts every container on the host. Under Shamir that
+# seals Vault until an operator runs unseal.sh; under awskms it auto-unseals
+# but still causes a brief outage on that member. A routine drift-correcting
+# run must not bounce the cluster. Reload applies daemon.json to newly created
+# containers, which is all the settings here need.
 - name: Restart docker
   ansible.builtin.service:
     name: docker

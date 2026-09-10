@@ -232,10 +232,12 @@ for key in REDIS_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ACME_ACCES
   if [ -n "$val" ]; then have "$key is set"
   else note "$key not set in this shell"; fi
 done
-if [ -n "${VAULT_UNSEAL_KEYS_FILE:-}" ] && [ -f "$VAULT_UNSEAL_KEYS_FILE" ]; then
-  have "VAULT_UNSEAL_KEYS_FILE present"
+if [ -n "${VAULT_KMS_KEY_ID:-}" ]; then
+  have "VAULT_KMS_KEY_ID set (awskms auto-unseal)"
+elif [ -n "${VAULT_UNSEAL_KEYS_FILE:-}" ] && [ -f "$VAULT_UNSEAL_KEYS_FILE" ]; then
+  have "VAULT_UNSEAL_KEYS_FILE present (Shamir)"
 else
-  note "VAULT_UNSEAL_KEYS_FILE unset (needed for unseal / hard HA tests)"
+  note "neither VAULT_KMS_KEY_ID nor VAULT_UNSEAL_KEYS_FILE (AWS needs KMS; Shamir/HA drills need keys file)"
 fi
 
 printf '\n==> result\n'

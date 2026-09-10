@@ -102,14 +102,18 @@ deploy_vault() {
 
   [ "$DRY_RUN" = "true" ] && return 0
 
-  # A restarted member comes back sealed. Wait briefly for it to rejoin and
-  # report status, but do not block the deploy: unsealing is a human step.
+  # A restarted member comes back sealed under Shamir; with awskms it should
+  # auto-unseal via KMS. Wait briefly, but do not block the deploy.
   if retry_until 15 4 on_node "$node" \
       "docker exec garde-vault vault status >/dev/null 2>&1"; then
     ok "$node vault is unsealed and serving"
   else
     warn "$node vault is sealed or still starting"
-    warn "  unseal it with: ./deploy/scripts/unseal.sh $node"
+    if [ -n "${VAULT_KMS_KEY_ID:-}" ]; then
+      warn "  awskms: check instance profile, IMDS hop limit 2, and KMS key $VAULT_KMS_KEY_ID"
+    else
+      warn "  unseal it with: ./deploy/scripts/unseal.sh $node"
+    fi
     warn "  the other members keep serving in the meantime"
   fi
 }

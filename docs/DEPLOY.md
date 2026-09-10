@@ -31,10 +31,10 @@ to survive losing a host.
 
 | Failure | Result |
 |---------|--------|
-| A Vault member restarts | Cluster keeps serving; that member needs unsealing |
+| A Vault member restarts | Cluster keeps serving; AWS/KMS auto-unseals that member |
 | One host dies | Vault keeps quorum (2 of 3); app fails over in ~30-90s |
 | The primary app node dies | Scripted cutover: Redis promoted, IP moved, standby serves |
-| All three hosts reboot | Manual unseal ceremony, then everything comes back |
+| All three hosts reboot | AWS: auto-unseal via KMS; other providers: Shamir unseal ceremony |
 
 It does **not** give you zero downtime. Failover is a short, controlled outage,
 and netcup rate-limits the failover IP to one reassignment per 301 seconds, so
@@ -104,10 +104,11 @@ address.
 into `docker load` on the far side. The hosts hold no registry credentials, no
 source code and no compiler.
 
-**No auto-unseal.** There is no cloud KMS in this setup, so a restarted Vault
-member must be unsealed by a human. With three members that is not an outage:
-the other two hold quorum. Unseal keys never enter GitHub — a workflow input is
-visible in run metadata.
+**Auto-unseal on AWS.** With `PROVIDER=aws`, Terraform creates a KMS CMK and an
+EC2 instance profile; inventory carries `VAULT_KMS_KEY_ID`. Vault uses
+`seal "awskms"` so members unseal themselves after reboot. Recovery keys from
+init stay offline for break-glass only — they never enter GitHub. Non-AWS
+providers keep Shamir and still use `unseal.sh` after a restart.
 
 **The hosting provider sits behind one seam.** Everything provider-specific
 *about compute and traffic* reaches the outside world through three verbs —
@@ -204,8 +205,8 @@ sudo wg-quick up wg0
 ```
 
 This is not optional. The next step closes public SSH, after which the mesh is
-the only way to reach a host — and unsealing Vault, re-running the baseline and
-the initial ceremony all happen from your workstation.
+the only way to reach a host — Vault init/migration, baseline re-runs and the
+initial ceremony all happen from your workstation.
 
 ### 3. Bootstrap the hosts
 
@@ -254,12 +255,14 @@ $EDITOR prod.secrets           # production values, see the next section
 ./deploy/scripts/vault-cluster-init.sh --secrets prod.secrets
 ```
 
-This initialises the cluster, unseals all three members, creates the AppRole,
-distributes credentials to the app nodes and seeds secrets.
+This initialises the cluster, brings all three members to unsealed (KMS or
+Shamir), creates the AppRole, distributes credentials to the app nodes and
+seeds secrets.
 
 It writes `vault-credentials.json` in the repository root. **Move it offline and
-delete the local copy.** Losing the unseal keys means losing the Vault data
-permanently, and there is no auto-unseal to fall back on.
+delete the local copy.** Losing recovery/unseal keys means losing break-glass
+access permanently. On AWS, day-to-day reboots use KMS; the file is still
+required for generate-root / rekey.
 
 ### 6. Point DNS at the failover IP
 
@@ -435,6 +438,28 @@ quorum survives.
 
 ## Runbook: unsealing Vault
 
+### AWS (KMS auto-unseal)
+
+After a normal reboot, members unseal themselves. If one stays sealed, check
+instance profile, IMDS hop limit (≥2), and KMS permissions — do not put unseal
+keys into CI.
+
+Migrating an existing Shamir cluster:
+
+```bash
+# After terraform apply + inventory has VAULT_KMS_KEY_ID
+./deploy/scripts/sync-config.sh --all
+# Immediately migrate — any Vault restart with awskms in config but
+# without -migrate leaves that member sealed until migration finishes.
+VAULT_UNSEAL_KEYS_FILE=/path/to/shamir-keys ./deploy/scripts/vault-seal-migrate.sh
+```
+
+`VAULT_UNSEAL_KEYS_FILE` must be line-oriented Shamir keys (one b64 share per
+line), not the raw `vault-credentials.json`. Extract with:
+`jq -r '.unseal_keys_b64[]' vault-credentials.json > /secure/path/keys.txt`.
+
+### Shamir (non-AWS, or pre-migration)
+
 A member is sealed after any restart. The cluster keeps serving while two of
 three are unsealed, so this is urgent but not an emergency.
 
@@ -509,8 +534,8 @@ workflow (secondary safety net).
 
 Once the old primary is healthy again, it becomes the new standby.
 
-1. Bring the host back and unseal its Vault member
-   (`./deploy/scripts/unseal.sh <node>`). Re-run the baseline playbook if the
+1. Bring the host back. On AWS with KMS, Vault auto-unseals; on Shamir, run
+   `./deploy/scripts/unseal.sh <node>`. Re-run the baseline playbook if the
    host was rebuilt from scratch.
 2. Confirm the inventory lists it as standby (`NODE*_ROLE=app-standby`,
    `STANDBY_NODE=...`). `failover.sh` updates these when it can write
@@ -797,7 +822,8 @@ present on GitHub's `ubuntu-latest` runners but not necessarily on yours.
 
 Deliberately, because the failure modes are worse than the toil:
 
-- **Vault unsealing.** No KMS, so no auto-unseal. Keys stay with humans.
+- **Vault recovery keys.** Shamir unseal keys (non-AWS) and KMS recovery keys
+  stay with humans; they never enter GitHub. AWS day-to-day unseal is KMS.
 - **Failure detection.** Nothing decides on its own that the primary is dead.
   Prometheus alerts, a person judges, the workflow executes. Automatic failover
   on a two-node application tier is a reliable way to cause split brain during a
