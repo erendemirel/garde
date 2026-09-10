@@ -101,6 +101,35 @@ runs:
         echo "mode=$mode" >> "$GITHUB_OUTPUT"
         echo "  access mode: $mode"
 
+        # Tunnel providers need cloud credentials on the job env. Scheduled
+        # workflows (snapshot) often have no GitHub Environment, so secrets that
+        # exist only under "production" appear as empty here — fail loudly.
+        . deploy/scripts/lib.sh
+        load_inventory
+        case "${PROVIDER:-}:$mode" in
+          aws:tunnel)
+            if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+              echo "::error::PROVIDER=aws needs AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY on this job."
+              echo "::error::If Deploy works but Snapshot does not, those secrets are probably Environment-scoped (production) only."
+              echo "::error::Add them as Repository secrets, or duplicate them for every Environment this workflow uses."
+              exit 1
+            fi
+            if [ -z "${AWS_REGION:-${AWS_DEFAULT_REGION:-}}" ]; then
+              echo "::error::AWS_REGION is empty. Set repository variable AWS_REGION, or AWS_REGION=… in DEPLOY_INVENTORY."
+              exit 1
+            fi
+            # Ensure later steps see region even when vars.AWS_REGION was unset
+            # but inventory supplied it.
+            echo "AWS_REGION=${AWS_REGION:-$AWS_DEFAULT_REGION}" >> "$GITHUB_ENV"
+            echo "  aws credentials present; region=${AWS_REGION:-$AWS_DEFAULT_REGION}"
+            ;;
+          gcp:tunnel)
+            if [ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -z "${GOOGLE_CLOUD_PROJECT:-}" ]; then
+              echo "::warning::GCP tunnel may need GCP_SERVICE_ACCOUNT_KEY + GOOGLE_CLOUD_PROJECT"
+            fi
+            ;;
+        esac
+
     # Tunnel providers drive SSH through the cloud CLI (aws open-tunnel / gcloud).
     # ubuntu-latest does not guarantee those tools; install only when needed.
     - name: Install AWS CLI (tunnel)

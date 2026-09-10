@@ -313,14 +313,15 @@ the target has not bound it.
 | `OVH_APPLICATION_KEY`, `OVH_APPLICATION_SECRET`, `OVH_CONSUMER_KEY` | OVHcloud driver, if `PROVIDER=ovh` |
 | `IONOS_TOKEN` | IONOS Cloud driver, if `PROVIDER=ionos` |
 | `SCW_SECRET_KEY` | Scaleway driver, if `PROVIDER=scaleway` |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | AWS compute driver (EIP / fence / tunnel / S3) |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | AWS compute driver (EIP / fence / tunnel / S3). **Repository** secrets if Snapshot (no Environment) should see them — Environment-only secrets under `production` are invisible to scheduled Snapshot runs |
 | `AWS_ACME_ACCESS_KEY_ID`, `AWS_ACME_SECRET_ACCESS_KEY` | AWS Route 53 DNS-01 for Caddy (from `terraform output acme_*`) |
 | `GCP_SERVICE_ACCOUNT_KEY` | Google driver, if `PROVIDER=gcp`; the workflow writes it to a file and points `GOOGLE_APPLICATION_CREDENTIALS` at it |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin |
 
 **Variables:** `API_DOMAIN` (used by the deploy workflow), plus `DNS_ZONE` and
 `FAILOVER_IP` (used by the infra workflow). `AWS_REGION`, `AWS_IMAGE_BUCKET` and
-`GOOGLE_CLOUD_PROJECT` if you deploy to either hyperscaler.
+`GOOGLE_CLOUD_PROJECT` if you deploy to either hyperscaler — also as
+**repository** variables when Snapshot needs them.
 
 `WG_CI_CONF` is not required on AWS or GCP: the runner does not join the mesh
 there. Their credentials are set at job level rather than on the deploy step,

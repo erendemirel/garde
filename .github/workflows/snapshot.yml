@@ -24,8 +24,9 @@ jobs:
   snapshot:
     name: Snapshot permissions.db
     runs-on: ubuntu-latest
-    # Tunnel providers (AWS / GCP) need these on the job: mesh-access opens the
-    # connection during reachability, before any later step can set env.
+    # No `environment:` on purpose — required reviewers would block the schedule.
+    # Tunnel credentials must therefore be Repository secrets/vars, not only
+    # Environment secrets under `production` (Deploy can see those; this job cannot).
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
