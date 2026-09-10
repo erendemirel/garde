@@ -303,8 +303,8 @@ the target has not bound it.
 | Secret | Contents |
 |--------|----------|
 | `DEPLOY_INVENTORY` | The whole `deploy/inventory.env` file |
-| `DEPLOY_SSH_KEY` | Private deploy key |
-| `DEPLOY_KNOWN_HOSTS` | Host keys for the admin aliases (tunnel) or mesh IPs — must match what SSH will pin |
+| `DEPLOY_SSH_KEY` | Private deploy key (e.g. contents of `~/.ssh/garde_deploy`, including `BEGIN`/`END` lines and real newlines) |
+| `DEPLOY_KNOWN_HOSTS` | Host keys pinned the same way SSH will check them. **AWS/GCP (tunnel):** lines must start with `garde-node1`, `garde-node2`, `garde-node3` (see `~/.ssh/known_hosts` on the operator host after a successful `on_node`). **Mesh providers:** mesh IPs from `ssh-keyscan`. Wrong form → “unreachable” with no useful earlier error |
 | `WG_CI_CONF` | Contents of `deploy/.wg/ci.conf` |
 | `REDIS_PASSWORD` | Same value as `REDIS_PASSWORD` in `prod.secrets` |
 | `NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`, `NETCUP_API_PASSWORD` | netcup DNS-01 + Terraform DNS (`PROVIDER=netcup`) |

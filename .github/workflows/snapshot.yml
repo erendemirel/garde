@@ -42,7 +42,7 @@ jobs:
           known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           inventory: ${{ secrets.DEPLOY_INVENTORY }}
           gcp-service-account-key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
-          require-all-nodes: "false"
+          require-all-nodes: "true"
 
       - name: Snapshot
         run: ./deploy/scripts/sqlite-snapshot.sh
