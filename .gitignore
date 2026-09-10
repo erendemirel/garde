@@ -102,18 +102,13 @@ ansible/*.retry
 
 # Terraform. Recursive, because terraform/aws/ is a second root module and its
 # state holds a generated IAM secret key.
+# Terraform (AWS root under terraform/aws/)
 terraform/**/.terraform/
 terraform/**/.terraform.lock.hcl
 terraform/**/*.tfstate
 terraform/**/*.tfstate.*
 terraform/**/terraform.tfvars
 terraform/**/tfplan
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-terraform/*.tfstate
-terraform/*.tfstate.*
-terraform/terraform.tfvars
-terraform/tfplan
 
 # Database files
 *.db

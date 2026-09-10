@@ -143,8 +143,8 @@ key.
 **DNS lives with the hosting provider, not behind the compute seam.** Failover
 moves the address under stable `app.` / `api.` names; Terraform only creates
 those A records (and never owns failover routing). Each provider has its own
-small DNS surface — `terraform/` for netcup CCP, Route 53 inside
-`terraform/aws/` — plus a matching Caddy `acme_dns` module selected by
+small DNS surface — Route 53 inside `terraform/aws/` — plus a matching Caddy
+`acme_dns` module selected by
 `PROVIDER` (override with `DNS_PROVIDER` only if the zone truly lives
 elsewhere). DNS API credentials are separate from compute credentials.
 
@@ -269,14 +269,6 @@ required for generate-root / rekey.
 DNS follows `PROVIDER`. Failover never updates these records — it only moves
 the address underneath them.
 
-**netcup** (`terraform/`):
-
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars && $EDITOR terraform.tfvars
-terraform init && terraform apply
-```
-
 **AWS** (Route 53 inside `terraform/aws/` — set `dns_zone` or `dns_zone_id`):
 
 ```bash
@@ -287,6 +279,10 @@ terraform output dns_nameservers   # delegate the registrar if the zone is new
 terraform output -raw acme_access_key_id
 terraform output -raw acme_secret_access_key   # store as AWS_ACME_* secrets
 ```
+
+For other compute providers, create the app/api A records in that provider’s
+DNS panel (or its own Terraform root) pointing at `FAILOVER_IP`. There is no
+separate netcup Terraform root in this repo anymore.
 
 Then route traffic to the primary once:
 
@@ -769,8 +765,8 @@ Track what is done (infra through app) without needing a working UI:
 
 See [AWS bring-up checklist](AWS_BRINGUP.md) for the full automated vs manual list.
 
-DNS for AWS is Route 53 in this same module; netcup DNS stays in `terraform/`.
-They share no state. The module deliberately does not manage the Elastic IP
+DNS for AWS is Route 53 in this same module.
+The module deliberately does not manage the Elastic IP
 *association* after creation — `ignore_changes` covers it, because Terraform
 and `failover.sh` both believing they decide where traffic goes would mean the
 next `apply` quietly reverting a failover.
