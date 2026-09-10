@@ -20,30 +20,40 @@ type PermissionRepository struct {
 
 var (
 	permissionRepo     *PermissionRepository
+	permissionRepoErr  error
 	permissionRepoOnce sync.Once
 )
 
 // Singleton instance of PermissionRepository
 func GetPermissionRepository() (*PermissionRepository, error) {
-	var err error
 	permissionRepoOnce.Do(func() {
-		permissionRepo, err = NewPermissionRepository()
+		permissionRepo, permissionRepoErr = NewPermissionRepository()
 	})
-	return permissionRepo, err
+	return permissionRepo, permissionRepoErr
 }
 
 func NewPermissionRepository() (*PermissionRepository, error) {
-	dataDir := "data"
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "data"
+	}
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	dbPath := filepath.Join(dataDir, "permissions.db")
-	db, err := sql.Open("sqlite3", dbPath+"?_mmap_size=268435456") // 256MB mmap
+	db, err := sql.Open("sqlite3", dbPath+"?_mmap_size=268435456&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Prefer WAL; some bind mounts (e.g. Docker Desktop on Windows) may reject it.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		slog.Warn("Could not enable SQLite WAL; continuing with default journal", "error", err)
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		return nil, fmt.Errorf("failed to set busy_timeout: %w", err)
+	}
 	// Enable memory-mapped I/O
 	if _, err := db.Exec("PRAGMA mmap_size = 268435456"); err != nil {
 		return nil, fmt.Errorf("failed to set mmap_size: %w", err)

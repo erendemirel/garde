@@ -28,6 +28,15 @@ func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 
+func contextUserID(c *gin.Context) (string, bool) {
+	v, exists := c.Get("user_id")
+	if !exists {
+		return "", false
+	}
+	id, ok := v.(string)
+	return id, ok && id != ""
+}
+
 // @Summary Login user
 // @Description Authenticates a user and returns a session token. No mTLS required for this endpoint.
 // @Tags Public Routes
@@ -141,7 +150,8 @@ type ValidateResponse struct {
 // @Security SessionCookie
 // @Security ApiKey
 // @Security Bearer
-// @Param session_id query string false "Session ID (required only for API requests with API key)"
+// @Param session_id query string false "Session ID (legacy; prefer X-Session-ID header)"
+// @Param X-Session-ID header string false "Session ID (preferred over query to avoid access-log leakage)"
 // @Success 200 {object} models.SuccessResponse "Session validation result with Response.valid and UserID fields"
 // @Failure 400 {object} models.ErrorResponse "Invalid session ID format or missing session ID for API request"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized - invalid session, missing mTLS certificate for API requests, or invalid API key"
@@ -149,7 +159,11 @@ type ValidateResponse struct {
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /validate [get]
 func (h *AuthHandler) ValidateSession(c *gin.Context) {
-	sessionID := c.Query("session_id")
+	// Prefer header so session IDs are not written into access logs via the query string.
+	sessionID := c.GetHeader("X-Session-ID")
+	if sessionID == "" {
+		sessionID = c.Query("session_id")
+	}
 	sessionID, err := validation.Sanitize(sessionID)
 	if err != nil || sessionID == "" {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
@@ -184,13 +198,13 @@ func (h *AuthHandler) ValidateSession(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Operation failed"
 // @Router /users/mfa/setup [post]
 func (h *AuthHandler) SetupMFA(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
-	resp, err := h.authService.SetupMFA(c.Request.Context(), userID.(string))
+	resp, err := h.authService.SetupMFA(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
@@ -214,8 +228,8 @@ func (h *AuthHandler) SetupMFA(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Operation failed"
 // @Router /users/mfa/verify [post]
 func (h *AuthHandler) VerifyAndEnableMFA(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -227,7 +241,7 @@ func (h *AuthHandler) VerifyAndEnableMFA(c *gin.Context) {
 		return
 	}
 
-	err := h.authService.VerifyAndEnableMFA(c.Request.Context(), userID.(string), req.Code)
+	err := h.authService.VerifyAndEnableMFA(c.Request.Context(), userID, req.Code)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
@@ -243,7 +257,7 @@ func (h *AuthHandler) VerifyAndEnableMFA(c *gin.Context) {
 // @Produce json
 // @Param request body models.CreateUserRequest true "User registration details"
 // @Success 201 {object} models.SuccessResponse{data=models.CreateUserResponse} "Returns created user ID"
-// @Failure 400 {object} models.ErrorResponse "Invalid request format, email format, password requirements not met, or email already exists"
+// @Failure 400 {object} models.ErrorResponse "Invalid request format, email format, or password requirements not met"
 // @Failure 500 {object} models.ErrorResponse "User creation failed"
 // @Router /users [post]
 func (h *AuthHandler) CreateUser(c *gin.Context) {
@@ -257,10 +271,6 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 	resp, err := h.authService.CreateUser(c.Request.Context(), &req)
 	if err != nil {
 		errStr := err.Error()
-		if errStr == pkgerrors.ErrEmailAlreadyExists {
-			c.JSON(http.StatusConflict, models.NewErrorResponse(errStr))
-			return
-		}
 		if errStr == pkgerrors.ErrUnauthorized {
 			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
 			return
@@ -294,8 +304,8 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /users/{user_id} [put]
 func (h *AuthHandler) UpdateUser(c *gin.Context) {
-	adminID, exists := c.Get("user_id")
-	if !exists {
+	adminID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -327,7 +337,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	// Update user
 	if err := h.authService.UpdateUser(
 		c.Request.Context(),
-		adminID.(string),
+		adminID,
 		userID,
 		&req,
 		isSuperUser,
@@ -358,7 +368,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	// Fetch and return the updated user
 	updatedUser, err := h.authService.GetUser(
 		c.Request.Context(),
-		adminID.(string),
+		adminID,
 		userID,
 		c.GetBool("is_superuser"),
 		c.GetBool("is_admin"),
@@ -389,8 +399,8 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Operation failed"
 // @Router /users/password/change [post]
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -402,7 +412,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	err := h.authService.ChangePassword(c.Request.Context(), userID.(string), &req)
+	err := h.authService.ChangePassword(c.Request.Context(), userID, &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
@@ -433,10 +443,6 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 
 	if err := h.authService.ResetPassword(c.Request.Context(), &req); err != nil {
 		errStr := err.Error()
-		if errStr == pkgerrors.ErrUserNotFound {
-			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
-			return
-		}
 		if errStr == pkgerrors.ErrUnauthorized || errStr == pkgerrors.ErrTooManyAttempts {
 			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
 			return
@@ -467,8 +473,8 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /sessions/revoke [post]
 func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
-	adminID, exists := c.Get("user_id")
-	if !exists {
+	adminID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -482,7 +488,7 @@ func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 
 	err := h.authService.RevokeUserSession(
 		c.Request.Context(),
-		adminID.(string),
+		adminID,
 		req.UserID,
 		req.MFACode,
 		c.GetBool("is_superuser"),
@@ -524,8 +530,8 @@ func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Operation failed"
 // @Router /users/mfa/disable [post]
 func (h *AuthHandler) DisableMFA(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -537,7 +543,7 @@ func (h *AuthHandler) DisableMFA(c *gin.Context) {
 		return
 	}
 
-	err := h.authService.DisableMFA(c.Request.Context(), userID.(string), req.MFACode)
+	err := h.authService.DisableMFA(c.Request.Context(), userID, req.MFACode)
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		if err.Error() == pkgerrors.ErrUnauthorized {
@@ -588,13 +594,13 @@ func (h *AuthHandler) RequestOTP(c *gin.Context) {
 // @Failure 404 {object} models.ErrorResponse "User not found"
 // @Router /users/me [get]
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
-	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID.(string))
+	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID)
 	if err != nil {
 		errStr := err.Error()
 		if errStr == pkgerrors.ErrUserNotFound {
@@ -630,15 +636,15 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /users [get]
 func (h *AuthHandler) ListUsers(c *gin.Context) {
-	adminID, exists := c.Get("user_id")
-	if !exists {
+	adminID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
 	users, err := h.authService.ListUsers(
 		c.Request.Context(),
-		adminID.(string),
+		adminID,
 		c.GetBool("is_superuser"),
 		c.GetBool("is_admin"),
 	)
@@ -670,8 +676,19 @@ func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.List
 	q := strings.ToLower(strings.TrimSpace(c.Query("q")))
 	sortField := c.DefaultQuery("sort", "email")
 	order := strings.ToLower(c.DefaultQuery("order", "asc"))
-	page, _ := strconv.Atoi(c.Query("page"))
-	limit, _ := strconv.Atoi(c.Query("limit"))
+
+	page := 0
+	if raw := c.Query("page"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			page = v
+		}
+	}
+	limit := 0
+	if raw := c.Query("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			limit = v
+		}
+	}
 
 	filtered := users
 	if q != "" {
@@ -684,12 +701,12 @@ func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.List
 	}
 
 	sort.SliceStable(filtered, func(i, j int) bool {
-		less := false
+		var cmp int
 		switch sortField {
 		case "status":
-			less = strings.ToLower(string(filtered[i].Status)) < strings.ToLower(string(filtered[j].Status))
+			cmp = strings.Compare(strings.ToLower(string(filtered[i].Status)), strings.ToLower(string(filtered[j].Status)))
 		case "mfa":
-			less = mfaSortKey(filtered[i]) < mfaSortKey(filtered[j])
+			cmp = strings.Compare(mfaSortKey(filtered[i]), mfaSortKey(filtered[j]))
 		case "pending":
 			pi, pj := "0", "0"
 			if filtered[i].PendingUpdates != nil {
@@ -698,20 +715,24 @@ func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.List
 			if filtered[j].PendingUpdates != nil {
 				pj = "1"
 			}
-			less = pi < pj
+			cmp = strings.Compare(pi, pj)
 		default:
-			less = strings.ToLower(filtered[i].Email) < strings.ToLower(filtered[j].Email)
+			cmp = strings.Compare(strings.ToLower(filtered[i].Email), strings.ToLower(filtered[j].Email))
+		}
+		if cmp == 0 {
+			return i < j
 		}
 		if order == "desc" {
-			return !less
+			return cmp > 0
 		}
-		return less
+		return cmp < 0
 	})
 
 	total := len(filtered)
 	if filtered == nil {
 		filtered = []models.UserResponse{}
 	}
+	// Omitting limit keeps the full list (documented admin UX); invalid/non-positive limit is treated as omit.
 	if limit <= 0 {
 		return models.ListUsersResponse{Users: filtered, Total: total, Page: 1, Limit: total}
 	}
@@ -747,8 +768,8 @@ func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.List
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /users/{user_id} [get]
 func (h *AuthHandler) GetUser(c *gin.Context) {
-	adminID, exists := c.Get("user_id")
-	if !exists {
+	adminID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -756,7 +777,7 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 	userID := c.Param("user_id")
 	user, err := h.authService.GetUser(
 		c.Request.Context(),
-		adminID.(string),
+		adminID,
 		userID,
 		c.GetBool("is_superuser"),
 		c.GetBool("is_admin"),
@@ -788,8 +809,8 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /users/{user_id} [delete]
 func (h *AuthHandler) DeleteUser(c *gin.Context) {
-	adminID, exists := c.Get("user_id")
-	if !exists {
+	adminID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -799,7 +820,7 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	// Delete user
 	if err := h.authService.DeleteUser(
 		c.Request.Context(),
-		adminID.(string),
+		adminID,
 		userID,
 		c.GetBool("is_superuser"),
 		c.GetBool("is_admin"),
@@ -837,8 +858,8 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 // @Router /users/request-update-from-admin [post]
 func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	// Extract user ID from context
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
@@ -868,7 +889,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 	}
 
 	// Call service
-	if err := h.authService.RequestUpdate(c.Request.Context(), userID.(string), &req); err != nil {
+	if err := h.authService.RequestUpdate(c.Request.Context(), userID, &req); err != nil {
 		slog.Error("Service RequestUpdate returned error", "error", err)
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
@@ -894,13 +915,13 @@ func (h *AuthHandler) ListPermissions(c *gin.Context) {
 	}
 
 	// Get user's groups for visibility filtering
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := contextUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
-	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID.(string))
+	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID)
 	if err != nil {
 		errStr := err.Error()
 		if errStr == pkgerrors.ErrUserNotFound {

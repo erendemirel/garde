@@ -43,6 +43,9 @@ services:
     # `CONFIG REWRITE` during failover removes the replicaof line permanently,
     # so a promoted Redis stays a primary across restarts.
     command: redis-server /etc/redis/redis.conf
+    environment:
+      # Prefer env over -a on the healthcheck argv (password stays out of ps).
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     volumes:
       - ../config/redis/redis.conf:/etc/redis/redis.conf
       - redis_data:/data
@@ -50,7 +53,7 @@ services:
       # Replication traffic between nodes travels over the mesh only.
       - "${NODE_WG_IP}:6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5

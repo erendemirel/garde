@@ -141,7 +141,7 @@ For internal services communicating within your infrastructure.
 - When `use_tls=true` and `tls_ca_path` is set: valid client certificate from your CA
 - Must use the same domain as the auth service (certificate CN/SAN checks on `/validate` when mTLS applies)
 
-**Topology:** Call `/validate` only from trusted services (private network). Pass the end-user `session_id` as a query parameter — IP/User-Agent binding is not applied on this path. Details: [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
+**Topology:** Call `/validate` only from trusted services (private network). Pass the end-user session ID with the **`X-Session-ID`** header (preferred; avoids access-log leakage). The `session_id` query parameter remains accepted for compatibility.
 
 Example request:
 ```http

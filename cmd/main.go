@@ -271,7 +271,7 @@ func main() {
 	}
 
 	// /validate: API key (+ mTLS when built-in TLS and a client CA are configured).
-	// No cookie/Bearer AuthMiddleware — services pass session_id as a query param.
+	// No cookie/Bearer AuthMiddleware — services pass session via X-Session-ID (preferred) or session_id query.
 	validateEndpoint := router.Group("/validate")
 	validateEndpoint.Use(func(c *gin.Context) {
 		useTLS := config.GetBool("USE_TLS")
@@ -354,9 +354,13 @@ func main() {
 		}
 
 		srv = &http.Server{
-			Addr:      ":" + port,
-			Handler:   router,
-			TLSConfig: tlsConfig,
+			Addr:              ":" + port,
+			Handler:           router,
+			TLSConfig:         tlsConfig,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      60 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		}
 
 		slog.Info("Starting server with TLS", "port", port)
@@ -368,8 +372,12 @@ func main() {
 		}()
 	} else {
 		srv = &http.Server{
-			Addr:    ":" + port,
-			Handler: router,
+			Addr:              ":" + port,
+			Handler:           router,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      60 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		}
 
 		slog.Warn("Starting server without TLS", "port", port)

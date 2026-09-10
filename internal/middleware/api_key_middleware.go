@@ -18,7 +18,8 @@ func APIKeyMiddleware() gin.HandlerFunc {
 
 		apiKey := c.GetHeader(APIKeyHeader)
 		expected := config.Get("API_KEY")
-		if subtle.ConstantTimeCompare([]byte(apiKey), []byte(expected)) != 1 {
+		// Empty configured key must never authenticate (ConstantTimeCompare("","")==1).
+		if expected == "" || subtle.ConstantTimeCompare([]byte(apiKey), []byte(expected)) != 1 {
 			slog.Info("Invalid API key attempt", "path", c.Request.URL.Path, "ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return

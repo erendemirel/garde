@@ -38,11 +38,20 @@
     - "{{ remote_root }}"
     - "{{ remote_root }}/compose"
     - "{{ remote_root }}/config"
-    - "{{ remote_root }}/data"
     - "{{ remote_root }}/backup"
     - "{{ remote_root }}/certs"
     - "{{ remote_root }}/configs"
     - "{{ remote_root }}/scripts"
+
+- name: Create the API data directory (UID matches Dockerfile nonroot)
+  # Bind-mounted as /app/data. The API process is USER 65532:65532; leaving this
+  # owned by deploy (0755) makes permissions.db creation and WAL files fail.
+  ansible.builtin.file:
+    path: "{{ remote_root }}/data"
+    state: directory
+    owner: "65532"
+    group: "65532"
+    mode: "0755"
 
 - name: Create the Vault credential directory
   # role-id and secret-id are written here by vault-cluster-init.sh.

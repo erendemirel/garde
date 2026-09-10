@@ -72,7 +72,7 @@ func StartWatcher() error {
 				if !ok {
 					return
 				}
-				if event.Op&(fsnotify.Write|fsnotify.Create) != 0 {
+				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename|fsnotify.Remove|fsnotify.Chmod) != 0 {
 					slog.Info("Config: Secret file changed, reloading", "file", filepath.Base(event.Name))
 
 					time.Sleep(100 * time.Millisecond)

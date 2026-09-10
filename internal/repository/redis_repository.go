@@ -42,6 +42,7 @@ type RedisRepository struct {
 var (
 	errRedisClientUnavailable = errors.New("redis client not initialized")
 	ErrConcurrentUpdate       = errors.New("concurrent update detected")
+	ErrEmailAlreadyExists     = errors.New("email already exists")
 )
 
 func NewRedisRepository() (*RedisRepository, error) {
@@ -256,7 +257,7 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 		return errRedisClientUnavailable
 	}
 
-	// Use Redis WATCH for optimistic locking
+	// Use Redis WATCH for optimistic locking on user + email index (create uniqueness).
 	txf := func(tx *redis.Tx) error {
 		// Get current data using ID as primary key
 		userKey := "user:" + user.ID
@@ -267,7 +268,16 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 			return err
 		}
 
-		if err != redis.Nil {
+		if err == redis.Nil {
+			// Creating: refuse if email index is already claimed by another user.
+			existingID, emailErr := tx.Get(ctx, emailIndexKey).Result()
+			if emailErr != nil && emailErr != redis.Nil {
+				return emailErr
+			}
+			if emailErr != redis.Nil && existingID != "" && existingID != user.ID {
+				return ErrEmailAlreadyExists
+			}
+		} else {
 			var currentUser models.User
 			if err := json.Unmarshal([]byte(current), &currentUser); err != nil {
 				return err
@@ -303,7 +313,7 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 
 	// Retry mechanism for optimistic locking
 	for i := 0; i < 3; i++ {
-		err := client.Watch(ctx, txf, "user:"+user.ID)
+		err := client.Watch(ctx, txf, "user:"+user.ID, "email_to_id:"+user.Email)
 		if err == nil {
 			return nil
 		}
@@ -673,26 +683,23 @@ func (r *RedisRepository) ClearUserSecurityData(ctx context.Context, userID, ema
 	}
 
 	keysToDelete := []string{
-		fmt.Sprintf("failed_login:%s", email),
-		fmt.Sprintf("failed_login_ip:%s", ip),
-		fmt.Sprintf("account_lock:%s", userID),
-		fmt.Sprintf("ip_block:%s", ip),
+		session.FailedLoginPrefix + email,
+		session.FailedLoginPrefix + session.HashString(ip),
+		session.IPBlockPrefix + session.HashString(ip),
 		requestWindowKey(userID),
 		fmt.Sprintf("last_request:%s", userID),
 		fmt.Sprintf("suspicious_activity:%s", userID),
-		fmt.Sprintf("active_session:%s", userID),
 		userSessionsKey(userID),
-		fmt.Sprintf("email_to_id:%s", email),
+		fmt.Sprintf("reset_attempts:%s", userID),
+		fmt.Sprintf("otp:%s", userID),
 	}
 
-	// Filter out empty keys - only include keys that have non-empty userID or email
 	var validKeys []string
 	for _, key := range keysToDelete {
-		// Include key if it contains userID (when userID is not empty) or email (when email is not empty)
-		if (userID != "" && strings.Contains(key, userID)) ||
-			(email != "" && strings.Contains(key, email)) {
-			validKeys = append(validKeys, key)
+		if key == "" || strings.HasSuffix(key, ":") {
+			continue
 		}
+		validKeys = append(validKeys, key)
 	}
 
 	if len(validKeys) > 0 {
@@ -729,6 +736,7 @@ func (r *RedisRepository) DeleteUser(ctx context.Context, userID string) error {
 	pipe.Del(ctx, fmt.Sprintf("reset_attempts:%s", userID))
 	pipe.Del(ctx, fmt.Sprintf("security_code:%s", userID))
 	pipe.Del(ctx, fmt.Sprintf("mfa_secret:%s", userID)) // legacy key name
+	pipe.Del(ctx, userSessionsKey(userID))
 
 	_, err = pipe.Exec(ctx)
 	return err
@@ -919,11 +927,7 @@ func (r *RedisRepository) TrackResetAttempt(ctx context.Context, userID string) 
 		client.Expire(ctx, key, 24*time.Hour)
 	}
 
-	// Check against max attempts
-	if int(attempts) > maxResetAttempts {
-		return int(attempts), fmt.Errorf("max reset attempts exceeded")
-	}
-
+	// Check against max attempts — return the count so callers can lock; do not error here.
 	return int(attempts), nil
 }
 
