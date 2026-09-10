@@ -4,6 +4,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"garde/pkg/config"
+	"net"
+	"strings"
+	"time"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -16,6 +19,15 @@ var (
 
 func SendMail(to, subject, body string) error {
 	return SendMailFunc(to, subject, body)
+}
+
+func sanitizeHeaderValue(v string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, v)
 }
 
 func defaultSendMail(to, subject, body string) error {
@@ -33,28 +45,35 @@ func defaultSendMail(to, subject, body string) error {
 		return fmt.Errorf("SMTP_FROM environment variable is not set")
 	}
 
-	// Format email message
+	to = sanitizeHeaderValue(to)
+	subject = sanitizeHeaderValue(subject)
+	from = sanitizeHeaderValue(from)
+
 	msg := fmt.Sprintf("From: %s\r\n"+
 		"To: %s\r\n"+
 		"Subject: %s\r\n"+
+		"Content-Type: text/plain; charset=UTF-8\r\n"+
 		"\r\n"+
-		"Content-Type: text/plain; charset=UTF-8\r\n\r\n"+
 		"%s", from, to, subject, body)
 
-	// Connect with TLS
-	client, err := smtp.DialStartTLS(
-		fmt.Sprintf("%s:%s", smtpHost, smtpPort),
-		&tls.Config{
-			ServerName: smtpHost,
-			MinVersion: tls.VersionTLS12,
-		},
-	)
+	addr := net.JoinHostPort(smtpHost, smtpPort)
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	rawConn, err := dialer.Dial("tcp", addr)
 	if err != nil {
+		return fmt.Errorf("failed to connect to mail server")
+	}
+	_ = rawConn.SetDeadline(time.Now().Add(30 * time.Second))
+
+	client, err := smtp.NewClientStartTLS(rawConn, &tls.Config{
+		ServerName: smtpHost,
+		MinVersion: tls.VersionTLS12,
+	})
+	if err != nil {
+		_ = rawConn.Close()
 		return fmt.Errorf("failed to connect to mail server")
 	}
 	defer client.Close()
 
-	// Authenticate if credentials are provided
 	if smtpUser != "" && smtpPassword != "" {
 		auth := sasl.NewPlainClient("", smtpUser, smtpPassword)
 		if err := client.Auth(auth); err != nil {
@@ -62,7 +81,6 @@ func defaultSendMail(to, subject, body string) error {
 		}
 	}
 
-	// Set sender and recipients
 	if err := client.Mail(from, nil); err != nil {
 		return fmt.Errorf("failed to set sender")
 	}
@@ -70,7 +88,6 @@ func defaultSendMail(to, subject, body string) error {
 		return fmt.Errorf("failed to add recipient")
 	}
 
-	// Send the email
 	w, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("failed to start data")

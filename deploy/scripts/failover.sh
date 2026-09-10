@@ -158,8 +158,8 @@ else
 fi
 
 # garde must not be running while its database file is replaced.
-# The data directory is root-owned (written by the container), and the deploy
-# user has no sudo, so the copy runs through a throwaway container.
+# The API image runs as UID 65532; the deploy user has no sudo, so the copy
+# runs through a throwaway container and chowns for that UID.
 run on_node "$TO_NODE" "
   set -e
   cd '$REMOTE_ROOT'
@@ -168,7 +168,7 @@ run on_node "$TO_NODE" "
     -v '$REMOTE_ROOT/backup/permissions.db:/src/permissions.db:ro' \
     -v '$REMOTE_ROOT/data:/data' \
     alpine:3.19 \
-    sh -c 'cp /src/permissions.db /data/permissions.db && rm -f /data/permissions.db-wal /data/permissions.db-shm && chmod 644 /data/permissions.db'
+    sh -c 'cp /src/permissions.db /data/permissions.db && rm -f /data/permissions.db-wal /data/permissions.db-shm && chown -R 65532:65532 /data && chmod 644 /data/permissions.db'
 "
 ok "permissions.db installed"
 

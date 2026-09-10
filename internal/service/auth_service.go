@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -559,15 +560,16 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		return nil, fmt.Errorf(errors.ErrUnauthorized)
 	}
 
-	// Block public creation of configured admin users; they are initialized from secrets
+	// Block public creation of configured admin users; they are initialized from secrets.
+	// Same opaque success as duplicate emails to avoid account enumeration.
 	if isAdminEmail(req.Email) {
-		return nil, fmt.Errorf(errors.ErrUnauthorized)
+		return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
 	}
 
-	// Check if email already exists
+	// Check if email already exists — do not reveal this to the client.
 	existingUser, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err == nil && existingUser != nil {
-		return nil, fmt.Errorf(errors.ErrEmailAlreadyExists)
+		return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
 	}
 
 	// Password is required for new users
@@ -597,6 +599,10 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	user.Permissions = DefaultPermissions()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
+		// Concurrent create of the same email — still look like success.
+		if stderrors.Is(err, repository.ErrEmailAlreadyExists) {
+			return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
+		}
 		return nil, fmt.Errorf(errors.ErrUserCreationFailed)
 	}
 
@@ -1066,29 +1072,13 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 }
 
 func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordResetRequest) error {
-	// Get user
+	// Get user — unknown emails and superuser use the same InvalidOTP path to avoid enumeration.
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
-		return fmt.Errorf(errors.ErrUserNotFound)
+		return fmt.Errorf(errors.ErrInvalidOTP)
 	}
-
-	// Don't allow reset for superuser
 	if user.Email == config.Get("SUPERUSER_EMAIL") {
-		return fmt.Errorf(errors.ErrUnauthorized)
-	}
-
-	// Check attempts
-	attempts, err := s.repo.TrackResetAttempt(ctx, user.ID)
-	if err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
-	}
-	if attempts > maxResetAttempts {
-		// Lock user account
-		user.Status = models.UserStatusLockedBySecurity
-		if err := s.repo.StoreUser(ctx, user); err != nil {
-			return fmt.Errorf(errors.ErrOperationFailed)
-		}
-		return fmt.Errorf(errors.ErrTooManyAttempts)
+		return fmt.Errorf(errors.ErrInvalidOTP)
 	}
 
 	// Verify OTP first and delete it immediately after verification
@@ -1101,6 +1091,18 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	defer s.repo.DeleteOTP(ctx, user.ID)
 
 	if valid, err := crypto.VerifyPassword(req.OTP, storedOTP); err != nil || !valid {
+		// Count only after a real OTP failure (not before verification / not for unknown emails).
+		attempts, trackErr := s.repo.TrackResetAttempt(ctx, user.ID)
+		if trackErr != nil {
+			return fmt.Errorf(errors.ErrOperationFailed)
+		}
+		if attempts > maxResetAttempts {
+			user.Status = models.UserStatusLockedBySecurity
+			if err := s.repo.StoreUser(ctx, user); err != nil {
+				return fmt.Errorf(errors.ErrOperationFailed)
+			}
+			return fmt.Errorf(errors.ErrTooManyAttempts)
+		}
 		return fmt.Errorf(errors.ErrInvalidOTP)
 	}
 

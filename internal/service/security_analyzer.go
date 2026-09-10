@@ -176,24 +176,22 @@ func (d *SecurityAnalyzer) CleanupSecurityRecords(ctx context.Context, userID, e
 		fmt.Sprintf("suspicious_activity:%s", userID),
 	}
 
-	// Clean up other security related records
+	// Clean up other security related records (IP keys use hashed values, matching writers).
 	securityKeys := []string{
-		fmt.Sprintf("failed_login:%s", email),
-		fmt.Sprintf("failed_login_ip:%s", ip),
-		fmt.Sprintf("account_lock:%s", email),
-		fmt.Sprintf("ip_block:%s", ip),
-		fmt.Sprintf("active_session:%s", email),
+		session.FailedLoginPrefix + email,
+		session.FailedLoginPrefix + session.HashString(ip),
+		session.IPBlockPrefix + session.HashString(ip),
 	}
 
 	// Combine all keys
 	keys := append(analyzerKeys, securityKeys...)
 
-	// Filter out empty keys (when email or ip is not provided)
 	var validKeys []string
 	for _, key := range keys {
-		if !strings.Contains(key, ":") || strings.Contains(key, userID) {
-			validKeys = append(validKeys, key)
+		if key == "" || strings.HasSuffix(key, ":") {
+			continue
 		}
+		validKeys = append(validKeys, key)
 	}
 
 	if len(validKeys) > 0 {

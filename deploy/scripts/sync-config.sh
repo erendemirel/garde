@@ -226,6 +226,9 @@ for node in $TARGETS; do
     "$STAGE/.env" "$(ssh_target "$node"):$REMOTE_ROOT/.env"
 
   on_node "$node" "chmod 600 '$REMOTE_ROOT/.env' && mkdir -p '$REMOTE_ROOT/vault' '$REMOTE_ROOT/data' '$REMOTE_ROOT/backup' '$REMOTE_ROOT/certs' '$REMOTE_ROOT/configs'"
+  # API runs as UID 65532; bind-mounted data/ must be writable by that user.
+  on_node "$node" "docker run --rm -v '$REMOTE_ROOT/data:/data' alpine:3.19 \
+    sh -c 'chown -R 65532:65532 /data && chmod 755 /data'"
 
   # --- Redis config: created once, then owned by Redis ---------------------
   if [ "$role" = "app-primary" ] || [ "$role" = "app-standby" ]; then

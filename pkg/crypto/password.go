@@ -47,6 +47,12 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 		return false, err
 	}
 
+	// salt (16) + argon2id key (32) as produced by HashPassword
+	const encodedLen = 16 + 32
+	if len(decoded) != encodedLen {
+		return false, nil
+	}
+
 	salt := decoded[:16]
 	storedHash := decoded[16:]
 

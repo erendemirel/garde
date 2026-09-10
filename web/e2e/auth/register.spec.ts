@@ -65,8 +65,8 @@ test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focu
 		});
 	});
 
-	test.describe('API errors', () => {
-		test('shows an error when registering an email that already exists', async ({
+	test.describe('duplicate registration', () => {
+		test('returns the same success UX when email already exists (no enumeration)', async ({
 			page,
 			ephemeralUser
 		}) => {
@@ -80,11 +80,12 @@ test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focu
 			);
 			await page.getByTestId('register-submit').click();
 			const res = await registerResponse;
-			expect(res.ok()).toBeFalsy();
+			expect(res.status()).toBe(201);
 
-			await expect(page.getByTestId('register-error')).toBeVisible();
-			await expect(page.getByTestId('register-form')).toBeVisible();
-			await expect(page.getByTestId('register-success-panel')).toHaveCount(0);
+			await expect(page.getByTestId('register-success-panel')).toBeVisible();
+			await expect(page.getByTestId('register-success')).toContainText('admin approval');
+			await expect(page.getByTestId('register-form')).toHaveCount(0);
+			await expect(page.getByTestId('register-error')).toHaveCount(0);
 		});
 	});
 });
