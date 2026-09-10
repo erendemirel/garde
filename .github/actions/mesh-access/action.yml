@@ -238,17 +238,20 @@ runs:
         load_inventory
         unreachable=""
         for node in $NODES; do
-          if on_node "$node" true 2>/dev/null; then
+          err="$(on_node "$node" true 2>&1)" && {
             echo "  ok   $node"
-          else
-            echo "  down $node"
-            unreachable="$unreachable $node"
-          fi
+            continue
+          }
+          echo "  down $node"
+          # Surface the real reason (host key, identity, tunnel) — 2>/dev/null hid it.
+          printf '%s\n' "$err" | sed 's/^/         /' | tail -n 8
+          unreachable="$unreachable $node"
         done
         if [ -n "${unreachable// /}" ]; then
           echo "unreachable:$unreachable" >> "$GITHUB_STEP_SUMMARY"
           if [ "$REQUIRE_ALL" = "true" ]; then
             echo "::error::unreachable nodes:$unreachable"
+            echo "::error::For AWS/GCP tunnel mode, DEPLOY_KNOWN_HOSTS must pin HostKeyAlias names (garde-node1, …), not mesh IPs. DEPLOY_SSH_KEY must be the deploy user private key."
             exit 1
           fi
           echo "::warning::continuing with unreachable nodes:$unreachable"
