@@ -26,6 +26,19 @@ func NewAPIKeyHandler(repo *repository.RedisRepository) *APIKeyHandler {
 	return &APIKeyHandler{repo: repo}
 }
 
+// @Summary List grantable API key scopes
+// @Description Returns the closed vocabulary of scopes that may be attached to a per-tenant API key. The UI sources this list rather than hardcoding names, so a new scope is available as soon as the server knows it. Only superuser can perform this operation.
+// @Tags Superuser Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=[]models.APIKeyScopeInfo} "Known scopes"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
+// @Router /admin/api-key-scopes [get]
+func (h *APIKeyHandler) ListAPIKeyScopes(c *gin.Context) {
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.AllAPIKeyScopes()))
+}
+
 // @Summary Issue a service API key
 // @Description Creates a per-tenant API key for calling /validate. client_id names the holder, name labels this key, and scopes must be listed explicitly - there is no default grant. Lifetime is bounded unless never_expires is set: omitting expires_in gives 90 days, and it may not exceed 8760h. The plaintext key is returned once, in this response, and cannot be retrieved again. Only superuser can perform this operation.
 // @Tags Superuser Routes

@@ -41,6 +41,7 @@ func apiKeyRouter(h *APIKeyHandler) *gin.Engine {
 	})
 	router.POST("/admin/api-keys", h.CreateAPIKey)
 	router.GET("/admin/api-keys", h.ListAPIKeys)
+	router.GET("/admin/api-key-scopes", h.ListAPIKeyScopes)
 	router.DELETE("/admin/clients/:client_id/api-keys", h.RevokeClientAPIKeys)
 	return router
 }
@@ -299,5 +300,36 @@ func TestResolveAPIKeyExpiry(t *testing.T) {
 				t.Fatalf("expiry = %v, want %v", got, want)
 			}
 		})
+	}
+}
+
+// The UI sources this list rather than hardcoding names. An empty response
+// would leave the issue form unable to grant anything.
+func TestListAPIKeyScopes(t *testing.T) {
+	router := apiKeyRouter(newAPIKeyTestHandler(t))
+	req := httptest.NewRequest(http.MethodGet, "/admin/api-key-scopes", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var envelope struct {
+		Data []models.APIKeyScopeInfo `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Data) == 0 {
+		t.Fatal("expected at least one grantable scope")
+	}
+	for _, scope := range envelope.Data {
+		if !models.IsKnownAPIKeyScope(scope.Name) {
+			t.Fatalf("listed scope %q is not accepted by IsKnownAPIKeyScope", scope.Name)
+		}
+		if scope.Description == "" {
+			t.Fatalf("scope %q has no description for the UI", scope.Name)
+		}
 	}
 }

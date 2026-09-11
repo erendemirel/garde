@@ -384,6 +384,7 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 		superuserProtected.GET("/admin/users/management", authHandler.GetAdminUserManagement)
 
 		// Per-tenant credentials for external callers of /validate
+		superuserProtected.GET("/admin/api-key-scopes", deps.apiKeyHandler.ListAPIKeyScopes)
 		superuserProtected.POST("/admin/api-keys", deps.apiKeyHandler.CreateAPIKey)
 		superuserProtected.GET("/admin/api-keys", deps.apiKeyHandler.ListAPIKeys)
 		superuserProtected.DELETE("/admin/api-keys/:key_id", deps.apiKeyHandler.RevokeAPIKey)

@@ -7,8 +7,28 @@ import "time"
 // the shape of records already in Redis.
 const ScopeValidate = "validate"
 
+// APIKeyScopeInfo is the operator-facing description of one grantable scope.
+// The UI sources this list from the server so adding a scope does not need a
+// frontend release, and so the UI cannot offer a name the server rejects.
+type APIKeyScopeInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 func IsKnownAPIKeyScope(scope string) bool {
 	return scope == ScopeValidate
+}
+
+// AllAPIKeyScopes is the closed vocabulary CreateAPIKey accepts. Keep this and
+// IsKnownAPIKeyScope in lockstep: every name listed here must pass the check,
+// and every name the check accepts must appear here.
+func AllAPIKeyScopes() []APIKeyScopeInfo {
+	return []APIKeyScopeInfo{
+		{
+			Name:        ScopeValidate,
+			Description: "Call /validate to check whether a session is still valid",
+		},
+	}
 }
 
 // ServiceAPIKey is a credential issued to a single calling service or tenant,

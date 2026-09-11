@@ -38,6 +38,8 @@ e2e/
 
     superuser/             # Superuser console
 
+      superuser-api-keys.spec.ts  # Issue/revoke per-tenant keys + /validate auth
+
     regular/               # Ephemeral regular-user perspective
 
       dashboard.spec.ts
@@ -46,9 +48,10 @@ e2e/
 
     user-detail/           # /admin/users/:id (primarily superuser; scope test uses admin)
 
-  journeys/                # Multi-actor or multi-step flows (named by domain)
+    journeys/                # Multi-actor or multi-step flows (named by domain)
 
-    registration.spec.ts   # Pending-account approve/reject + actor handoffs
+      api-keys.spec.ts       # @journey — issue → validate → rotate → revoke → wipe holder
+      registration.spec.ts   # Pending-account approve/reject + actor handoffs
 
     request-update.spec.ts # Form UX, decisions, dashboard outcomes, handoffs
 

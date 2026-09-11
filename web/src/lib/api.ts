@@ -298,3 +298,70 @@ export const getAllPermissionVisibility = () =>
 export const getAdminUserManagement = () =>
 	request<Record<string, string[]>>('/admin/users/management');
 
+// Per-tenant API keys (superuser only) — credentials for external /validate callers
+export interface APIKeyScopeInfo {
+	name: string;
+	description: string;
+}
+
+export interface APIKeyInfo {
+	id: string;
+	client_id: string;
+	name: string;
+	scopes: string[];
+	rate_limit?: number;
+	created_at: string;
+	created_by?: string;
+	expires_at?: string | null;
+	revoked_at?: string | null;
+	last_used_at?: string | null;
+}
+
+export interface CreateAPIKeyResult extends APIKeyInfo {
+	/** Plaintext shown once; never returned by list/get again. */
+	key: string;
+}
+
+export interface ListAPIKeysResult {
+	keys: APIKeyInfo[];
+	total: number;
+}
+
+export interface RevokeClientAPIKeysResult {
+	client_id: string;
+	keys: APIKeyInfo[];
+	revoked: number;
+}
+
+export interface CreateAPIKeyInput {
+	client_id: string;
+	name: string;
+	scopes: string[];
+	expires_in?: string;
+	never_expires?: boolean;
+	rate_limit?: number;
+}
+
+export const listAPIKeyScopes = () => request<APIKeyScopeInfo[]>('/admin/api-key-scopes');
+
+export const listAPIKeys = (client_id?: string) => {
+	const q = client_id ? `?client_id=${encodeURIComponent(client_id)}` : '';
+	return request<ListAPIKeysResult>(`/admin/api-keys${q}`);
+};
+
+export const createAPIKey = (input: CreateAPIKeyInput) =>
+	request<CreateAPIKeyResult>('/admin/api-keys', {
+		method: 'POST',
+		body: JSON.stringify(input)
+	});
+
+export const revokeAPIKey = (key_id: string) =>
+	request<APIKeyInfo>(`/admin/api-keys/${encodeURIComponent(key_id)}`, {
+		method: 'DELETE'
+	});
+
+export const revokeClientAPIKeys = (client_id: string) =>
+	request<RevokeClientAPIKeysResult>(
+		`/admin/clients/${encodeURIComponent(client_id)}/api-keys`,
+		{ method: 'DELETE' }
+	);
