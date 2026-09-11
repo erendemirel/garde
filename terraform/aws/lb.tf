@@ -161,7 +161,7 @@ resource "aws_security_group" "lb" {
   }
 
   egress {
-    description = "To the nodes' Caddy"
+    description = "To the nodes Caddy (HTTP)"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
