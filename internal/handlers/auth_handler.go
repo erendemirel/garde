@@ -143,7 +143,7 @@ type ValidateResponse struct {
 }
 
 // @Summary Validate a session
-// @Description Validates a session token. Require API key + mTLS. No other type of authentication is supported
+// @Description Validates a session token for a calling service. Requires the API key, plus a client certificate on any listener configured to verify one — which is the private service listener in the recommended layout. Cookie and Bearer authentication are not accepted.
 // @Tags For Internal Services
 // @Accept json
 // @Produce json
@@ -287,7 +287,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 }
 
 // @Summary Update user information
-// @Description Update user details or process pending update requests. Requires admin privileges. Requires permissions/groups system to be initialized (SQLite-based). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user).
+// @Description Update user details or process pending update requests. Requires admin privileges. Admins cannot target their own record; only the superuser may update themselves. Requires permissions/groups system to be initialized (SQLite-based). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:write scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -459,7 +459,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 }
 
 // @Summary Revoke user sessions
-// @Description Revokes all active sessions for a user. Requires permissions/groups system to be initialized (SQLite-based).
+// @Description Revokes all active sessions for a user. Requires permissions/groups system to be initialized (SQLite-based). An admin listed in ADMIN_SCOPES_JSON also needs the garde:sessions:revoke scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -619,7 +619,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 }
 
 // @Summary List users
-// @Description Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (SQLite-based).
+// @Description Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (SQLite-based). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:read scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -754,7 +754,7 @@ func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.List
 }
 
 // @Summary Get user details
-// @Description Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (SQLite-based).
+// @Description Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (SQLite-based). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:read scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -795,7 +795,7 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 }
 
 // @Summary Delete user
-// @Description Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (SQLite-based) for admin operations.
+// @Description Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (SQLite-based) for admin operations. An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:delete scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json

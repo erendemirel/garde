@@ -11,7 +11,7 @@ nodes and sometimes cause a brief outage on purpose.
 
 ```bash
 export REDIS_PASSWORD=... ASSUME_YES=true
-# plus provider credentials (AWS_*, etc.) already in the environment
+# AWS: AWS_PROFILE=default (or export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
 
 ./deploy/tests/run.sh bringup         # bring-up.sh offline + doctor
 ./deploy/tests/run.sh deploy          # post-deploy / smoke

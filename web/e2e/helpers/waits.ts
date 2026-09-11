@@ -243,6 +243,16 @@ export async function waitForAdminManagement(page: Page, timeout = LOAD_TIMEOUT)
 	);
 }
 
+/** Superuser API keys panel — ready when loading clears (list or empty state). */
+export async function waitForApiKeysPanel(page: Page, timeout = LOAD_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
+	const ready = page
+		.getByTestId('api-keys-client-list')
+		.or(page.getByTestId('api-keys-empty'))
+		.or(page.getByTestId('api-keys-error'));
+	await waitOutOfLoading(page, 'api-keys-loading', ready, timeout);
+}
+
 /** Wait until a specific admin row is rendered (users cache + management map settled). */
 export async function waitForAdminManagementRow(
 	page: Page,

@@ -2,6 +2,7 @@ import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import {
 	waitForAdminManagement,
+	waitForApiKeysPanel,
 	waitForPageShell,
 	waitForSuperuserCatalog,
 	waitForUsersList,
@@ -19,7 +20,9 @@ test.describe('Superuser console', describeTags(TAG.superuser, TAG.focused), () 
 		await waitForUsersList(page);
 	});
 
-	test('switches through catalog and management tabs', async ({ superuserPage: page }) => {
+	test('switches through catalog, management, and API keys tabs', async ({
+		superuserPage: page
+	}) => {
 		await page.goto('/superuser');
 		await waitForPageShell(page, 'superuser-page');
 		await page.getByTestId('superuser-tab-permissions').click();
@@ -37,5 +40,9 @@ test.describe('Superuser console', describeTags(TAG.superuser, TAG.focused), () 
 		await page.getByTestId('superuser-tab-admin-management').click();
 		await expect(page.getByTestId('superuser-admin-management-panel')).toBeVisible();
 		await waitForAdminManagement(page);
+
+		await page.getByTestId('superuser-tab-api-keys').click();
+		await expect(page.getByTestId('superuser-panel-api-keys')).toBeVisible();
+		await waitForApiKeysPanel(page);
 	});
 });

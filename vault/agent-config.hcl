@@ -92,6 +92,70 @@ template {
   destination = "/run/secrets/port"
 }
 
+# Client-certificate policy for the public listener: off (default), optional or
+# required. Leave it off for anything browsers reach.
+template {
+  contents = "{{ with secret \"secret/data/garde/browser_mtls\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/browser_mtls"
+  error_on_missing_key = false
+}
+
+# The private service listener that carries /validate. When it is on, /validate
+# leaves the public listener unless public_validate says otherwise.
+template {
+  contents = "{{ with secret \"secret/data/garde/service_listener\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/service_listener"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/service_port\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/service_port"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/service_mtls\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/service_mtls"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/service_tls_cert_path\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/service_tls_cert_path"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/service_tls_key_path\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/service_tls_key_path"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/service_tls_ca_path\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/service_tls_ca_path"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/public_validate\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/public_validate"
+  error_on_missing_key = false
+}
+
+# Whether the shared api_key authenticates /validate when that endpoint is
+# served on the public listener. garde will not start without it, because one
+# secret held by every caller, in front of an endpoint that can validate any
+# user's session, is not a posture to inherit by accident. Set it false and
+# issue per-caller keys instead; true keeps the older single-listener
+# behaviour. Leave the key unset when service_listener is on.
+template {
+  contents = "{{ with secret \"secret/data/garde/public_validate_shared_key\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/public_validate_shared_key"
+  error_on_missing_key = false
+}
+
 template {
   contents = "{{ with secret \"secret/data/garde/api_key\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/api_key"
@@ -106,6 +170,15 @@ template {
 template {
   contents = "{{ with secret \"secret/data/garde/admin_users_json\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/admin_users_json"
+}
+
+# Optional. Absent means every admin keeps the full admin bundle, which is the
+# behaviour that predates admin scopes. Present, it narrows the admins it
+# names: {"helpdesk@example.com":["garde:users:read","garde:users:write"]}
+template {
+  contents = "{{ with secret \"secret/data/garde/admin_scopes_json\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/admin_scopes_json"
+  error_on_missing_key = false
 }
 
 template {

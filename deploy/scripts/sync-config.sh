@@ -64,6 +64,19 @@ EOF
 # zone genuinely lives somewhere else (rare; not the supported path).
 dns_provider() { printf '%s' "${DNS_PROVIDER:-${PROVIDER:?PROVIDER missing from inventory}}"; }
 
+# Which Caddyfile the nodes get. In the managed-load-balancer lane the platform
+# terminates TLS, so Caddy neither issues certificates nor answers 443 — it
+# stays only for Host-based routing between the UI and the API.
+edge_mode() {
+  if [ "$(traffic_mode)" = "managed_lb" ]; then printf 'lb'; else printf 'acme'; fi
+}
+
+# Whose DNS API Caddy needs credentials for, or 'none' when the platform owns
+# the certificate and there is no challenge to answer.
+acme_credentials_provider() {
+  if [ "$(edge_mode)" = "acme" ]; then dns_provider; else printf 'none'; fi
+}
+
 # Emit the Caddy acme_dns block for the active DNS provider. Credentials stay
 # as Caddy env placeholders; the values land in the node .env below.
 acme_dns_block() {
@@ -132,7 +145,16 @@ require_dns_secrets() {
   esac
 }
 
-require_dns_secrets
+# Only the ACME lane needs DNS-01 credentials: in the managed-load-balancer
+# lane the certificate belongs to the platform (ACM, Google-managed) and no
+# host ever answers a challenge.
+if [ "$(edge_mode)" = "acme" ]; then
+  : "${ACME_EMAIL:?ACME_EMAIL is required when Caddy issues the certificates}"
+  require_dns_secrets
+else
+  : "${LB_TRUSTED_PROXIES:?set LB_TRUSTED_PROXIES to the load balancer source range when TRAFFIC_MODE=managed_lb}"
+  log "edge mode: managed load balancer — skipping ACME DNS-01 wiring"
+fi
 
 for node in $TARGETS; do
   require_node "$node"
@@ -150,11 +172,27 @@ for node in $TARGETS; do
   # Caddyfile is rendered per DNS provider so the standby renews against the
   # same API the A records live in. The ACME block is spliced in rather than
   # passed through render(): multiline values break @@KEY@@ substitution.
-  {
-    sed '/@@ACME_DNS_BLOCK@@/q' "$DEPLOY_DIR/config/caddy/Caddyfile.tpl" | sed '$d'
-    acme_dns_block
-    sed '1,/@@ACME_DNS_BLOCK@@/d' "$DEPLOY_DIR/config/caddy/Caddyfile.tpl"
-  } >"$STAGE/config/caddy/Caddyfile"
+  #
+  # The managed-load-balancer template has no ACME block to splice at all.
+  if [ "$(edge_mode)" = "acme" ]; then
+    {
+      sed '/@@ACME_DNS_BLOCK@@/q' "$DEPLOY_DIR/config/caddy/Caddyfile.tpl" | sed '$d'
+      acme_dns_block
+      sed '1,/@@ACME_DNS_BLOCK@@/d' "$DEPLOY_DIR/config/caddy/Caddyfile.tpl"
+    } >"$STAGE/config/caddy/Caddyfile"
+  else
+    cp "$DEPLOY_DIR/config/caddy/Caddyfile.lb.tpl" "$STAGE/config/caddy/Caddyfile"
+  fi
+
+  # Both templates block /validate at the edge. Drop the guard where the
+  # deployment serves external tenants. The snippet stays defined but unused,
+  # which Caddy is happy with, so flipping this back is one line either way.
+  if [ "$(public_validate)" = "true" ]; then
+    grep -v 'import no_public_validate' "$STAGE/config/caddy/Caddyfile" \
+      >"$STAGE/config/caddy/Caddyfile.published"
+    mv "$STAGE/config/caddy/Caddyfile.published" "$STAGE/config/caddy/Caddyfile"
+    log "public edge publishes /validate (per-tenant API keys required)"
+  fi
 
   # --- Vault Raft config: peers are every other node -----------------------
   retry_join=""
@@ -221,6 +259,18 @@ for node in $TARGETS; do
     printf 'REDIS_PASSWORD=%s\n' "${REDIS_PASSWORD:-}"
     printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "${GRAFANA_ADMIN_PASSWORD:-}"
     printf 'DNS_PROVIDER=%s\n' "$(dns_provider)"
+    # The service listener that carries /validate. Compose publishes it on the
+    # mesh address only; the firewall admits the mesh subnet and nothing else.
+    printf 'SERVICE_PORT=%s\n' "${SERVICE_PORT:-8444}"
+    # Where Caddy answers. In the managed-load-balancer lane the platform owns
+    # public TLS, so 443 is bound to loopback rather than published: leaving it
+    # open would expose a listener holding no valid certificate for the domain.
+    if [ "$(edge_mode)" = "lb" ]; then
+      printf 'CADDY_HTTP_PUBLISH=%s\n' "80:80"
+      printf 'CADDY_HTTPS_PUBLISH=%s\n' "127.0.0.1:8443:443"
+      printf 'CADDY_HTTPS_UDP_PUBLISH=%s\n' "127.0.0.1:8443:443/udp"
+      printf 'LB_TRUSTED_PROXIES=%s\n' "${LB_TRUSTED_PROXIES}"
+    fi
     # Vault awskms and the AWS provider both need a region in the host .env
     # (compose passes AWS_REGION into the Vault container).
     if [ -n "${VAULT_KMS_KEY_ID:-}" ] || [ "${PROVIDER}" = "aws" ]; then
@@ -228,7 +278,7 @@ for node in $TARGETS; do
       printf 'AWS_REGION=%s\n' "${AWS_REGION}"
     fi
     [ -n "${VAULT_KMS_KEY_ID:-}" ] && printf 'VAULT_KMS_KEY_ID=%s\n' "${VAULT_KMS_KEY_ID}"
-    case "$(dns_provider)" in
+    case "$(acme_credentials_provider)" in
       netcup)
         printf 'NETCUP_CUSTOMER_NUMBER=%s\n' "${NETCUP_CUSTOMER_NUMBER}"
         printf 'NETCUP_API_KEY=%s\n' "${NETCUP_API_KEY}"

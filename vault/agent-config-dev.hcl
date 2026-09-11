@@ -88,6 +88,15 @@ template {
   destination = "/run/secrets/api_key"
 }
 
+# Dev runs the single-listener layout, where garde will not start until this
+# says whether the shared api_key may authenticate the public /validate.
+# true is the usual dev answer: there is no per-caller key to test with yet.
+template {
+  contents = "{{ with secret \"secret/data/garde/public_validate_shared_key\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/public_validate_shared_key"
+  error_on_missing_key = false
+}
+
 template {
   contents = "{{ with secret \"secret/data/garde/mfa_encryption_key\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/mfa_encryption_key"
@@ -97,6 +106,15 @@ template {
 template {
   contents = "{{ with secret \"secret/data/garde/admin_users_json\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/admin_users_json"
+}
+
+# Optional. Absent means every admin keeps the full admin bundle, which is the
+# behaviour that predates admin scopes. Present, it narrows the admins it
+# names: {"helpdesk@example.com":["garde:users:read","garde:users:write"]}
+template {
+  contents = "{{ with secret \"secret/data/garde/admin_scopes_json\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/admin_scopes_json"
+  error_on_missing_key = false
 }
 
 template {

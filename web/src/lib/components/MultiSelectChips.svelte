@@ -8,7 +8,7 @@
 	export let selected = new Set();
 	/** @type {Set<string>} */
 	export let initial = new Set();
-	/** @type {'permission' | 'group'} */
+	/** @type {'permission' | 'group' | 'scope'} */
 	export let variant = 'permission';
 	export let placeholder = 'Search to add…';
 	export let label = '';
@@ -33,7 +33,8 @@
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
 	let searchTimer;
 
-	$: selectedStyle = variant === 'group' ? 'badge-group' : 'badge-permission';
+	$: selectedStyle =
+		variant === 'group' ? 'badge-group' : variant === 'scope' ? 'badge-scope' : 'badge-permission';
 
 	/** Selected chips, then pending removals (still visible until undo). */
 	$: trayItems = [

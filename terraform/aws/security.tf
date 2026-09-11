@@ -60,8 +60,10 @@ resource "aws_vpc_security_group_ingress_rule" "wireguard" {
   ip_protocol                  = "udp"
 }
 
+# floating_ip: the node holding the Elastic IP is the public edge, so it has to
+# answer the web ports from anywhere.
 resource "aws_vpc_security_group_ingress_rule" "http" {
-  for_each = toset(["80", "443"])
+  for_each = local.managed_lb ? toset([]) : toset(["80", "443"])
 
   description       = "Public edge"
   security_group_id = aws_security_group.nodes.id
@@ -69,6 +71,20 @@ resource "aws_vpc_security_group_ingress_rule" "http" {
   from_port         = tonumber(each.value)
   to_port           = tonumber(each.value)
   ip_protocol       = "tcp"
+}
+
+# managed_lb: the load balancer is the only client, it speaks plain HTTP inside
+# the VPC, and 443 on the host stays shut — the certificate lives on the ALB,
+# so anything answering 443 here would be serving the wrong one.
+resource "aws_vpc_security_group_ingress_rule" "http_from_lb" {
+  count = local.managed_lb ? 1 : 0
+
+  description                  = "Public edge, via the load balancer"
+  security_group_id            = aws_security_group.nodes.id
+  referenced_security_group_id = aws_security_group.lb[0].id
+  from_port                    = 80
+  to_port                      = 80
+  ip_protocol                  = "tcp"
 }
 
 # One endpoint per VPC is what lets the driver's ProxyCommand pass only an

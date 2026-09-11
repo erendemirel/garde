@@ -5,13 +5,14 @@
 	import { get } from 'svelte/store';
 	import { isSuperuser } from '$lib/stores';
 	import { onTabListKeydown } from '$lib/tabs';
-	import { Users, Ungroup, Blocks, Combine, ShieldUser } from 'lucide-svelte';
+	import { Users, Ungroup, Blocks, Combine, ShieldUser, KeyRound } from 'lucide-svelte';
 	import UsersListPanel from '$lib/components/UsersListPanel.svelte';
 	import SuperuserCatalogPanel from '$lib/components/SuperuserCatalogPanel.svelte';
 	import SuperuserVisibilityPanel from '$lib/components/SuperuserVisibilityPanel.svelte';
 	import SuperuserAdminManagementPanel from '$lib/components/SuperuserAdminManagementPanel.svelte';
+	import SuperuserApiKeysPanel from '$lib/components/SuperuserApiKeysPanel.svelte';
 
-	const TAB_IDS = ['users', 'permissions', 'groups', 'visibility', 'admin-management'];
+	const TAB_IDS = ['users', 'permissions', 'groups', 'visibility', 'admin-management', 'api-keys'];
 	const SUPERUSER_TABS = new Set(TAB_IDS);
 
 	let activeTab = 'users';
@@ -53,7 +54,7 @@
 			<div>
 				<h1 class="page-title">Superuser</h1>
 				<p class="section-subtitle">
-					Manage all users, permissions, groups, visibility, and admin scope
+					Manage all users, permissions, groups, visibility, admin scope, and API keys
 				</p>
 			</div>
 
@@ -145,6 +146,22 @@
 					<ShieldUser size={18} class="inline mr-2" />
 					Admin-User Management
 				</button>
+				<button
+					type="button"
+					role="tab"
+					id="tab-api-keys"
+					aria-controls="panel-api-keys"
+					tabindex={activeTab === 'api-keys' ? 0 : -1}
+					data-testid="superuser-tab-api-keys"
+					aria-selected={activeTab === 'api-keys'}
+					class="px-4 py-2 font-medium transition-colors {activeTab === 'api-keys'
+						? 'text-accent border-b-2 border-accent'
+						: 'text-muted hover:text-accent'}"
+					on:click={() => setActiveTab('api-keys')}
+				>
+					<KeyRound size={18} class="inline mr-2" />
+					API Keys
+				</button>
 			</div>
 
 			{#if activeTab === 'users'}
@@ -199,6 +216,15 @@
 					data-testid="superuser-panel-admin-management"
 				>
 					<SuperuserAdminManagementPanel />
+				</div>
+			{:else if activeTab === 'api-keys'}
+				<div
+					role="tabpanel"
+					id="panel-api-keys"
+					aria-labelledby="tab-api-keys"
+					data-testid="superuser-panel-api-keys"
+				>
+					<SuperuserApiKeysPanel />
 				</div>
 			{/if}
 		{/if}

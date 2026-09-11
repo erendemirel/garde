@@ -92,6 +92,9 @@ vault-unseal-keys.txt
 
 # Deployment: inventory, WireGuard keys/configs, netcup rate-limit state
 deploy/inventory.env
+# The service CA and the keys it issues. The CA key is not recoverable, so back
+# it up the way you back up vault-credentials.json — just not in git.
+deploy/pki/
 deploy/.wg/
 deploy/.traffic-last-move
 deploy/.ssh-config

@@ -7,10 +7,17 @@
 	export let wide = false;
 	/** When true, prefer focusing the dialog shell instead of the first input (keeps search closed). */
 	export let preferDialogFocus = false;
+	/**
+	 * When false, Escape and the overlay do not close the dialog. Used for the
+	 * one-time API key reveal: dismissing by accident loses a secret that
+	 * cannot be retrieved.
+	 */
+	export let dismissible = true;
 
 	const dispatch = createEventDispatcher();
 
 	function close() {
+		if (!dismissible) return;
 		open = false;
 		dispatch('close');
 	}
@@ -73,12 +80,16 @@
 
 {#if open}
 	<div class="modal-overlay">
-		<button
-			type="button"
-			class="absolute inset-0 h-full w-full cursor-default bg-transparent"
-			aria-label="Close dialog"
-			on:click={close}
-		></button>
+		{#if dismissible}
+			<button
+				type="button"
+				class="absolute inset-0 h-full w-full cursor-default bg-transparent"
+				aria-label="Close dialog"
+				on:click={close}
+			></button>
+		{:else}
+			<div class="absolute inset-0 h-full w-full bg-transparent" aria-hidden="true"></div>
+		{/if}
 		<div
 			class="modal-content relative z-10"
 			class:modal-content-wide={wide}

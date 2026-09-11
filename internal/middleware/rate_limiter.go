@@ -22,6 +22,7 @@ const (
 	defaultAdminRequests         = 1000 // Even higher for admins/superusers
 	rateLimitPrefix              = "rate_limit:"
 	rateLimitUserPrefix          = "rate_limit_user:"
+	rateLimitAPIKeyPrefix        = "rate_limit_api_key:"
 )
 
 type RateLimiter struct {
@@ -191,6 +192,66 @@ func (rl *RateLimiter) LimitByUser() gin.HandlerFunc {
 
 		if count > int64(limit) {
 			slog.Warn("User rate limit exceeded", "user_id", userID, "count", count, "limit", limit)
+			c.JSON(http.StatusTooManyRequests, models.NewErrorResponse(errors.ErrTooManyRequests))
+			c.Abort()
+			return
+		}
+
+		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", limit))
+		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", limit-int(count)))
+		c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", time.Now().Add(rl.windowSize).Unix()))
+		c.Next()
+	}
+}
+
+// Per-key rate limiting for tenant-issued API keys. Must run after APIKeyAuth,
+// which is what sets the key id on the context.
+//
+// The IP tier is not sufficient for this traffic: several tenants can reach us
+// from behind one NAT address, where the busiest of them would spend everyone
+// else's budget. A key's own RateLimit overrides the authenticated tier.
+func (rl *RateLimiter) LimitByAPIKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// RATE_LIMIT=0 disables every tier, per-key overrides included.
+		if rl.maxReqs == 0 {
+			c.Next()
+			return
+		}
+
+		keyID := c.GetString(ContextAPIKeyID)
+		if keyID == "" {
+			c.Next()
+			return
+		}
+
+		limit := rl.authenticatedMaxReqs
+		if perKey := c.GetInt(contextAPIKeyRateLimit); perKey > 0 {
+			limit = perKey
+		}
+		if limit <= 0 {
+			c.Next()
+			return
+		}
+
+		key := fmt.Sprintf("%s%s", rateLimitAPIKeyPrefix, keyID)
+		if err := rl.repo.IncrementRequestCount(c.Request.Context(), key, rl.windowSize); err != nil {
+			slog.Error("Failed to increment API key rate limit count", "error", err, "api_key_id", keyID)
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
+			c.Abort()
+			return
+		}
+
+		count, err := rl.repo.GetRequestCount(c.Request.Context(), key, rl.windowSize)
+		if err != nil {
+			slog.Error("Failed to get API key rate limit count", "error", err, "api_key_id", keyID)
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(errors.ErrOperationFailed))
+			c.Abort()
+			return
+		}
+
+		if count > int64(limit) {
+			slog.Warn("API key rate limit exceeded",
+				"api_key_id", keyID, "name", c.GetString(ContextAPIKeyName), "count", count, "limit", limit)
 			c.JSON(http.StatusTooManyRequests, models.NewErrorResponse(errors.ErrTooManyRequests))
 			c.Abort()
 			return

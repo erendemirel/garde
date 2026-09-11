@@ -54,6 +54,26 @@
 # The host never gains a credential either way, which is the property the
 # original registry-free design existed to protect.
 
+# One more fact, also defaulted, describes *what* routing traffic means on
+# this provider rather than how the control plane gets in:
+#
+#   PROVIDER_TRAFFIC_MODES   floating_ip [managed_lb]   default: floating_ip
+#
+# `floating_ip` is the original model: one address, moved between hosts, and
+# the standby serves the instant it lands. Every VPS provider works this way.
+#
+# `managed_lb` exists because AWS and GCP answer this problem natively with a
+# load balancer in front of instances, and forcing the floating-IP shape onto
+# them costs real machinery - hosts with no public address, tunnels, staged
+# images - for a worse result. In that mode the balancer holds the public
+# address and the certificate, and "route traffic to this node" means "make
+# this node the registered target".
+#
+# The mode is chosen by TRAFFIC_MODE in the inventory, and the verbs do not
+# change: traffic.sh and failover.sh call provider_route_traffic_to either way.
+# Only the driver knows which mechanism is behind it.
+PROVIDER_TRAFFIC_MODES_DEFAULT="floating_ip"
+
 PROVIDER_ADMIN_ACCESS_DEFAULT="mesh"
 PROVIDER_IMAGE_TRANSPORT_DEFAULT="ssh"
 
@@ -95,6 +115,7 @@ load_provider() {
   PROVIDER_ADMIN_ACCESS="$PROVIDER_ADMIN_ACCESS_DEFAULT"
   PROVIDER_IMAGE_TRANSPORT="$PROVIDER_IMAGE_TRANSPORT_DEFAULT"
   PROVIDER_ADMIN_SSH_SOURCES="$PROVIDER_ADMIN_SSH_SOURCES_DEFAULT"
+  PROVIDER_TRAFFIC_MODES="$PROVIDER_TRAFFIC_MODES_DEFAULT"
 
   # shellcheck disable=SC1090
   . "$file"
@@ -129,7 +150,20 @@ $PROVIDER_NAME reaches hosts through a tunnel, so SSH does not arrive from the
         || die "driver '$name' declares url image transport but does not implement provider_publish_image()" ;;
     *) die "driver '$name' declares PROVIDER_IMAGE_TRANSPORT='$PROVIDER_IMAGE_TRANSPORT' (expected ssh or url)" ;;
   esac
+
+  case " $PROVIDER_TRAFFIC_MODES " in
+    *" $(traffic_mode) "*) ;;
+    *) die "\
+TRAFFIC_MODE='$(traffic_mode)' is not something $PROVIDER_NAME can do here.
+     This driver supports: $PROVIDER_TRAFFIC_MODES
+     managed_lb needs a load balancer the driver can repoint, which only the
+     hyperscaler drivers have." ;;
+  esac
 }
+
+# floating_ip unless the inventory says otherwise. Read through a function so
+# no caller has to remember the default.
+traffic_mode() { printf '%s' "${TRAFFIC_MODE:-floating_ip}"; }
 
 # True when the control plane reaches hosts through a provider-brokered tunnel
 # rather than over the WireGuard mesh.

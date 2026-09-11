@@ -52,7 +52,36 @@
     proto: tcp
     comment: public edge
   loop: ["80", "443"]
-  when: node_role in ['app-primary', 'app-standby']
+  when:
+    - node_role in ['app-primary', 'app-standby']
+    - garde_facts.edge_sources | default('') | length == 0
+
+# In the managed-load-balancer lane the edge is the platform's load balancer,
+# not the internet. It forwards plain HTTP inside the VPC, so only :80 is
+# opened and only to the ranges the balancer speaks from. Nothing answers 443
+# on the host at all: compose binds it to loopback there.
+- name: Allow HTTP from the load balancer only
+  community.general.ufw:
+    rule: allow
+    src: "{{ item }}"
+    port: "80"
+    proto: tcp
+    comment: load balancer edge
+  loop: "{{ garde_facts.edge_sources | default('') | split() }}"
+  when:
+    - node_role in ['app-primary', 'app-standby']
+    - garde_facts.edge_sources | default('') | length > 0
+
+- name: Deny public HTTPS where the load balancer terminates TLS
+  community.general.ufw:
+    rule: deny
+    port: "443"
+    proto: tcp
+    delete: true
+  when:
+    - node_role in ['app-primary', 'app-standby']
+    - garde_facts.edge_sources | default('') | length > 0
+  failed_when: false
 
 - name: Deny HTTP and HTTPS elsewhere
   # The witness has no edge role; keeping this explicit means a node that
@@ -77,6 +106,9 @@
     - { port: "8200", comment: "vault api" }
     - { port: "8201", comment: "vault raft cluster" }
     - { port: "6379", comment: "redis replication" }
+    # garde's service listener: /validate over mTLS, for calling services that
+    # are on the mesh. Never reachable from the edge.
+    - { port: "{{ garde_facts.service_port | default('8444') }}", comment: "garde service listener" }
     - { port: "9100", comment: "node exporter" }
     - { port: "8080", comment: "cadvisor" }
     - { port: "9090", comment: "prometheus" }

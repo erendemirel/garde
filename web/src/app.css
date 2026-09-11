@@ -148,6 +148,11 @@ a {
 		@apply rounded-full border-2 border-[#DED5DF] bg-[#DED5DF] text-[#857788];
 	}
 
+	/* API key scopes — distinct from permissions so operators do not conflate the two. */
+	.badge-scope {
+		@apply rounded-full border-2 border-emerald-100 bg-emerald-50 text-emerald-800;
+	}
+
 	/* Pending add/remove (multiselect tray + change summary) */
 	.chip-pending {
 		@apply border-[#fff6cc] bg-[#ffe570] text-[#2d1e2f];

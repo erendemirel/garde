@@ -19,8 +19,8 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 
 ## Features
 
-- **Security**: Rate limiting (IP-based for public endpoints, user-based with role-aware thresholds for authenticated endpoints), behavior detection, session security, input sanitization, request size limiting, Vault-managed secret rotation, mTLS, MFA<br>
-- **Authentication**: Three modes (browser, API, API key) with server side session management<br>
+- **Security**: Rate limiting (IP-based for public endpoints, user-based with role-aware thresholds for authenticated endpoints), behavior detection, session security, input sanitization, request size limiting, Vault-managed secret rotation, mTLS for service calls, MFA<br>
+- **Authentication**: Four modes (browser, API, service mTLS, per-tenant API key) with server side session management<br>
 - **Permissions**: Named permissions + groups with visibility controls (not OAuth scopes), plus a request/approval workflow. Superuser/Admin/User are bootstrap privilege tiers, separate from app permissions<br>
 - **Implementation**: Vault secrets, Argon2 password hashing, MFA secrets encrypted at rest, secure error handling, privacy protection<br>
 - **Hot Reload**: Selected secrets and credentials reload without restart (see below)<br>
@@ -36,7 +36,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 #### Three Authentication Modes:
 - **Browser Authentication**: Traditional web login with secure HTTP-only cookies
 - **API Authentication**: Direct API calls using session tokens
-- **API Key Authentication**: Service-to-service communication with API keys and mTLS
+- **API Key Authentication**: Service-to-service communication with API keys, and client certificates on the private service listener
 
 #### Hierarchical Admin System:
 - **Superuser**: Single privileged user with unlimited access (defined by email)
@@ -69,12 +69,16 @@ Initial group assignments can only be done by Superuser.
 
 For a worked example of request → approve, see [Permission and Group Management](docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management).
 
-#### Built-in TLS & mTLS Security:
-- **Built-in TLS**: garde includes native TLS support
-- **mTLS for Services**: Mutual TLS authentication enables secure service-to-service communication
-- **API Key + mTLS**: API keys can be combined with mTLS for even more secure communication between services
+#### TLS and mTLS, per audience:
+garde separates the two audiences it serves, because one TLS switch cannot make
+both of them secure and usable:
 
-For production layout (reverse proxy vs built-in `USE_TLS`), see [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration).
+- **Browsers** get server TLS only — from a reverse proxy, a cloud load balancer, or garde's own `USE_TLS`. They are never asked for a client certificate, which would lock out every normal user.
+- **Your services** calling `/validate` get a private listener that requires a **client certificate plus an API key**. It is published on a private network, not on the hostname browsers use.
+- **External callers**, who cannot join that network or maintain a certificate, get a **per-tenant API key** over ordinary HTTPS: issued and revoked one caller at a time, rate-limited per key, stored as a hash. The shared API key is refused on that path.
+- **The switches are independent** (`browser_mtls`, `service_mtls`, `public_validate`), so enabling certificates for services does not affect browsers, and a certificate-holding intranet host can require them without moving the service endpoint.
+
+For the production layouts and how to issue the certificates, see [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration).
 
 #### Secrets Architecture:
 garde uses HashiCorp Vault for secrets management:

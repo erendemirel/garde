@@ -17,6 +17,8 @@ to survive losing a host.
 - [Prerequisites](#prerequisites)
 - [First-time setup](#first-time-setup)
 - [Vault secrets for this topology](#vault-secrets-for-this-topology)
+- [Service authentication (`/validate`)](#service-authentication-validate)
+- [Traffic modes: floating IP or managed load balancer](#traffic-modes-floating-ip-or-managed-load-balancer)
 - [Day-to-day operations](#day-to-day-operations)
 - [Runbook: unsealing Vault](#runbook-unsealing-vault)
 - [Runbook: failover](#runbook-failover)
@@ -98,7 +100,15 @@ the public IP, so it could not answer an HTTP-01 challenge, and its certificates
 would expire exactly when failover needs them. **DNS follows the hosting
 provider:** Caddy renews against that provider's DNS API (netcup CCP, AWS Route
 53, …) so both app nodes can renew independently without holding the failover
-address.
+address. All of this applies to the floating-IP lane; under a managed load
+balancer the platform owns the certificate and none of it exists — see
+[Traffic modes](#traffic-modes-floating-ip-or-managed-load-balancer).
+
+**`/validate` is not on the public edge.** It validates any user's session for
+any caller with the API key, so it answers on a second listener published on
+the mesh address only, behind a client certificate from a private CA. Browsers
+are never asked for one. See
+[Service authentication](#service-authentication-validate).
 
 **No registry.** CI builds images and streams them with `docker save` over SSH
 into `docker load` on the far side. The hosts hold no registry credentials, no
@@ -119,9 +129,10 @@ five declared facts. Drivers live in `deploy/scripts/providers/`; `netcup`,
 provider.
 
 The verbs are intent rather than mechanism: "route traffic to this node", not
-"assign the failover IP". A floating IP is how both current providers do it, but
-that naming leaves room for a driver that swaps a DNS record or repoints a load
-balancer. The facts exist because providers differ in *properties*, not only
+"assign the failover IP". A floating IP is how the VPS providers do it; the AWS
+and GCP drivers can instead repoint a managed load balancer, selected by
+`TRAFFIC_MODE`, and the callers cannot tell the difference. The facts exist
+because providers differ in *properties*, not only
 behaviour — netcup enforces 301 seconds between traffic moves and Hetzner
 enforces nothing, so the driver declares the number and the generic code waits
 for it. That is why `failover.sh` contains no provider conditionals at all.
@@ -397,15 +408,234 @@ these values are specific to running behind Caddy on the mesh:
 | Secret | Value | Why |
 |--------|-------|-----|
 | `redis_host` | `redis` | Each node has its own local Redis under that service name |
-| `use_tls` | `false` | Caddy terminates TLS at the edge |
+| `use_tls` | `false` | The edge terminates TLS; the public listener speaks HTTP inside the network |
+| `browser_mtls` | `off` | Browsers must never be asked for a client certificate |
 | `cookie_secure` | `true` | Traffic is HTTPS even though garde speaks HTTP |
 | `trusted_proxies` | `172.28.0.0/16` | The fixed app network subnet, so `X-Forwarded-For` is honoured |
-| `domain_name` | your registrable domain | Makes `app.` and `api.` same-site for cookies |
+| `domain_name` | your registrable domain | Makes `app.` and `api.` same-site for cookies, **and** is what client certificates are checked against |
 | `cors_allow_origins` | `https://app.example.com` | The UI origin |
 | `cookie_same_site` | `lax` | Subdomains of one registrable domain are same-site |
+| `service_listener` | `true` | Serves `/validate` on a second, private listener |
+| `service_mtls` | `required` | Calling services authenticate with a certificate, not only an API key |
+| `service_tls_cert_path` | `/app/certs/service-cert.pem` | Written by `service-pki.sh push` |
+| `service_tls_key_path` | `/app/certs/service-key.pem` | Written by `service-pki.sh push` |
+| `service_tls_ca_path` | `/app/certs/ca-cert.pem` | The service CA that signs callers |
+
+`public_validate` is deliberately absent: with `service_listener` on, garde
+stops serving `/validate` on the public listener unless you set it to `true`.
+Leave it out unless you have callers who are not yours — see
+[external callers](#external-callers-per-tenant-api-keys), which is the only
+configuration where publishing it is a reasonable thing to do.
 
 Reseed after changing `prod.secrets` by re-running `vault-cluster-init.sh`'s
 seeding step, or by writing individual keys with `vault kv put`.
+
+---
+
+## Service authentication (`/validate`)
+
+`/validate` answers "is this session valid?" for any session, to any caller
+holding the API key. That makes it the most powerful endpoint garde has and the
+one that should be hardest to reach — so it does not answer on the hostname
+browsers use.
+
+```
+browsers ──► public edge (TLS) ──► UI + auth API        no client certificate
+services ──► WireGuard mesh ──► garde:8444 /validate    client certificate + API key
+```
+
+The two audiences have independent policies, because one switch cannot serve
+both: a listener that demands certificates cannot serve a login page, and a
+listener that never asks for one cannot authenticate a service.
+
+| Setting | Audience | Default | Notes |
+|---------|----------|---------|-------|
+| `browser_mtls` | public listener | `off` | `optional` / `required` only for a host that exists to serve certificate holders |
+| `service_mtls` | service listener | `required` | `off` is accepted and logged as a warning; the endpoint then rests on the API key and the mesh alone |
+| `public_validate` | public listener | follows `service_listener` | Mounting `/validate` publicly again |
+
+Caddy refuses `/validate` on the public hostname regardless, so both the
+application config and the edge have to be wrong before the endpoint is
+exposed.
+
+### Issuing the certificates
+
+The service CA is separate from the public one on purpose: a certificate that
+proves a website's identity to a browser should not also authenticate a service
+to your auth server.
+
+```bash
+./deploy/scripts/service-pki.sh init            # once; back up deploy/pki/ca-key.pem offline
+./deploy/scripts/service-pki.sh server          # the listener's keypair
+./deploy/scripts/service-pki.sh push            # to both app nodes
+./deploy/scripts/service-pki.sh client billing  # one per calling service
+```
+
+The CA private key stays on the operator host. Nodes get the CA certificate and
+the listener keypair; each caller gets its own client keypair, revocable by
+re-issuing the CA and re-pushing.
+
+Client certificates carry the deployment's registrable domain in the CN,
+because garde checks it against `domain_name` before accepting a call. A
+certificate from this CA issued for a different domain is refused.
+
+### Calling it
+
+```bash
+curl --cert client-billing-cert.pem --key client-billing-key.pem --cacert ca-cert.pem \
+     -H "X-API-Key: $API_KEY" \
+     -H "X-Session-ID: $SESSION_ID" \
+     "https://10.10.0.1:8444/validate"
+```
+
+Address the node by its mesh IP: the listener certificate covers every mesh
+address in the cluster, so the same command works after a failover with only
+the address changed.
+
+### External callers: per-tenant API keys
+
+Everything above assumes the caller is yours: it sits on the mesh, and you can
+install a certificate next to it. A third party can do neither. Handing them a
+client certificate they have to renew is how partner integrations break at 3am,
+and certificate lifecycle is not a skill you can require of every customer.
+
+So external callers get the other standard answer — server TLS, and a bearer
+credential that belongs to them alone:
+
+```bash
+curl -X POST https://api.example.com/admin/api-keys \
+     -H "Authorization: Bearer $SUPERUSER_SESSION" \
+     -H 'Content-Type: application/json' \
+     -d '{"client_id":"acme","name":"acme-prod","scopes":["validate"],"rate_limit":600}'
+```
+
+The response carries the plaintext key once, and never again — only its
+SHA-256 is stored. Scopes have to be listed; there is no default grant. The key
+expires after 90 days unless `expires_in` says otherwise or `never_expires` is
+set deliberately.
+
+`GET /admin/api-keys` lists what has been issued with each key's last-used
+time, `?client_id=acme` narrows it to one holder, and revocation works at
+either grain: `DELETE /admin/api-keys/{key_id}` for one key, or
+`DELETE /admin/clients/{client_id}/api-keys` for everything a compromised
+holder has.
+
+Because `client_id` groups keys, rolling a credential needs no downtime: issue
+a second key for the same holder, let the caller cut over, then revoke the
+first.
+
+| | Internal services | External tenants |
+|---|---|---|
+| Reaches | mesh listener, `:8444` | public edge |
+| Authenticates with | client certificate + shared `api_key` | per-tenant key, `X-API-Key` |
+| Revoking one caller | re-issue the CA, re-push, restart | one `DELETE`, effective immediately |
+| Revoking a whole holder | same, cluster-wide | one `DELETE` on the client |
+| Credential lifetime | certificate validity | 90 days by default, one year maximum |
+| Rate limited by | mesh access | the key, so tenants behind one NAT do not share a budget |
+
+**The shared `api_key` does not work on the public edge.** That is the point of
+the split: a single long-lived secret held by every caller, in front of an
+endpoint that can validate any user's session, is the exposure this design
+exists to remove. It stays valid on the mesh listener, where callers are yours
+and present a certificate as well.
+
+Publishing the endpoint takes two switches, so that neither alone is enough:
+
+```bash
+PUBLIC_VALIDATE=true          # in deploy/inventory.env — opens Caddy
+vault kv put secret/garde/public_validate value=true   # mounts the route
+```
+
+Leave `public_validate_shared_key` unset in this layout. It exists for
+single-listener deployments, which have to state whether the shared key may
+authenticate their public `/validate`
+([the older layout](INSTALLATION.md#single-listener-deployments-the-older-layout)).
+Here the mesh listener has already answered that, so setting it to `true` is a
+startup error rather than something quietly ignored.
+
+`healthcheck.sh --public` follows the inventory value: with `PUBLIC_VALIDATE`
+unset it fails if `/validate` answers at all, and with it set it fails unless
+an unauthenticated call is refused with 401.
+
+---
+
+## Traffic modes: floating IP or managed load balancer
+
+`TRAFFIC_MODE` in the inventory decides what "route traffic to this node"
+means. The failover procedure does not change — fence, promote Redis, route
+traffic, verify — because the driver hides the mechanism.
+
+| | `floating_ip` (default) | `managed_lb` |
+|---|---|---|
+| Providers | all seven | `aws`, `gcp` |
+| Public address | one address, moved between hosts | held by the balancer |
+| Public TLS | Caddy on the hosts, ACME **DNS-01** | ACM / Google-managed, on the balancer |
+| Standby readiness | warm: both nodes hold the address and renew certificates | warm: the standby is simply an unregistered target |
+| Routing | provider API moves the address | target registration / backend membership |
+| A broken primary | an operator or a drill triggers failover | health checks pull it out, then failover promotes Redis |
+| Cost | none beyond the address | balancer hours |
+
+**Why both exist.** DNS-01 and a warm Caddy are what make a floating IP work
+for a standby that never holds the public address, and that design ports to
+every VPS provider unchanged. On AWS and GCP the same design costs real
+machinery — hosts with no public address, tunnels for SSH, images staged
+through a bucket — to reproduce something the platform already offers. Rather
+than pick one, the seam carries both: use the platform's answer on the
+platforms that have one, and keep the portable answer everywhere else.
+
+**What does not change between them.** The mesh, Vault Raft, Redis
+replication, snapshots, fencing before promotion, and the private service
+listener. The security model is identical; only the public edge differs.
+
+### Switching to `managed_lb` on AWS
+
+```bash
+cd terraform/aws
+# terraform.tfvars
+#   traffic_mode = "managed_lb"
+#   dns_zone     = "example.com"      # needed so ACM can validate
+terraform apply
+terraform output -raw inventory_fragment >> ../../deploy/inventory.env
+```
+
+The fragment carries `TRAFFIC_MODE`, `AWS_TARGET_GROUP_ARN`, `LB_SOURCE_CIDRS`
+and `LB_TRUSTED_PROXIES`. Then re-run the host baseline and a deploy, and point
+the balancer at the primary:
+
+```bash
+cd ansible && ansible-playbook playbooks/bootstrap.yml   # firewall follows the mode
+./deploy/scripts/deploy.sh app
+./deploy/scripts/traffic.sh route node1
+./deploy/scripts/healthcheck.sh --all --public
+```
+
+What changes on the hosts: `sync-config.sh` renders `Caddyfile.lb.tpl` instead
+of the ACME one, binds Caddy's 443 to loopback, and opens :80 to the balancer's
+range only. Terraform stops creating the ACME IAM user, since nothing answers a
+challenge any more.
+
+Terraform deliberately creates no target group attachments. Membership is
+operational state that failover owns; a Terraform-managed attachment would
+fight `traffic.sh` on every apply.
+
+### `managed_lb` on GCP
+
+The driver implements the same verbs with one zonal unmanaged instance group
+per node, all attached to a single backend service, and routing means making
+sure only one group holds its instance:
+
+```
+NODE1_INSTANCE_GROUP=europe-west1-b/garde-node1
+NODE2_INSTANCE_GROUP=europe-west1-c/garde-node2
+LB_SOURCE_CIDRS="35.191.0.0/16 130.211.0.0/22"
+LB_TRUSTED_PROXIES="35.191.0.0/16 130.211.0.0/22"
+```
+
+There is no `terraform/gcp/` root in this repository: GCP has always been a
+driver rather than a provisioned module here. Build the load balancer, the
+Google-managed certificate and the two instance groups with `gcloud` or your
+own Terraform, then fill those keys in. The health check must target `/healthz`
+on port 80, which is what the load-balancer Caddyfile serves.
 
 ---
 
@@ -627,12 +857,13 @@ hosts together. AWS and GCP are the opposite: their addresses move freely across
 availability zones within one region but never across regions, so spread the
 three hosts across zones and keep them in one region.
 
-AWS and GCP are also the two where this architecture is not what the platform
-would suggest. Both answer this problem natively with a managed load balancer in
-front of an autoscaling group. The drivers exist so the same three-host design
-runs there unchanged, which is worth having for portability — but if you are
-building for one of them and nothing else, their own primitives are the better
-tool, and this seam is not an argument against them.
+AWS and GCP are also the two where a moving address is not what the platform
+would suggest. Both answer this problem natively with a managed load balancer,
+which is why those two drivers also accept `TRAFFIC_MODE=managed_lb`. If you
+are building for one of them and nothing else, that is the better tool — the
+balancer holds the address and the certificate, and none of the placement rules
+above apply to it. Keep `floating_ip` when portability across providers matters
+more. See [Traffic modes](#traffic-modes-floating-ip-or-managed-load-balancer).
 
 ### Doing the move
 
