@@ -210,7 +210,7 @@ Per-tenant keys are stored as a SHA-256 (the plaintext is shown once, at
 issue), expire after 90 days unless issued otherwise, carry a per-key rate
 limit, record when they were last used, and are revocable one at a time with
 `DELETE /admin/api-keys/{key_id}` or all at once for a single holder with
-`DELETE /admin/clients/{client_id}/api-keys`. See
+`DELETE /admin/tenants/{tenant_id}/api-keys`. See
 [External Callers](API_INTEGRATION_GUIDE.md#4-external-callers-per-tenant-api-keys).
 
 In a deployment fronted by the HA Caddy config, the edge blocks `/validate`

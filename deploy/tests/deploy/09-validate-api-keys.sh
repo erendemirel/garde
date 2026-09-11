@@ -75,8 +75,8 @@ fi
 [ "$probe_code" = "200" ] \
   || die "GET /admin/api-key-scopes -> $probe_code (want 200 for superuser)"
 
-client_id="deploy_ci_$(date +%s)"
-create_body="$(printf '{"client_id":"%s","name":"ci-validate","scopes":["validate"]}' "$client_id")"
+tenant_id="deploy_ci_$(date +%s)"
+create_body="$(printf '{"tenant_id":"%s","name":"ci-validate","scopes":["validate"]}' "$tenant_id")"
 created="$(http_api "$TARGET" POST /admin/api-keys "$create_body" "$token")"
 [ "$(http_code "$created")" = "201" ] \
   || die "POST /admin/api-keys failed: $created"
@@ -87,7 +87,7 @@ key_id="$(http_body "$created" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
   || die "create response missing key/id: $(http_body "$created")"
 
 cleanup_keys() {
-  http_api "$TARGET" DELETE "/admin/clients/${client_id}/api-keys" "" "$token" >/dev/null 2>&1 || true
+  http_api "$TARGET" DELETE "/admin/tenants/${tenant_id}/api-keys" "" "$token" >/dev/null 2>&1 || true
 }
 trap cleanup_keys EXIT
 
@@ -118,7 +118,7 @@ esac
 
 # Negative contract the UI depends on.
 bad="$(http_api "$TARGET" POST /admin/api-keys \
-  "$(printf '{"client_id":"%s","name":"no-scopes"}' "$client_id")" "$token")"
+  "$(printf '{"tenant_id":"%s","name":"no-scopes"}' "$tenant_id")" "$token")"
 [ "$(http_code "$bad")" = "400" ] \
   || die "create without scopes returned $(http_code "$bad") (want 400)"
 ok "create without scopes is refused"

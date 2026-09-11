@@ -306,7 +306,7 @@ export interface APIKeyScopeInfo {
 
 export interface APIKeyInfo {
 	id: string;
-	client_id: string;
+	tenant_id: string;
 	name: string;
 	scopes: string[];
 	rate_limit?: number;
@@ -327,14 +327,14 @@ export interface ListAPIKeysResult {
 	total: number;
 }
 
-export interface RevokeClientAPIKeysResult {
-	client_id: string;
+export interface RevokeTenantAPIKeysResult {
+	tenant_id: string;
 	keys: APIKeyInfo[];
 	revoked: number;
 }
 
 export interface CreateAPIKeyInput {
-	client_id: string;
+	tenant_id: string;
 	name: string;
 	scopes: string[];
 	expires_in?: string;
@@ -344,8 +344,8 @@ export interface CreateAPIKeyInput {
 
 export const listAPIKeyScopes = () => request<APIKeyScopeInfo[]>('/admin/api-key-scopes');
 
-export const listAPIKeys = (client_id?: string) => {
-	const q = client_id ? `?client_id=${encodeURIComponent(client_id)}` : '';
+export const listAPIKeys = (tenant_id?: string) => {
+	const q = tenant_id ? `?tenant_id=${encodeURIComponent(tenant_id)}` : '';
 	return request<ListAPIKeysResult>(`/admin/api-keys${q}`);
 };
 
@@ -360,8 +360,8 @@ export const revokeAPIKey = (key_id: string) =>
 		method: 'DELETE'
 	});
 
-export const revokeClientAPIKeys = (client_id: string) =>
-	request<RevokeClientAPIKeysResult>(
-		`/admin/clients/${encodeURIComponent(client_id)}/api-keys`,
+export const revokeTenantAPIKeys = (tenant_id: string) =>
+	request<RevokeTenantAPIKeysResult>(
+		`/admin/tenants/${encodeURIComponent(tenant_id)}/api-keys`,
 		{ method: 'DELETE' }
 	);

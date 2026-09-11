@@ -84,7 +84,7 @@ const (
 	ErrDisallowedCharacters  = "disallowed characters"
 	ErrInvalidPermissionName  = "permission and group names must be 1-128 characters, alphanumeric and underscore only"
 	ErrInvalidAPIKeyName      = "API key name must be 1-64 characters, alphanumeric with underscore, hyphen or dot"
-	ErrInvalidAPIKeyClientID  = "client_id must be 1-64 characters, alphanumeric with underscore, hyphen or dot"
+	ErrInvalidAPIKeyTenantID  = "tenant_id must be 1-64 characters, alphanumeric with underscore, hyphen or dot"
 	ErrInvalidAPIKeyScope     = "unknown API key scope"
 	ErrAPIKeyScopesRequired   = "at least one scope must be listed; scopes are not granted by default"
 	ErrInvalidAPIKeyExpiry    = "expires_in must be a positive duration such as 2160h"

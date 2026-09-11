@@ -5,7 +5,7 @@
 		listAPIKeys,
 		createAPIKey,
 		revokeAPIKey,
-		revokeClientAPIKeys
+		revokeTenantAPIKeys
 	} from '$lib/api';
 	import { showToast } from '$lib/toast';
 	import { KeyRound, Plus, Trash2, ChevronDown, ChevronRight, Copy, Check } from 'lucide-svelte';
@@ -24,11 +24,11 @@
 	let search = '';
 
 	/** @type {Set<string>} */
-	let expandedClients = new Set();
+	let expandedTenants = new Set();
 
 	let showIssueModal = false;
 	let issuing = false;
-	let issueClientId = '';
+	let issueTenantId = '';
 	let issueName = '';
 	/** @type {Set<string>} */
 	let issueScopes = new Set();
@@ -46,9 +46,9 @@
 	let revokingKey = null;
 	let showRevokeKeyConfirm = false;
 
-	/** @type {{ clientId: string, count: number } | null} */
-	let revokingClient = null;
-	let showRevokeClientConfirm = false;
+	/** @type {{ tenantId: string, count: number } | null} */
+	let revokingTenant = null;
+	let showRevokeTenantConfirm = false;
 
 	$: scopeOptions = scopeCatalog.map((s) => ({
 		key: s.name,
@@ -58,23 +58,23 @@
 
 	$: activeKeys = keys.filter((k) => !k.revoked_at);
 
-	$: clientGroups = (() => {
+	$: tenantGroups = (() => {
 		/** @type {Map<string, import('$lib/api').APIKeyInfo[]>} */
 		const map = new Map();
 		for (const key of activeKeys) {
-			const list = map.get(key.client_id) || [];
+			const list = map.get(key.tenant_id) || [];
 			list.push(key);
-			map.set(key.client_id, list);
+			map.set(key.tenant_id, list);
 		}
 		const q = search.trim().toLowerCase();
 		return [...map.entries()]
-			.map(([clientId, clientKeys]) => ({
-				clientId,
-				keys: clientKeys.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+			.map(([tenantId, tenantKeys]) => ({
+				tenantId,
+				keys: tenantKeys.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
 			}))
 			.filter((group) => {
 				if (!q) return true;
-				if (group.clientId.toLowerCase().includes(q)) return true;
+				if (group.tenantId.toLowerCase().includes(q)) return true;
 				return group.keys.some(
 					(k) =>
 						k.name.toLowerCase().includes(q) ||
@@ -82,11 +82,11 @@
 						(k.scopes || []).some((s) => s.toLowerCase().includes(q))
 				);
 			})
-			.sort((a, b) => a.clientId.localeCompare(b.clientId));
+			.sort((a, b) => a.tenantId.localeCompare(b.tenantId));
 	})();
 
 	$: canIssue =
-		issueClientId.trim().length > 0 &&
+		issueTenantId.trim().length > 0 &&
 		issueName.trim().length > 0 &&
 		issueScopes.size > 0 &&
 		(issueExpiryMode !== 'custom' || issueExpiresIn.trim().length > 0) &&
@@ -103,9 +103,9 @@
 			const [listed, scopes] = await Promise.all([listAPIKeys(), listAPIKeyScopes()]);
 			keys = listed.keys || [];
 			scopeCatalog = scopes || [];
-			// Expand every client on first load so a small list is immediately useful.
-			if (expandedClients.size === 0) {
-				expandedClients = new Set((listed.keys || []).map((k) => k.client_id));
+			// Expand every tenant on first load so a small list is immediately useful.
+			if (expandedTenants.size === 0) {
+				expandedTenants = new Set((listed.keys || []).map((k) => k.tenant_id));
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load API keys';
@@ -115,15 +115,15 @@
 		}
 	}
 
-	function toggleClient(/** @type {string} */ clientId) {
-		const next = new Set(expandedClients);
-		if (next.has(clientId)) next.delete(clientId);
-		else next.add(clientId);
-		expandedClients = next;
+	function toggleTenant(/** @type {string} */ tenantId) {
+		const next = new Set(expandedTenants);
+		if (next.has(tenantId)) next.delete(tenantId);
+		else next.add(tenantId);
+		expandedTenants = next;
 	}
 
 	function openIssueModal() {
-		issueClientId = '';
+		issueTenantId = '';
 		issueName = '';
 		issueScopes = new Set();
 		issueExpiryMode = 'default';
@@ -147,7 +147,7 @@
 		try {
 			/** @type {import('$lib/api').CreateAPIKeyInput} */
 			const body = {
-				client_id: issueClientId.trim(),
+				tenant_id: issueTenantId.trim(),
 				name: issueName.trim(),
 				scopes: [...issueScopes]
 			};
@@ -166,9 +166,9 @@
 			revealedKey = created;
 			copied = false;
 			revealAcknowledged = false;
-			showToast(`Issued key "${created.name}" for ${created.client_id}`, 'success');
+			showToast(`Issued key "${created.name}" for ${created.tenant_id}`, 'success');
 			await load();
-			expandedClients = new Set([...expandedClients, created.client_id]);
+			expandedTenants = new Set([...expandedTenants, created.tenant_id]);
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'Failed to issue API key', 'error');
 		} finally {
@@ -212,24 +212,24 @@
 		}
 	}
 
-	function askRevokeClient(/** @type {string} */ clientId, /** @type {number} */ count) {
-		revokingClient = { clientId, count };
-		showRevokeClientConfirm = true;
+	function askRevokeTenant(/** @type {string} */ tenantId, /** @type {number} */ count) {
+		revokingTenant = { tenantId, count };
+		showRevokeTenantConfirm = true;
 	}
 
-	async function confirmRevokeClient() {
-		if (!revokingClient) return;
-		const { clientId, count } = revokingClient;
-		revokingClient = null;
+	async function confirmRevokeTenant() {
+		if (!revokingTenant) return;
+		const { tenantId, count } = revokingTenant;
+		revokingTenant = null;
 		try {
-			await revokeClientAPIKeys(clientId);
+			await revokeTenantAPIKeys(tenantId);
 			// Use the active count shown in the confirm dialog — the API also
 			// reports already-revoked siblings (idempotent), which would inflate
 			// the toast past what the operator just agreed to wipe.
-			showToast(`Revoked ${count} key(s) for ${clientId}`, 'success');
+			showToast(`Revoked ${count} key(s) for ${tenantId}`, 'success');
 			await load();
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : 'Failed to revoke client keys', 'error');
+			showToast(e instanceof Error ? e.message : 'Failed to revoke tenant keys', 'error');
 		}
 	}
 
@@ -278,7 +278,7 @@
 			<h2 class="section-title">API Keys</h2>
 			<p class="text-sm text-muted mt-1">
 				Per-caller credentials for external <code class="text-xs">/validate</code> traffic. Grouped by
-				client so you can rotate one holder or revoke everything they have. Scopes are enforced by
+				tenant so you can rotate one holder or revoke everything they have. Scopes are enforced by
 				garde — unlike permissions, which other apps interpret.
 			</p>
 		</div>
@@ -302,44 +302,44 @@
 			<input
 				type="search"
 				class="input max-w-sm"
-				placeholder="Search client, name, id, or scope…"
+				placeholder="Search tenant, name, id, or scope…"
 				data-testid="api-keys-search"
 				bind:value={search}
 			/>
 			<span class="text-sm text-muted" data-testid="api-keys-total">
-				{activeKeys.length} active key{activeKeys.length === 1 ? '' : 's'} · {clientGroups.length} client{clientGroups.length === 1 ? '' : 's'}
+				{activeKeys.length} active key{activeKeys.length === 1 ? '' : 's'} · {tenantGroups.length} tenant{tenantGroups.length === 1 ? '' : 's'}
 			</span>
 		</div>
 
-		{#if clientGroups.length === 0}
+		{#if tenantGroups.length === 0}
 			<p class="text-muted py-6" data-testid="api-keys-empty">
 				No API keys yet. Issue one to give an external caller its own credential for
 				<code class="text-xs">/validate</code>.
 			</p>
 		{:else}
-			<div class="space-y-3" data-testid="api-keys-client-list">
-				{#each clientGroups as group (group.clientId)}
+			<div class="space-y-3" data-testid="api-keys-tenant-list">
+				{#each tenantGroups as group (group.tenantId)}
 					<div
 						class="border border-borderc rounded-md overflow-hidden"
-						data-testid="api-keys-client"
-						data-client-id={group.clientId}
-						data-expanded={expandedClients.has(group.clientId) ? 'true' : 'false'}
+						data-testid="api-keys-tenant"
+						data-tenant-id={group.tenantId}
+						data-expanded={expandedTenants.has(group.tenantId) ? 'true' : 'false'}
 					>
 						<div class="flex flex-wrap items-center gap-2 px-3 py-2 bg-input/60">
 							<button
 								type="button"
 								class="flex items-center gap-2 font-medium text-left flex-1 min-w-0"
-								data-testid="api-keys-client-toggle"
-								aria-expanded={expandedClients.has(group.clientId)}
-								on:click={() => toggleClient(group.clientId)}
+								data-testid="api-keys-tenant-toggle"
+								aria-expanded={expandedTenants.has(group.tenantId)}
+								on:click={() => toggleTenant(group.tenantId)}
 							>
-								{#if expandedClients.has(group.clientId)}
+								{#if expandedTenants.has(group.tenantId)}
 									<ChevronDown size={16} class="shrink-0" />
 								{:else}
 									<ChevronRight size={16} class="shrink-0" />
 								{/if}
 								<KeyRound size={16} class="shrink-0 text-muted" />
-								<span class="truncate" data-testid="api-keys-client-id">{group.clientId}</span>
+								<span class="truncate" data-testid="api-keys-tenant-id">{group.tenantId}</span>
 								<span class="text-sm text-muted shrink-0">
 									{group.keys.length} key{group.keys.length === 1 ? '' : 's'}
 								</span>
@@ -347,16 +347,16 @@
 							<button
 								type="button"
 								class="btn-small text-error border-error/40"
-								data-testid="api-keys-revoke-client"
-								title="Revoke every key for this client"
-								on:click={() => askRevokeClient(group.clientId, group.keys.length)}
+								data-testid="api-keys-revoke-tenant"
+								title="Revoke every key for this tenant"
+								on:click={() => askRevokeTenant(group.tenantId, group.keys.length)}
 							>
 								Revoke all
 							</button>
 						</div>
 
-						{#if expandedClients.has(group.clientId)}
-							<div class="overflow-x-auto" data-testid="api-keys-client-keys">
+						{#if expandedTenants.has(group.tenantId)}
+							<div class="overflow-x-auto" data-testid="api-keys-tenant-keys">
 								<table class="w-full text-sm">
 									<thead>
 										<tr class="text-left text-muted border-t border-borderc">
@@ -374,7 +374,7 @@
 												data-testid="api-keys-row"
 												data-key-id={key.id}
 												data-key-name={key.name}
-												data-client-id={key.client_id}
+												data-tenant-id={key.tenant_id}
 											>
 												<td class="px-3 py-2">
 													<div class="font-medium">{key.name}</div>
@@ -461,17 +461,17 @@
 		on:submit|preventDefault={submitIssue}
 	>
 		<div>
-			<label class="form-label" for="api-keys-issue-client">Client ID</label>
+			<label class="form-label" for="api-keys-issue-tenant">Tenant ID</label>
 			<input
-				id="api-keys-issue-client"
+				id="api-keys-issue-tenant"
 				class="input w-full"
-				data-testid="api-keys-issue-client"
+				data-testid="api-keys-issue-tenant"
 				placeholder="acme"
 				autocomplete="off"
-				bind:value={issueClientId}
+				bind:value={issueTenantId}
 			/>
 			<p class="text-xs text-muted mt-1">
-				Names the holder. Several keys can share one client for rotation; revoke-all targets this
+				Names the holder. Several keys can share one tenant for rotation; revoke-all targets this
 				id.
 			</p>
 		</div>
@@ -594,7 +594,7 @@
 			</p>
 			<div>
 				<div class="text-xs text-muted mb-1">
-					{revealedKey.client_id} · {revealedKey.name}
+					{revealedKey.tenant_id} · {revealedKey.name}
 				</div>
 				<div class="flex gap-2 items-stretch">
 					<code
@@ -642,7 +642,7 @@
 	bind:open={showRevokeKeyConfirm}
 	title="Revoke API key"
 	message={revokingKey
-		? `Revoke "${revokingKey.name}" (${revokingKey.id}) for client ${revokingKey.client_id}?\n\nThe caller will be refused on its next /validate request.`
+		? `Revoke "${revokingKey.name}" (${revokingKey.id}) for tenant ${revokingKey.tenant_id}?\n\nThe caller will be refused on its next /validate request.`
 		: ''}
 	confirmText="Revoke"
 	confirmClass="btn-danger"
@@ -653,15 +653,15 @@
 />
 
 <ConfirmModal
-	bind:open={showRevokeClientConfirm}
-	title="Revoke all keys for client"
-	message={revokingClient
-		? `Revoke all ${revokingClient.count} active key(s) for client "${revokingClient.clientId}"?\n\nEvery credential that holder has will stop working immediately.`
+	bind:open={showRevokeTenantConfirm}
+	title="Revoke all keys for tenant"
+	message={revokingTenant
+		? `Revoke all ${revokingTenant.count} active key(s) for tenant "${revokingTenant.tenantId}"?\n\nEvery credential that holder has will stop working immediately.`
 		: ''}
 	confirmText="Revoke all"
 	confirmClass="btn-danger"
-	on:confirm={confirmRevokeClient}
+	on:confirm={confirmRevokeTenant}
 	on:cancel={() => {
-		revokingClient = null;
+		revokingTenant = null;
 	}}
 />

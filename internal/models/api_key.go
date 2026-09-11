@@ -31,7 +31,7 @@ func AllAPIKeyScopes() []APIKeyScopeInfo {
 	}
 }
 
-// ServiceAPIKey is a credential issued to a single calling service or tenant,
+// ServiceAPIKey is a credential issued to a single external tenant,
 // as opposed to the one shared API_KEY that comes from configuration.
 //
 // The plaintext key is returned once, at creation. Only SecretHash is stored,
@@ -47,10 +47,10 @@ const (
 
 type ServiceAPIKey struct {
 	ID string `json:"id"`
-	// ClientID names the holder rather than the key. Several keys share one,
+	// TenantID names the holder rather than the key. Several keys share one,
 	// which is what makes deliberate rotation and "revoke everything this
 	// caller has" possible — the questions that matter during an incident.
-	ClientID   string     `json:"client_id"`
+	TenantID   string     `json:"tenant_id"`
 	Name       string     `json:"name"`
 	SecretHash string     `json:"secret_hash"`
 	Scopes     []string   `json:"scopes"`
@@ -82,14 +82,14 @@ func (k *ServiceAPIKey) HasScope(scope string) bool {
 }
 
 type CreateAPIKeyRequest struct {
-	// ClientID identifies the caller that will hold the key. Required, so
-	// that every credential can be traced back to a holder and revoked with
+	// TenantID identifies the external party that will hold the key. Required,
+	// so that every credential can be traced back to a holder and revoked with
 	// its siblings.
 	//
 	// None of these carry binding:"required". The handler validates them and
 	// answers with a message naming the field; a binding failure would
 	// collapse all of that into one generic "invalid request".
-	ClientID string `json:"client_id"`
+	TenantID string `json:"tenant_id"`
 	Name     string `json:"name"`
 	// Scopes must be listed explicitly. Defaulting them would grant more than
 	// was asked for, which is the wrong direction for a credential.
@@ -109,7 +109,7 @@ type CreateAPIKeyRequest struct {
 // APIKeyResponse is the safe view of a key: everything except the secret.
 type APIKeyResponse struct {
 	ID         string     `json:"id"`
-	ClientID   string     `json:"client_id"`
+	TenantID   string     `json:"tenant_id"`
 	Name       string     `json:"name"`
 	Scopes     []string   `json:"scopes"`
 	RateLimit  int        `json:"rate_limit,omitempty"`
@@ -132,10 +132,10 @@ type ListAPIKeysResponse struct {
 	Total int              `json:"total"`
 }
 
-// RevokeClientKeysResponse reports what a revoke-by-client call took out, so
+// RevokeTenantKeysResponse reports what a revoke-by-tenant call took out, so
 // the operator can see the blast radius of what they just did.
-type RevokeClientKeysResponse struct {
-	ClientID string           `json:"client_id"`
+type RevokeTenantKeysResponse struct {
+	TenantID string           `json:"tenant_id"`
 	Keys     []APIKeyResponse `json:"keys"`
 	Revoked  int              `json:"revoked"`
 }
@@ -147,7 +147,7 @@ func NewAPIKeyResponse(k *ServiceAPIKey) APIKeyResponse {
 	}
 	return APIKeyResponse{
 		ID:         k.ID,
-		ClientID:   k.ClientID,
+		TenantID:   k.TenantID,
 		Name:       k.Name,
 		Scopes:     scopes,
 		RateLimit:  k.RateLimit,

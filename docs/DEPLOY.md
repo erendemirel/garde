@@ -506,7 +506,7 @@ credential that belongs to them alone:
 curl -X POST https://api.example.com/admin/api-keys \
      -H "Authorization: Bearer $SUPERUSER_SESSION" \
      -H 'Content-Type: application/json' \
-     -d '{"client_id":"acme","name":"acme-prod","scopes":["validate"],"rate_limit":600}'
+     -d '{"tenant_id":"acme","name":"acme-prod","scopes":["validate"],"rate_limit":600}'
 ```
 
 The response carries the plaintext key once, and never again — only its
@@ -515,12 +515,12 @@ expires after 90 days unless `expires_in` says otherwise or `never_expires` is
 set deliberately.
 
 `GET /admin/api-keys` lists what has been issued with each key's last-used
-time, `?client_id=acme` narrows it to one holder, and revocation works at
+time, `?tenant_id=acme` narrows it to one holder, and revocation works at
 either grain: `DELETE /admin/api-keys/{key_id}` for one key, or
-`DELETE /admin/clients/{client_id}/api-keys` for everything a compromised
+`DELETE /admin/tenants/{tenant_id}/api-keys` for everything a compromised
 holder has.
 
-Because `client_id` groups keys, rolling a credential needs no downtime: issue
+Because `tenant_id` groups keys, rolling a credential needs no downtime: issue
 a second key for the same holder, let the caller cut over, then revoke the
 first.
 

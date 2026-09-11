@@ -388,7 +388,7 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 		superuserProtected.POST("/admin/api-keys", deps.apiKeyHandler.CreateAPIKey)
 		superuserProtected.GET("/admin/api-keys", deps.apiKeyHandler.ListAPIKeys)
 		superuserProtected.DELETE("/admin/api-keys/:key_id", deps.apiKeyHandler.RevokeAPIKey)
-		superuserProtected.DELETE("/admin/clients/:client_id/api-keys", deps.apiKeyHandler.RevokeClientAPIKeys)
+		superuserProtected.DELETE("/admin/tenants/:tenant_id/api-keys", deps.apiKeyHandler.RevokeTenantAPIKeys)
 	}
 }
 

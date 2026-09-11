@@ -6,7 +6,7 @@ export const e2eSharedApiKey =
 
 export type IssuedAPIKey = {
 	id: string;
-	client_id: string;
+	tenant_id: string;
 	name: string;
 	scopes: string[];
 	key: string;
@@ -14,7 +14,7 @@ export type IssuedAPIKey = {
 };
 
 type CreateKeyBody = {
-	client_id: string;
+	tenant_id: string;
 	name: string;
 	scopes: string[];
 	expires_in?: string;
@@ -42,13 +42,13 @@ export async function revokeAPIKeyById(suRequest: APIRequestContext, keyId: stri
 	return res;
 }
 
-export async function revokeClientAPIKeys(suRequest: APIRequestContext, clientId: string) {
-	return suRequest.delete(`/api/admin/clients/${encodeURIComponent(clientId)}/api-keys`);
+export async function revokeTenantAPIKeys(suRequest: APIRequestContext, tenantId: string) {
+	return suRequest.delete(`/api/admin/tenants/${encodeURIComponent(tenantId)}/api-keys`);
 }
 
 /** Best-effort cleanup so parallel workers do not leave keys behind. */
-export async function cleanupClientKeys(suRequest: APIRequestContext, clientId: string) {
-	await revokeClientAPIKeys(suRequest, clientId).catch(() => undefined);
+export async function cleanupTenantKeys(suRequest: APIRequestContext, tenantId: string) {
+	await revokeTenantAPIKeys(suRequest, tenantId).catch(() => undefined);
 }
 
 /** Well-formed session id that will never exist — passes format checks, fails lookup. */

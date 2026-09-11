@@ -221,13 +221,13 @@ func ValidateAPIKeyName(name string) error {
 	return nil
 }
 
-// Client ids take the same shape as names but answer a different question:
-// the name labels one key, the client id names the holder of several. It is
-// also a path segment on the revoke-by-client route, so the charset has to
+// Tenant ids take the same shape as names but answer a different question:
+// the name labels one key, the tenant id names the holder of several. It is
+// also a path segment on the revoke-by-tenant route, so the charset has to
 // stay free of anything that would need escaping.
-func ValidateAPIKeyClientID(clientID string) error {
-	if !isAPIKeyLabel(clientID) {
-		return fmt.Errorf(errors.ErrInvalidAPIKeyClientID)
+func ValidateAPIKeyTenantID(tenantID string) error {
+	if !isAPIKeyLabel(tenantID) {
+		return fmt.Errorf(errors.ErrInvalidAPIKeyTenantID)
 	}
 	return nil
 }

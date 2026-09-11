@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { describeTags, TAG } from '../helpers/tags';
 import {
-	cleanupClientKeys,
+	cleanupTenantKeys,
 	expectAPIKeyAccepted,
 	expectAPIKeyRejected,
 	selectIssueScope,
@@ -22,7 +22,7 @@ test.describe(
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_journey_${uniqueSuffix}`;
+			const tenantId = `e2e_journey_${uniqueSuffix}`;
 
 			async function openPanel() {
 				await page.goto('/superuser?tab=api-keys');
@@ -33,7 +33,7 @@ test.describe(
 			async function issueNamed(name: string) {
 				await page.getByTestId('api-keys-issue').click();
 				await expect(page.getByTestId('api-keys-issue-modal')).toBeVisible();
-				await page.getByTestId('api-keys-issue-client').fill(clientId);
+				await page.getByTestId('api-keys-issue-tenant').fill(tenantId);
 				await page.getByTestId('api-keys-issue-name').fill(name);
 				await selectIssueScope(page, 'validate');
 				await page.getByTestId('api-keys-issue-submit').click();
@@ -55,20 +55,20 @@ test.describe(
 				const v1 = await issueNamed(`v1_${uniqueSuffix}`);
 				await expectAPIKeyAccepted(await validateWithAPIKey(suRequest, v1));
 
-				const client = page.locator(
-					`[data-testid="api-keys-client"][data-client-id="${clientId}"]`
+				const tenant = page.locator(
+					`[data-testid="api-keys-tenant"][data-tenant-id="${tenantId}"]`
 				);
-				await expect(client).toBeVisible();
-				await expect(client.getByTestId('api-keys-row')).toHaveCount(1);
+				await expect(tenant).toBeVisible();
+				await expect(tenant.getByTestId('api-keys-row')).toHaveCount(1);
 
-				// 2. Rotation: second key for the same client, both live during cutover.
+				// 2. Rotation: second key for the same tenant, both live during cutover.
 				const v2 = await issueNamed(`v2_${uniqueSuffix}`);
-				await expect(client.getByTestId('api-keys-row')).toHaveCount(2);
+				await expect(tenant.getByTestId('api-keys-row')).toHaveCount(2);
 				await expectAPIKeyAccepted(await validateWithAPIKey(suRequest, v1));
 				await expectAPIKeyAccepted(await validateWithAPIKey(suRequest, v2));
 
 				// 3. Retire the old credential only — new one keeps working.
-				const oldRow = client.locator(
+				const oldRow = tenant.locator(
 					`[data-testid="api-keys-row"][data-key-name="v1_${uniqueSuffix}"]`
 				);
 				await oldRow.getByTestId('api-keys-revoke').click();
@@ -76,27 +76,27 @@ test.describe(
 				await page.getByTestId('confirm-modal-confirm').click();
 				await assertToast(page, /Revoked key/i);
 				await expect(oldRow).toHaveCount(0);
-				await expect(client.getByTestId('api-keys-row')).toHaveCount(1);
+				await expect(tenant.getByTestId('api-keys-row')).toHaveCount(1);
 
 				await expectAPIKeyRejected(await validateWithAPIKey(suRequest, v1));
 				await expectAPIKeyAccepted(await validateWithAPIKey(suRequest, v2));
 
 				// 4. Holder compromised — wipe every remaining credential in one step.
-				await client.getByTestId('api-keys-revoke-client').click();
-				await expect(page.getByTestId('confirm-modal-message')).toContainText(clientId);
+				await tenant.getByTestId('api-keys-revoke-tenant').click();
+				await expect(page.getByTestId('confirm-modal-message')).toContainText(tenantId);
 				await page.getByTestId('confirm-modal-confirm').click();
 				await assertToast(page, /Revoked 1/i);
-				await expect(client).toHaveCount(0);
+				await expect(tenant).toHaveCount(0);
 
 				await expectAPIKeyRejected(await validateWithAPIKey(suRequest, v2));
 
-				// Panel stays usable after the wipe; empty filter for this client.
-				await page.getByTestId('api-keys-search').fill(clientId);
+				// Panel stays usable after the wipe; empty filter for this tenant.
+				await page.getByTestId('api-keys-search').fill(tenantId);
 				await expect(
-					page.locator(`[data-testid="api-keys-client"][data-client-id="${clientId}"]`)
+					page.locator(`[data-testid="api-keys-tenant"][data-tenant-id="${tenantId}"]`)
 				).toHaveCount(0);
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 	}

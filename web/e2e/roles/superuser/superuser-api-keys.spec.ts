@@ -1,7 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import {
-	cleanupClientKeys,
+	cleanupTenantKeys,
 	e2eSharedApiKey,
 	expectAPIKeyAccepted,
 	expectAPIKeyRejected,
@@ -47,15 +47,15 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			expect(list.status()).toBe(401);
 
 			const create = await ctx.post('/api/admin/api-keys', {
-				data: { client_id: 'nope', name: 'nope', scopes: ['validate'] }
+				data: { tenant_id: 'nope', name: 'nope', scopes: ['validate'] }
 			});
 			expect(create.status()).toBe(401);
 
 			const revoke = await ctx.delete('/api/admin/api-keys/does-not-exist');
 			expect(revoke.status()).toBe(401);
 
-			const revokeClient = await ctx.delete('/api/admin/clients/nope/api-keys');
-			expect(revokeClient.status()).toBe(401);
+			const revokeTenant = await ctx.delete('/api/admin/tenants/nope/api-keys');
+			expect(revokeTenant.status()).toBe(401);
 
 			await ctx.dispose();
 		});
@@ -72,7 +72,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			expect(
 				(
 					await ctx.post('/api/admin/api-keys', {
-						data: { client_id: 'x', name: 'x', scopes: ['validate'] }
+						data: { tenant_id: 'x', name: 'x', scopes: ['validate'] }
 					})
 				).status()
 			).toBe(401);
@@ -89,7 +89,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 	});
 
 	test.describe('issue validation', () => {
-		test('requires client, name, and an explicit scope before submit is enabled', async ({
+		test('requires tenant, name, and an explicit scope before submit is enabled', async ({
 			superuserPage: page
 		}) => {
 			await openApiKeys(page);
@@ -98,7 +98,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 
 			await expect(page.getByTestId('api-keys-issue-submit')).toBeDisabled();
 
-			await page.getByTestId('api-keys-issue-client').fill('e2e_scope_gate');
+			await page.getByTestId('api-keys-issue-tenant').fill('e2e_scope_gate');
 			await expect(page.getByTestId('api-keys-issue-submit')).toBeDisabled();
 
 			await page.getByTestId('api-keys-issue-name').fill('needs_scope');
@@ -121,17 +121,17 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_cancel_issue_${uniqueSuffix}`;
+			const tenantId = `e2e_cancel_issue_${uniqueSuffix}`;
 			await openApiKeys(page);
 			await page.getByTestId('api-keys-issue').click();
-			await page.getByTestId('api-keys-issue-client').fill(clientId);
+			await page.getByTestId('api-keys-issue-tenant').fill(tenantId);
 			await page.getByTestId('api-keys-issue-name').fill('should_not_exist');
 			await selectIssueScope(page, 'validate');
 			await page.getByTestId('api-keys-issue-cancel').click();
 			await expect(page.getByTestId('api-keys-issue-modal')).toHaveCount(0);
 
 			const listed = await suRequest.get(
-				`/api/admin/api-keys?client_id=${encodeURIComponent(clientId)}`
+				`/api/admin/api-keys?tenant_id=${encodeURIComponent(tenantId)}`
 			);
 			expect(listed.ok()).toBeTruthy();
 			const body = await listed.json();
@@ -143,11 +143,11 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_bad_ttl_${uniqueSuffix}`;
+			const tenantId = `e2e_bad_ttl_${uniqueSuffix}`;
 			try {
 				await openApiKeys(page);
 				await page.getByTestId('api-keys-issue').click();
-				await page.getByTestId('api-keys-issue-client').fill(clientId);
+				await page.getByTestId('api-keys-issue-tenant').fill(tenantId);
 				await page.getByTestId('api-keys-issue-name').fill('bad_ttl');
 				await selectIssueScope(page, 'validate');
 				await page.getByTestId('api-keys-issue-expiry-custom').check();
@@ -159,29 +159,29 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				await expect(page.getByTestId('api-keys-issue-modal')).toBeVisible();
 
 				const listed = await suRequest.get(
-					`/api/admin/api-keys?client_id=${encodeURIComponent(clientId)}`
+					`/api/admin/api-keys?tenant_id=${encodeURIComponent(tenantId)}`
 				);
 				const body = await listed.json();
 				expect(body.data.keys ?? []).toHaveLength(0);
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 	});
 
 	test.describe('issue flow', () => {
-		test('issues a key, shows the secret once, and lists it under the client', async ({
+		test('issues a key, shows the secret once, and lists it under the tenant', async ({
 			superuserPage: page,
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_ui_${uniqueSuffix}`;
+			const tenantId = `e2e_ui_${uniqueSuffix}`;
 			const keyName = `ui_issue_${uniqueSuffix}`;
 
 			try {
 				await openApiKeys(page);
 				await page.getByTestId('api-keys-issue').click();
-				await page.getByTestId('api-keys-issue-client').fill(clientId);
+				await page.getByTestId('api-keys-issue-tenant').fill(tenantId);
 				await page.getByTestId('api-keys-issue-name').fill(keyName);
 				await selectIssueScope(page, 'validate');
 				await page.getByTestId('api-keys-issue-submit').click();
@@ -189,12 +189,12 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				await assertToast(page, keyName);
 				const plaintext = await acknowledgeReveal(page);
 
-				const client = page.locator(
-					`[data-testid="api-keys-client"][data-client-id="${clientId}"]`
+				const tenant = page.locator(
+					`[data-testid="api-keys-tenant"][data-tenant-id="${tenantId}"]`
 				);
-				await expect(client).toBeVisible();
-				await expect(client).toHaveAttribute('data-expanded', 'true');
-				const row = client.locator(
+				await expect(tenant).toBeVisible();
+				await expect(tenant).toHaveAttribute('data-expanded', 'true');
+				const row = tenant.locator(
 					`[data-testid="api-keys-row"][data-key-name="${keyName}"]`
 				);
 				await expect(row).toBeVisible();
@@ -207,13 +207,13 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				// Closing the reveal cleared the only copy from the UI — list has no secret.
 				await expect(page.getByTestId('api-keys-reveal-secret')).toHaveCount(0);
 				const listed = await suRequest.get(
-					`/api/admin/api-keys?client_id=${encodeURIComponent(clientId)}`
+					`/api/admin/api-keys?tenant_id=${encodeURIComponent(tenantId)}`
 				);
 				expect(listed.ok()).toBeTruthy();
 				const listedBody = await listed.json();
 				expect(listedBody.data.keys[0].key).toBeUndefined();
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 
@@ -222,11 +222,11 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_reveal_${uniqueSuffix}`;
+			const tenantId = `e2e_reveal_${uniqueSuffix}`;
 			try {
 				await openApiKeys(page);
 				await page.getByTestId('api-keys-issue').click();
-				await page.getByTestId('api-keys-issue-client').fill(clientId);
+				await page.getByTestId('api-keys-issue-tenant').fill(tenantId);
 				await page.getByTestId('api-keys-issue-name').fill('reveal_gate');
 				await selectIssueScope(page, 'validate');
 				await page.getByTestId('api-keys-issue-submit').click();
@@ -245,7 +245,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				await page.getByTestId('api-keys-reveal-done').click();
 				await expect(page.getByTestId('api-keys-reveal-modal')).toHaveCount(0);
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 
@@ -254,13 +254,13 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_ttl_${uniqueSuffix}`;
+			const tenantId = `e2e_ttl_${uniqueSuffix}`;
 
 			try {
 				await openApiKeys(page);
 
 				await page.getByTestId('api-keys-issue').click();
-				await page.getByTestId('api-keys-issue-client').fill(clientId);
+				await page.getByTestId('api-keys-issue-tenant').fill(tenantId);
 				await page.getByTestId('api-keys-issue-name').fill(`custom_${uniqueSuffix}`);
 				await selectIssueScope(page, 'validate');
 				await page.getByTestId('api-keys-issue-expiry-custom').check();
@@ -270,7 +270,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				await acknowledgeReveal(page);
 
 				const listed = await suRequest.get(
-					`/api/admin/api-keys?client_id=${encodeURIComponent(clientId)}`
+					`/api/admin/api-keys?tenant_id=${encodeURIComponent(tenantId)}`
 				);
 				const data = await listed.json();
 				const custom = (data.data.keys as { name: string; expires_at?: string }[]).find(
@@ -283,7 +283,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				expect(hours).toBeLessThan(50);
 
 				await page.getByTestId('api-keys-issue').click();
-				await page.getByTestId('api-keys-issue-client').fill(clientId);
+				await page.getByTestId('api-keys-issue-tenant').fill(tenantId);
 				await page.getByTestId('api-keys-issue-name').fill(`immortal_${uniqueSuffix}`);
 				await selectIssueScope(page, 'validate');
 				await page.getByTestId('api-keys-issue-expiry-never').check();
@@ -296,7 +296,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				);
 				await expect(row.getByTestId('api-keys-row-expires')).toContainText('Never');
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 	});
@@ -307,21 +307,21 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_rev_${uniqueSuffix}`;
+			const tenantId = `e2e_rev_${uniqueSuffix}`;
 			const keep = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: `keep_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 			const drop = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: `drop_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 
 			try {
 				await openApiKeys(page);
-				await page.getByTestId('api-keys-search').fill(clientId);
+				await page.getByTestId('api-keys-search').fill(tenantId);
 				const dropRow = page.locator(
 					`[data-testid="api-keys-row"][data-key-id="${drop.id}"]`
 				);
@@ -338,7 +338,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				const alive = await validateWithAPIKey(suRequest, keep.key);
 				await expectAPIKeyAccepted(alive);
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 
@@ -347,16 +347,16 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_rev_cancel_${uniqueSuffix}`;
+			const tenantId = `e2e_rev_cancel_${uniqueSuffix}`;
 			const key = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: `alive_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 
 			try {
 				await openApiKeys(page);
-				await page.getByTestId('api-keys-search').fill(clientId);
+				await page.getByTestId('api-keys-search').fill(tenantId);
 				const row = page.locator(`[data-testid="api-keys-row"][data-key-id="${key.id}"]`);
 				await row.getByTestId('api-keys-revoke').click();
 				await page.getByTestId('confirm-modal-cancel').click();
@@ -364,45 +364,45 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				await expect(row).toBeVisible();
 				await expectAPIKeyAccepted(await validateWithAPIKey(suRequest, key.key));
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 
-		test('revoke-all removes every key for a client', async ({
+		test('revoke-all removes every key for a tenant', async ({
 			superuserPage: page,
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_bulk_${uniqueSuffix}`;
+			const tenantId = `e2e_bulk_${uniqueSuffix}`;
 			const a = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: `a_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 			const b = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: `b_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 
 			try {
 				await openApiKeys(page);
-				await page.getByTestId('api-keys-search').fill(clientId);
-				const client = page.locator(
-					`[data-testid="api-keys-client"][data-client-id="${clientId}"]`
+				await page.getByTestId('api-keys-search').fill(tenantId);
+				const tenant = page.locator(
+					`[data-testid="api-keys-tenant"][data-tenant-id="${tenantId}"]`
 				);
-				await expect(client).toBeVisible();
-				await client.getByTestId('api-keys-revoke-client').click();
-				await expect(page.getByTestId('confirm-modal-message')).toContainText(clientId);
+				await expect(tenant).toBeVisible();
+				await tenant.getByTestId('api-keys-revoke-tenant').click();
+				await expect(page.getByTestId('confirm-modal-message')).toContainText(tenantId);
 				await expect(page.getByTestId('confirm-modal-message')).toContainText('2');
 				await page.getByTestId('confirm-modal-confirm').click();
 				await assertToast(page, /Revoked 2/i);
-				await expect(client).toHaveCount(0);
+				await expect(tenant).toHaveCount(0);
 
 				await expectAPIKeyRejected(await validateWithAPIKey(suRequest, a.key));
 				await expectAPIKeyRejected(await validateWithAPIKey(suRequest, b.key));
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 	});
@@ -432,39 +432,39 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_contract_${uniqueSuffix}`;
+			const tenantId = `e2e_contract_${uniqueSuffix}`;
 
 			const noScopes = await suRequest.post('/api/admin/api-keys', {
-				data: { client_id: clientId, name: 'x' }
+				data: { tenant_id: tenantId, name: 'x' }
 			});
 			expect(noScopes.status()).toBe(400);
 			expect(String((await noScopes.json()).error.message)).toMatch(/scope/i);
 
 			const emptyScopes = await suRequest.post('/api/admin/api-keys', {
-				data: { client_id: clientId, name: 'x', scopes: [] }
+				data: { tenant_id: tenantId, name: 'x', scopes: [] }
 			});
 			expect(emptyScopes.status()).toBe(400);
 
-			const noClient = await suRequest.post('/api/admin/api-keys', {
+			const noTenant = await suRequest.post('/api/admin/api-keys', {
 				data: { name: 'x', scopes: ['validate'] }
 			});
-			expect(noClient.status()).toBe(400);
-			expect(String((await noClient.json()).error.message)).toMatch(/client_id/i);
+			expect(noTenant.status()).toBe(400);
+			expect(String((await noTenant.json()).error.message)).toMatch(/tenant_id/i);
 
-			const badClient = await suRequest.post('/api/admin/api-keys', {
-				data: { client_id: 'bad client!', name: 'x', scopes: ['validate'] }
+			const badTenant = await suRequest.post('/api/admin/api-keys', {
+				data: { tenant_id: 'bad client!', name: 'x', scopes: ['validate'] }
 			});
-			expect(badClient.status()).toBe(400);
+			expect(badTenant.status()).toBe(400);
 
 			const unknownScope = await suRequest.post('/api/admin/api-keys', {
-				data: { client_id: clientId, name: 'x', scopes: ['admin'] }
+				data: { tenant_id: tenantId, name: 'x', scopes: ['admin'] }
 			});
 			expect(unknownScope.status()).toBe(400);
 			expect(String((await unknownScope.json()).error.message)).toMatch(/scope/i);
 
 			const tooLong = await suRequest.post('/api/admin/api-keys', {
 				data: {
-					client_id: clientId,
+					tenant_id: tenantId,
 					name: 'x',
 					scopes: ['validate'],
 					expires_in: '9000h'
@@ -475,7 +475,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 
 			const conflict = await suRequest.post('/api/admin/api-keys', {
 				data: {
-					client_id: clientId,
+					tenant_id: tenantId,
 					name: 'x',
 					scopes: ['validate'],
 					expires_in: '24h',
@@ -487,7 +487,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 
 			const negativeRate = await suRequest.post('/api/admin/api-keys', {
 				data: {
-					client_id: clientId,
+					tenant_id: tenantId,
 					name: 'x',
 					scopes: ['validate'],
 					rate_limit: -1
@@ -502,26 +502,26 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 
 			// Nothing above should have created a live key.
 			const listed = await suRequest.get(
-				`/api/admin/api-keys?client_id=${encodeURIComponent(clientId)}`
+				`/api/admin/api-keys?tenant_id=${encodeURIComponent(tenantId)}`
 			);
 			expect(((await listed.json()).data.keys ?? []) as unknown[]).toHaveLength(0);
 		});
 
-		test('revoke unknown key or empty client is 404; re-revoke is idempotent', async ({
+		test('revoke unknown key or empty tenant is 404; re-revoke is idempotent', async ({
 			suRequest,
 			uniqueSuffix
 		}) => {
 			const missing = await suRequest.delete('/api/admin/api-keys/ffffffffffff');
 			expect(missing.status()).toBe(404);
 
-			const emptyClient = await suRequest.delete(
-				`/api/admin/clients/${encodeURIComponent(`e2e_empty_${uniqueSuffix}`)}/api-keys`
+			const emptyTenant = await suRequest.delete(
+				`/api/admin/tenants/${encodeURIComponent(`e2e_empty_${uniqueSuffix}`)}/api-keys`
 			);
-			expect(emptyClient.status()).toBe(404);
+			expect(emptyTenant.status()).toBe(404);
 
-			const clientId = `e2e_dbl_${uniqueSuffix}`;
+			const tenantId = `e2e_dbl_${uniqueSuffix}`;
 			const key = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: 'once',
 				scopes: ['validate']
 			});
@@ -532,7 +532,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 				expect((await revokeAPIKeyById(suRequest, key.id)).status()).toBe(200);
 				await expectAPIKeyRejected(await validateWithAPIKey(suRequest, key.key));
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 
@@ -540,107 +540,107 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_touch_${uniqueSuffix}`;
+			const tenantId = `e2e_touch_${uniqueSuffix}`;
 			const key = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: 'touch_me',
 				scopes: ['validate']
 			});
 			try {
 				const before = await suRequest.get(
-					`/api/admin/api-keys?client_id=${encodeURIComponent(clientId)}`
+					`/api/admin/api-keys?tenant_id=${encodeURIComponent(tenantId)}`
 				);
 				expect((await before.json()).data.keys[0].last_used_at ?? null).toBeNull();
 
 				await expectAPIKeyAccepted(await validateWithAPIKey(suRequest, key.key));
 
 				const after = await suRequest.get(
-					`/api/admin/api-keys?client_id=${encodeURIComponent(clientId)}`
+					`/api/admin/api-keys?tenant_id=${encodeURIComponent(tenantId)}`
 				);
 				const lastUsed = (await after.json()).data.keys[0].last_used_at;
 				expect(lastUsed).toBeTruthy();
 				expect(Date.now() - Date.parse(lastUsed)).toBeLessThan(60_000);
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 	});
 
 	test.describe('search and grouping', () => {
-		test('filters clients by id and key name', async ({
+		test('filters tenants by id and key name', async ({
 			superuserPage: page,
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientA = `e2e_sa_${uniqueSuffix}`;
-			const clientB = `e2e_sb_${uniqueSuffix}`;
+			const tenantA = `e2e_sa_${uniqueSuffix}`;
+			const tenantB = `e2e_sb_${uniqueSuffix}`;
 			await issueAPIKey(suRequest, {
-				client_id: clientA,
+				tenant_id: tenantA,
 				name: `alpha_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 			await issueAPIKey(suRequest, {
-				client_id: clientB,
+				tenant_id: tenantB,
 				name: `beta_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 
 			try {
 				await openApiKeys(page);
-				await page.getByTestId('api-keys-search').fill(clientA);
+				await page.getByTestId('api-keys-search').fill(tenantA);
 				await expect(
-					page.locator(`[data-testid="api-keys-client"][data-client-id="${clientA}"]`)
+					page.locator(`[data-testid="api-keys-tenant"][data-tenant-id="${tenantA}"]`)
 				).toBeVisible();
 				await expect(
-					page.locator(`[data-testid="api-keys-client"][data-client-id="${clientB}"]`)
+					page.locator(`[data-testid="api-keys-tenant"][data-tenant-id="${tenantB}"]`)
 				).toHaveCount(0);
 
 				await page.getByTestId('api-keys-search').fill(`beta_${uniqueSuffix}`);
 				await expect(
-					page.locator(`[data-testid="api-keys-client"][data-client-id="${clientB}"]`)
+					page.locator(`[data-testid="api-keys-tenant"][data-tenant-id="${tenantB}"]`)
 				).toBeVisible();
 				await expect(
-					page.locator(`[data-testid="api-keys-client"][data-client-id="${clientA}"]`)
+					page.locator(`[data-testid="api-keys-tenant"][data-tenant-id="${tenantA}"]`)
 				).toHaveCount(0);
 			} finally {
-				await cleanupClientKeys(suRequest, clientA);
-				await cleanupClientKeys(suRequest, clientB);
+				await cleanupTenantKeys(suRequest, tenantA);
+				await cleanupTenantKeys(suRequest, tenantB);
 			}
 		});
 
-		test('client group collapses and expands without losing rows', async ({
+		test('tenant group collapses and expands without losing rows', async ({
 			superuserPage: page,
 			suRequest,
 			uniqueSuffix
 		}) => {
-			const clientId = `e2e_fold_${uniqueSuffix}`;
+			const tenantId = `e2e_fold_${uniqueSuffix}`;
 			const key = await issueAPIKey(suRequest, {
-				client_id: clientId,
+				tenant_id: tenantId,
 				name: `fold_${uniqueSuffix}`,
 				scopes: ['validate']
 			});
 			try {
 				await openApiKeys(page);
-				await page.getByTestId('api-keys-search').fill(clientId);
-				const client = page.locator(
-					`[data-testid="api-keys-client"][data-client-id="${clientId}"]`
+				await page.getByTestId('api-keys-search').fill(tenantId);
+				const tenant = page.locator(
+					`[data-testid="api-keys-tenant"][data-tenant-id="${tenantId}"]`
 				);
-				await expect(client).toHaveAttribute('data-expanded', 'true');
+				await expect(tenant).toHaveAttribute('data-expanded', 'true');
 				await expect(
-					client.locator(`[data-testid="api-keys-row"][data-key-id="${key.id}"]`)
+					tenant.locator(`[data-testid="api-keys-row"][data-key-id="${key.id}"]`)
 				).toBeVisible();
 
-				await client.getByTestId('api-keys-client-toggle').click();
-				await expect(client).toHaveAttribute('data-expanded', 'false');
-				await expect(client.getByTestId('api-keys-client-keys')).toHaveCount(0);
+				await tenant.getByTestId('api-keys-tenant-toggle').click();
+				await expect(tenant).toHaveAttribute('data-expanded', 'false');
+				await expect(tenant.getByTestId('api-keys-tenant-keys')).toHaveCount(0);
 
-				await client.getByTestId('api-keys-client-toggle').click();
-				await expect(client).toHaveAttribute('data-expanded', 'true');
+				await tenant.getByTestId('api-keys-tenant-toggle').click();
+				await expect(tenant).toHaveAttribute('data-expanded', 'true');
 				await expect(
-					client.locator(`[data-testid="api-keys-row"][data-key-id="${key.id}"]`)
+					tenant.locator(`[data-testid="api-keys-row"][data-key-id="${key.id}"]`)
 				).toBeVisible();
 			} finally {
-				await cleanupClientKeys(suRequest, clientId);
+				await cleanupTenantKeys(suRequest, tenantId);
 			}
 		});
 	});

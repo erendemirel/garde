@@ -42,7 +42,7 @@ func apiKeyRouter(h *APIKeyHandler) *gin.Engine {
 	router.POST("/admin/api-keys", h.CreateAPIKey)
 	router.GET("/admin/api-keys", h.ListAPIKeys)
 	router.GET("/admin/api-key-scopes", h.ListAPIKeyScopes)
-	router.DELETE("/admin/clients/:client_id/api-keys", h.RevokeClientAPIKeys)
+	router.DELETE("/admin/tenants/:tenant_id/api-keys", h.RevokeTenantAPIKeys)
 	return router
 }
 
@@ -90,8 +90,8 @@ func TestCreateAPIKeyRequiresExplicitScopes(t *testing.T) {
 	router := apiKeyRouter(newAPIKeyTestHandler(t))
 
 	for _, body := range []map[string]any{
-		{"client_id": "acme", "name": "acme-prod"},
-		{"client_id": "acme", "name": "acme-prod", "scopes": []string{}},
+		{"tenant_id": "acme", "name": "acme-prod"},
+		{"tenant_id": "acme", "name": "acme-prod", "scopes": []string{}},
 	} {
 		rec := postKey(t, router, body)
 		if rec.Code != http.StatusBadRequest {
@@ -103,7 +103,7 @@ func TestCreateAPIKeyRequiresExplicitScopes(t *testing.T) {
 	}
 }
 
-func TestCreateAPIKeyRequiresClientID(t *testing.T) {
+func TestCreateAPIKeyRequiresTenantID(t *testing.T) {
 	router := apiKeyRouter(newAPIKeyTestHandler(t))
 
 	rec := postKey(t, router, map[string]any{
@@ -113,8 +113,8 @@ func TestCreateAPIKeyRequiresClientID(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
-	if got := errorMessage(t, rec); got != pkgerrors.ErrInvalidAPIKeyClientID {
-		t.Fatalf("message = %q, want %q", got, pkgerrors.ErrInvalidAPIKeyClientID)
+	if got := errorMessage(t, rec); got != pkgerrors.ErrInvalidAPIKeyTenantID {
+		t.Fatalf("message = %q, want %q", got, pkgerrors.ErrInvalidAPIKeyTenantID)
 	}
 }
 
@@ -123,7 +123,7 @@ func TestCreateAPIKeyExpiresByDefault(t *testing.T) {
 	router := apiKeyRouter(newAPIKeyTestHandler(t))
 
 	rec := postKey(t, router, map[string]any{
-		"client_id": "acme",
+		"tenant_id": "acme",
 		"name":      "acme-prod",
 		"scopes":    []string{models.ScopeValidate},
 	})
@@ -138,8 +138,8 @@ func TestCreateAPIKeyExpiresByDefault(t *testing.T) {
 	if remaining := time.Until(*key.ExpiresAt); remaining > models.DefaultAPIKeyTTL+time.Minute {
 		t.Fatalf("expiry is %v away, want about %v", remaining, models.DefaultAPIKeyTTL)
 	}
-	if key.ClientID != "acme" {
-		t.Fatalf("client_id = %q, want acme", key.ClientID)
+	if key.TenantID != "acme" {
+		t.Fatalf("tenant_id = %q, want acme", key.TenantID)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestCreateAPIKeyNeverExpiresIsDeliberate(t *testing.T) {
 	router := apiKeyRouter(newAPIKeyTestHandler(t))
 
 	rec := postKey(t, router, map[string]any{
-		"client_id":     "acme",
+		"tenant_id":     "acme",
 		"name":          "acme-forever",
 		"scopes":        []string{models.ScopeValidate},
 		"never_expires": true,
@@ -161,17 +161,17 @@ func TestCreateAPIKeyNeverExpiresIsDeliberate(t *testing.T) {
 }
 
 // One call has to take out everything a compromised holder has.
-func TestRevokeClientAPIKeysRevokesOnlyThatClient(t *testing.T) {
+func TestRevokeTenantAPIKeysRevokesOnlyThatTenant(t *testing.T) {
 	handler := newAPIKeyTestHandler(t)
 	router := apiKeyRouter(handler)
 
-	for _, spec := range []struct{ client, name string }{
+	for _, spec := range []struct{ tenant, name string }{
 		{"acme", "acme-prod"},
 		{"acme", "acme-staging"},
 		{"globex", "globex-prod"},
 	} {
 		rec := postKey(t, router, map[string]any{
-			"client_id": spec.client,
+			"tenant_id": spec.tenant,
 			"name":      spec.name,
 			"scopes":    []string{models.ScopeValidate},
 		})
@@ -181,13 +181,13 @@ func TestRevokeClientAPIKeysRevokesOnlyThatClient(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/admin/clients/acme/api-keys", nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/admin/tenants/acme/api-keys", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
 
 	var envelope struct {
-		Data models.RevokeClientKeysResponse `json:"data"`
+		Data models.RevokeTenantKeysResponse `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestRevokeClientAPIKeysRevokesOnlyThatClient(t *testing.T) {
 	}
 
 	// The other holder must be untouched.
-	remaining, err := handler.repo.ListServiceAPIKeysByClient(context.Background(), "globex")
+	remaining, err := handler.repo.ListServiceAPIKeysByTenant(context.Background(), "globex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,11 +211,11 @@ func TestRevokeClientAPIKeysRevokesOnlyThatClient(t *testing.T) {
 	}
 }
 
-func TestRevokeClientAPIKeysWithNoKeys(t *testing.T) {
+func TestRevokeTenantAPIKeysWithNoKeys(t *testing.T) {
 	router := apiKeyRouter(newAPIKeyTestHandler(t))
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/admin/clients/nobody/api-keys", nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/admin/tenants/nobody/api-keys", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}

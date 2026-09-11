@@ -40,7 +40,7 @@ func (h *APIKeyHandler) ListAPIKeyScopes(c *gin.Context) {
 }
 
 // @Summary Issue a service API key
-// @Description Creates a per-tenant API key for calling /validate. client_id names the holder, name labels this key, and scopes must be listed explicitly - there is no default grant. Lifetime is bounded unless never_expires is set: omitting expires_in gives 90 days, and it may not exceed 8760h. The plaintext key is returned once, in this response, and cannot be retrieved again. Only superuser can perform this operation.
+// @Description Creates a per-tenant API key for calling /validate. tenant_id names the holder, name labels this key, and scopes must be listed explicitly - there is no default grant. Lifetime is bounded unless never_expires is set: omitting expires_in gives 90 days, and it may not exceed 8760h. The plaintext key is returned once, in this response, and cannot be retrieved again. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Accept json
 // @Produce json
@@ -58,8 +58,8 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	clientID := strings.TrimSpace(req.ClientID)
-	if err := validation.ValidateAPIKeyClientID(clientID); err != nil {
+	tenantID := strings.TrimSpace(req.TenantID)
+	if err := validation.ValidateAPIKeyTenantID(tenantID); err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
 	}
@@ -104,7 +104,7 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	createdBy, _ := contextUserID(c)
 	key := &models.ServiceAPIKey{
 		ID:         id,
-		ClientID:   clientID,
+		TenantID:   tenantID,
 		Name:       name,
 		SecretHash: secretHash,
 		Scopes:     req.Scopes,
@@ -121,7 +121,7 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	}
 
 	slog.Info("Issued a service API key",
-		"api_key_id", id, "client_id", clientID, "name", name,
+		"api_key_id", id, "tenant_id", tenantID, "name", name,
 		"scopes", req.Scopes, "expires_at", expiresAt, "created_by", createdBy)
 
 	c.JSON(http.StatusCreated, models.NewSuccessResponse(models.CreateAPIKeyResponse{
@@ -162,14 +162,14 @@ func resolveAPIKeyExpiry(req *models.CreateAPIKeyRequest, now time.Time) (*time.
 }
 
 // @Summary List service API keys
-// @Description Lists issued per-tenant API keys, newest first. Secrets are never returned. Pass client_id to narrow the listing to one holder. Only superuser can perform this operation.
+// @Description Lists issued per-tenant API keys, newest first. Secrets are never returned. Pass tenant_id to narrow the listing to one holder. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Produce json
 // @Security SessionCookie
 // @Security Bearer
-// @Param client_id query string false "Only return keys held by this client"
+// @Param tenant_id query string false "Only return keys held by this tenant"
 // @Success 200 {object} models.SuccessResponse{data=models.ListAPIKeysResponse} "Issued keys"
-// @Failure 400 {object} models.ErrorResponse "Invalid client_id"
+// @Failure 400 {object} models.ErrorResponse "Invalid tenant_id"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
 // @Router /admin/api-keys [get]
 func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
@@ -178,12 +178,12 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 		err  error
 	)
 
-	if clientID := strings.TrimSpace(c.Query("client_id")); clientID != "" {
-		if validationErr := validation.ValidateAPIKeyClientID(clientID); validationErr != nil {
+	if tenantID := strings.TrimSpace(c.Query("tenant_id")); tenantID != "" {
+		if validationErr := validation.ValidateAPIKeyTenantID(tenantID); validationErr != nil {
 			c.JSON(http.StatusBadRequest, models.NewErrorResponse(validationErr.Error()))
 			return
 		}
-		keys, err = h.repo.ListServiceAPIKeysByClient(c.Request.Context(), clientID)
+		keys, err = h.repo.ListServiceAPIKeysByTenant(c.Request.Context(), tenantID)
 	} else {
 		keys, err = h.repo.ListServiceAPIKeys(c.Request.Context())
 	}
@@ -236,39 +236,39 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 
 	revokedBy, _ := contextUserID(c)
 	slog.Info("Revoked a service API key",
-		"api_key_id", keyID, "client_id", key.ClientID, "name", key.Name, "revoked_by", revokedBy)
+		"api_key_id", keyID, "tenant_id", key.TenantID, "name", key.Name, "revoked_by", revokedBy)
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.NewAPIKeyResponse(key)))
 }
 
-// @Summary Revoke every API key held by one client
-// @Description Revokes all keys issued to a client in one call, for when a holder is compromised and reading the listing to revoke ids by hand would leave live credentials in play. Idempotent: already-revoked keys are reported unchanged. Only superuser can perform this operation.
+// @Summary Revoke every API key held by one tenant
+// @Description Revokes all keys issued to a tenant in one call, for when a holder is compromised and reading the listing to revoke ids by hand would leave live credentials in play. Idempotent: already-revoked keys are reported unchanged. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Produce json
 // @Security SessionCookie
 // @Security Bearer
-// @Param client_id path string true "Client id whose keys should all be revoked"
-// @Success 200 {object} models.SuccessResponse{data=models.RevokeClientKeysResponse} "Keys revoked"
-// @Failure 400 {object} models.ErrorResponse "Invalid client_id"
+// @Param tenant_id path string true "Tenant id whose keys should all be revoked"
+// @Success 200 {object} models.SuccessResponse{data=models.RevokeTenantKeysResponse} "Keys revoked"
+// @Failure 400 {object} models.ErrorResponse "Invalid tenant_id"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized - superuser access required"
-// @Failure 404 {object} models.ErrorResponse "Client holds no keys"
-// @Router /admin/clients/{client_id}/api-keys [delete]
-func (h *APIKeyHandler) RevokeClientAPIKeys(c *gin.Context) {
-	clientID := strings.TrimSpace(c.Param("client_id"))
-	if err := validation.ValidateAPIKeyClientID(clientID); err != nil {
+// @Failure 404 {object} models.ErrorResponse "Tenant holds no keys"
+// @Router /admin/tenants/{tenant_id}/api-keys [delete]
+func (h *APIKeyHandler) RevokeTenantAPIKeys(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("tenant_id"))
+	if err := validation.ValidateAPIKeyTenantID(tenantID); err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
 	}
 
-	revoked, err := h.repo.RevokeServiceAPIKeysByClient(c.Request.Context(), clientID)
+	revoked, err := h.repo.RevokeServiceAPIKeysByTenant(c.Request.Context(), tenantID)
 	revokedBy, _ := contextUserID(c)
 
 	// Report what was revoked even on a partial failure. During an incident
 	// "which ones are dead" is more useful than a bare error, and the keys
 	// that did not make it are still live.
 	if err != nil {
-		slog.Error("Failed to revoke every key for a client",
-			"error", err, "client_id", clientID, "revoked", len(revoked), "revoked_by", revokedBy)
+		slog.Error("Failed to revoke every key for a tenant",
+			"error", err, "tenant_id", tenantID, "revoked", len(revoked), "revoked_by", revokedBy)
 		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(pkgerrors.ErrOperationFailed))
 		return
 	}
@@ -283,11 +283,11 @@ func (h *APIKeyHandler) RevokeClientAPIKeys(c *gin.Context) {
 		out = append(out, models.NewAPIKeyResponse(key))
 	}
 
-	slog.Info("Revoked every service API key for a client",
-		"client_id", clientID, "revoked", len(revoked), "revoked_by", revokedBy)
+	slog.Info("Revoked every service API key for a tenant",
+		"tenant_id", tenantID, "revoked", len(revoked), "revoked_by", revokedBy)
 
-	c.JSON(http.StatusOK, models.NewSuccessResponse(models.RevokeClientKeysResponse{
-		ClientID: clientID,
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.RevokeTenantKeysResponse{
+		TenantID: tenantID,
 		Keys:     out,
 		Revoked:  len(revoked),
 	}))

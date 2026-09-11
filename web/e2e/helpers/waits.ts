@@ -247,7 +247,7 @@ export async function waitForAdminManagement(page: Page, timeout = LOAD_TIMEOUT)
 export async function waitForApiKeysPanel(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	const ready = page
-		.getByTestId('api-keys-client-list')
+		.getByTestId('api-keys-tenant-list')
 		.or(page.getByTestId('api-keys-empty'))
 		.or(page.getByTestId('api-keys-error'));
 	await waitOutOfLoading(page, 'api-keys-loading', ready, timeout);
