@@ -9,8 +9,10 @@ optional auth / public HTTPS.
 
 ```bash
 export REDIS_PASSWORD=...
+# AWS: prefer AWS_PROFILE=default (garde-ci). provider_preflight resolves the
+# profile into AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY when those are unset.
 # optional:
-export SUPERUSER_EMAIL=... SUPERUSER_PASSWORD=...   # enables auth smoke
+export SUPERUSER_EMAIL=... SUPERUSER_PASSWORD=...   # enables auth smoke + 09
 export API_KEY=... \
        SERVICE_CLIENT_CERT=deploy/pki/client-ci-cert.pem \
        SERVICE_CLIENT_KEY=deploy/pki/client-ci-key.pem   # enables the positive mTLS check
@@ -28,4 +30,5 @@ export API_KEY=... \
 | `05-failover-dry-run.sh` | `failover.sh --dry-run` |
 | `06-auth-smoke.sh` | Login + `/users/me` (skipped if no superuser env) |
 | `07-public-https.sh` | Real `API_DOMAIN`/`APP_DOMAIN` HTTPS (skipped for example.com) |
-| `08-service-listener.sh` | `/validate` is unpublished on the public edge (or, with `PUBLIC_VALIDATE=true`, published but closed to the shared key), refused on the mesh listener without a client certificate, and accepted with one |
+| `08-service-listener.sh` | `/validate` unpublished on the public edge (or published but closed to the shared key); mesh listener mTLS checks soft-skip when `:SERVICE_PORT` is not listening |
+| `09-validate-api-keys.sh` | Shared + per-tenant API keys against in-process `/validate` (skips if SUPERUSER/API_KEY unset or image lacks the routes) |

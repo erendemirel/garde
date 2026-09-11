@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
-# Impact: none — proves /validate is private and certificate-gated.
+# Impact: none — proves /validate is private and certificate-gated when the
+# service listener is deployed, and that a published public copy refuses the
+# shared API_KEY.
 #
-# Three claims, each of which has been true only by intention before now:
+# Claims:
 #
-#   1. the public API hostname does not serve /validate
+#   1. the public API hostname does not serve /validate (or, with
+#      PUBLIC_VALIDATE=true, serves it but refuses unauthenticated callers and
+#      the shared API_KEY)
 #   2. the mesh service listener refuses a caller with no client certificate
-#   3. the same call succeeds with a certificate from the service CA
+#   3. the same call succeeds with a certificate from the service CA (+ shared
+#      or per-tenant key)
 #
-# Claim 3 needs a client keypair, so it is skipped unless one is supplied:
+# Claims 2–3 soft-skip when the service listener is not running on the primary
+# (single-listener deployments). Claim 3 also needs:
 #   SERVICE_CLIENT_CERT=deploy/pki/client-ci-cert.pem
 #   SERVICE_CLIENT_KEY=deploy/pki/client-ci-key.pem
 #   API_KEY=...           (the same value seeded into Vault)
+#
+# Session ids must be well-formed (86-char base64url). A UUID fails format
+# validation with 400 and cannot distinguish "key accepted" from "key refused".
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ha/lib.sh"
 
@@ -21,6 +30,9 @@ PORT="${SERVICE_PORT:-8444}"
 TARGET="${PRIMARY_NODE:?PRIMARY_NODE missing from inventory}"
 TARGET_IP="$(node_wg_ip "$TARGET")"
 [ -n "$TARGET_IP" ] || die "no mesh address for $TARGET"
+
+# Well-formed, never-issued session id — passes ValidateSessionID, fails lookup.
+FAKE_SESSION_ID='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 
 ha_ensure_curl_image
 
@@ -39,17 +51,27 @@ else
     ok "public edge serves /validate and refuses unauthenticated callers"
 
     # And that the shared key is not a way in. Tenants hold per-tenant keys;
-    # this one is the operator's, valid only on the mesh listener. A valid
-    # credential would answer 200 with valid=false for a bogus session, so 401
-    # is the outcome that proves it was rejected.
+    # this one is the operator's, valid only on the mesh listener.
+    # Distinguishing outcomes: key accepted → "session invalid"; key refused →
+    # plain "unauthorized". Both are HTTP 401.
     if [ -n "${API_KEY:-}" ]; then
-      shared="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+      shared_body="$(mktemp)"
+      shared="$(curl -sS -o "$shared_body" -w '%{http_code}' --max-time 20 \
         -H "X-API-Key: ${API_KEY}" \
-        -H 'X-Session-ID: 00000000-0000-0000-0000-000000000000' \
+        -H "X-Session-ID: ${FAKE_SESSION_ID}" \
         "https://${API_DOMAIN}/validate" || echo 000)"
+      shared_msg="$(tr '[:upper:]' '[:lower:]' < "$shared_body")"
+      rm -f "$shared_body"
       [ "$shared" = "401" ] \
         || die "the shared API key returned $shared on the public edge; it must not authenticate there"
-      ok "public edge refuses the shared API key"
+      case "$shared_msg" in
+        *session\ invalid*)
+          die "the shared API key authenticated on the public edge (got session invalid); it must be refused there" ;;
+        *unauthorized*)
+          ok "public edge refuses the shared API key" ;;
+        *)
+          die "the shared API key returned 401 with unexpected body: $shared_msg" ;;
+      esac
     else
       warn "API_KEY unset — skipping the shared-key rejection check"
     fi
@@ -61,6 +83,21 @@ else
 fi
 
 # --- 2. the listener is up and demands a certificate ------------------------
+
+# Is the service listener even configured? Single-listener deployments never
+# open :8444; failing them here would make the whole deploy suite unusable
+# until the mesh listener is deliberately enabled.
+listener_up="$(on_node "$TARGET" "ss -lntp 2>/dev/null | grep -q ':$PORT' && echo yes || (netstat -lntp 2>/dev/null | grep -q ':$PORT' && echo yes || echo no)")"
+if [ "$listener_up" != "yes" ]; then
+  # Also accept "bound inside the container only" — compose may publish on the
+  # mesh address without the host ss seeing a global listen.
+  listener_up="$(on_node "$TARGET" "docker exec garde-api sh -c 'ss -lntp 2>/dev/null | grep -q :$PORT || netstat -lntp 2>/dev/null | grep -q :$PORT' && echo yes || echo no" 2>/dev/null || echo no)"
+fi
+
+if [ "$listener_up" != "yes" ]; then
+  warn "service listener not listening on :$PORT — skipping mesh mTLS checks (single-listener layout, or SERVICE_LISTENER not enabled yet)"
+  exit 0
+fi
 
 # Run from the standby, so this also proves the listener is reachable across
 # the mesh rather than only from its own host.
@@ -101,20 +138,28 @@ rsync -az -e "$(rsync_rsh "$FROM")" \
 rsync -az -e "$(rsync_rsh "$FROM")" \
   "$SERVICE_CLIENT_KEY" "$(ssh_target "$FROM"):$REMOTE_DIR/client-key.pem"
 
-# A session id that does not exist is the right probe: a 200 with valid=false
-# proves the call was authenticated, without needing a live login.
-code="$(on_node "$FROM" "docker run --rm -v '$REMOTE_DIR':/pki:ro $HA_CURL_IMG \
-  curl -sS -k -o /dev/null -w '%{http_code}' --max-time 15 \
-  --cert /pki/client-cert.pem --key /pki/client-key.pem \
-  -H 'X-API-Key: $API_KEY' \
-  -H 'X-Session-ID: 00000000-0000-0000-0000-000000000000' \
-  'https://$TARGET_IP:$PORT/validate'")"
+# Auth success with a never-issued session is 401 "session invalid" — not 200.
+# A UUID fails format checks with 400 and cannot prove the key was accepted.
+# Write the body onto the shared REMOTE_DIR so we can read it after the container exits.
+code="$(on_node "$FROM" "docker run --rm -v '$REMOTE_DIR':/pki:rw $HA_CURL_IMG \
+  sh -c \"curl -sS -k -o /pki/validate.body -w '%{http_code}' --max-time 15 \
+    --cert /pki/client-cert.pem --key /pki/client-key.pem \
+    -H 'X-API-Key: $API_KEY' \
+    -H 'X-Session-ID: $FAKE_SESSION_ID' \
+    'https://$TARGET_IP:$PORT/validate'\")"
+msg="$(on_node "$FROM" "tr '[:upper:]' '[:lower:]' < '$REMOTE_DIR/validate.body' 2>/dev/null || true")"
 
 case "$code" in
-  200|401)
-    # 401 here means the session was rejected, not the caller: the certificate
-    # and API key were both accepted before the handler ran.
-    ok "service listener accepted a certificate from the service CA ($code)" ;;
+  401)
+    case "$msg" in
+      *session\ invalid*)
+        ok "service listener accepted a certificate from the service CA (session rejected after auth)" ;;
+      *)
+        die "authenticated /validate call returned 401 without session-invalid body: $msg" ;;
+    esac
+    ;;
+  200)
+    ok "service listener accepted a certificate from the service CA (200)" ;;
   *)
     die "authenticated /validate call returned $code" ;;
 esac

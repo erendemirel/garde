@@ -100,6 +100,17 @@ _aws_region() { printf '%s' "${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"; }
 
 provider_preflight() {
   need_cmd aws
+  # Operators commonly hold keys in ~/.aws/credentials under AWS_PROFILE
+  # (default=garde-ci, admin=garde-admin). The rest of this driver still speaks
+  # the env-var form the suite and CI inject, so resolve the profile once here
+  # rather than forcing every caller to export keys by hand.
+  if [ -z "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_PROFILE:-}" ]; then
+    if AWS_ACCESS_KEY_ID="$(aws configure get aws_access_key_id --profile "$AWS_PROFILE" 2>/dev/null)" \
+      && AWS_SECRET_ACCESS_KEY="$(aws configure get aws_secret_access_key --profile "$AWS_PROFILE" 2>/dev/null)" \
+      && [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
+      export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+    fi
+  fi
   provider_require_credentials
   [ -n "$(_aws_region)" ] || die "AWS needs AWS_REGION (or AWS_DEFAULT_REGION) set"
 }
