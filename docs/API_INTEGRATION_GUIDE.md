@@ -11,6 +11,7 @@ This guide explains how to integrate and use garde in your applications.
   - [1. Browser-based Authentication](#1-browser-based-authentication)
   - [2. API Authentication](#2-api-authentication)
   - [3. Internal Service Authentication (mTLS + API Key)](#3-internal-service-authentication-mtls--api-key)
+  - [4. External Callers (Per-Tenant API Keys)](#4-external-callers-per-tenant-api-keys)
 - [Common Workflows](#common-workflows)
   - [1. User Registration and Account Management](#1-user-registration-and-account-management)
     - [Initial Registration](#initial-registration)
@@ -49,7 +50,7 @@ This guide explains how to integrate and use garde in your applications.
 
 ## Authentication Methods
 
-garde supports three authentication styles. Browser/API session auth and mTLS service auth are meant to coexist. With built-in `USE_TLS`, HTTPS is enabled and client certs are optional at the handshake; `/validate` still requires mTLS when a client CA is configured — see [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
+garde supports four authentication styles, and they are meant to coexist: browser sessions, API sessions, certificate-authenticated service calls, and per-tenant keys for callers outside your network. Browsers are never asked for a client certificate. Service calls to `/validate` are, on any listener configured to verify one — which in the recommended layout is a separate private listener rather than the public API host. See [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
 
 ### 1. Browser-based Authentication
 For web applications where users log in through a browser interface.
@@ -137,17 +138,39 @@ Authorization: Bearer 6cc0595f-f3...
 For internal services communicating within your infrastructure.
 
 **Requirements:**
-- API key from configuration (`X-API-Key`)
-- When `use_tls=true` and `tls_ca_path` is set: valid client certificate from your CA
-- Must use the same domain as the auth service (certificate CN/SAN checks on `/validate` when mTLS applies)
+- API key from configuration (`X-API-Key`), always
+- A client certificate from the deployment's service CA, whenever the listener you are calling was built to verify one
+- The certificate must carry the auth service's registrable domain: garde checks the CN (or its suffix) and the SANs against `domain_name`
 
-**Topology:** Call `/validate` only from trusted services (private network). Pass the end-user session ID with the **`X-Session-ID`** header (preferred; avoids access-log leakage). The `session_id` query parameter remains accepted for compatibility.
+**Where it answers.** `/validate` can validate any user's session, so the
+recommended production layout does **not** serve it on the public hostname:
+
+| Layout | Address | Auth |
+|--------|---------|------|
+| `service_listener=true` (recommended) | private listener, e.g. `https://10.10.0.1:8444/validate` | client certificate + shared API key |
+| `service_listener=true` + `public_validate=true` | the API host | **per-tenant API key only** (see below) |
+| single listener, `use_tls=true` + `tls_ca_path` | the API host | client certificate + shared API key |
+| single listener, edge terminates TLS | the API host | **shared API key only** — keep it off the public internet |
+
+The third row is why the service listener exists: a proxy that terminates TLS
+strips the client certificate, so there is nothing left to verify.
+
+The second row exists for callers who are not on your network. There the shared
+`api_key` is **refused**, and each caller presents a key issued to it alone —
+see [External callers](#4-external-callers-per-tenant-api-keys).
+
+**Topology:** Call `/validate` only from trusted services over a private
+network. Pass the end-user session ID with the **`X-Session-ID`** header
+(preferred; avoids access-log leakage). The `session_id` query parameter
+remains accepted for compatibility.
 
 Example request:
 ```http
-GET /validate?session_id=8e8217f1-4f...
+GET /validate
+Host: 10.10.0.1:8444
 X-API-Key: your_api_key
-// TLS client certificate included when mTLS is enabled
+X-Session-ID: 8e8217f1-4f...
+// plus the TLS client certificate, when the listener requires one
 ```
 
 Success Response:
@@ -171,7 +194,68 @@ Error Response:
 }
 ```
 
-**Important Note:** The `/validate` endpoint is only accessible via API key (and mTLS when built-in TLS + client CA are configured). Cookie/Bearer admin authentication is not supported for this endpoint.
+**Important Note:** The `/validate` endpoint is reachable only with an API key, plus a client certificate on any listener configured to verify one. Cookie/Bearer admin authentication is not supported for this endpoint.
+
+### 4. External Callers (Per-Tenant API Keys)
+
+For callers outside your network, who can neither join the private mesh nor
+maintain a client certificate.
+
+These callers reach `/validate` on the public API hostname over ordinary server
+TLS, and authenticate with a key issued to them alone. Wherever the private
+service listener is carrying internal traffic, the shared `api_key` from
+configuration is **refused** on the public one — it remains valid only on the
+service listener. Single-listener deployments decide for themselves with
+`public_validate_shared_key`, and there is no default: see
+[the older layout](INSTALLATION.md#single-listener-deployments-the-older-layout).
+
+Keys look like `garde_<id>_<secret>`. Present the whole string:
+
+```http
+GET /validate
+Host: api.example.com
+X-API-Key: garde_1f4c8a0b6d2e7391_Zm9vYmFyYmF6cXV4...
+X-Session-ID: 8e8217f1-4f...
+```
+
+**What a caller should know:**
+
+- The key is shown once, when it is issued. It cannot be recovered — a lost key
+  is replaced, not looked up.
+- Rate limits are per key, so another tenant's traffic does not consume yours.
+  Exceeding it returns `429` with `X-RateLimit-*` headers on every response.
+- A revoked or expired key returns `401`; a key that exists but was not issued
+  for this endpoint returns `403`.
+
+**Issuing and revoking** is superuser-only:
+
+| Operation | Request |
+|-----------|---------|
+| Issue | `POST /admin/api-keys` with `client_id`, `name` and `scopes`; optional `expires_in`, `never_expires`, `rate_limit` |
+| List | `GET /admin/api-keys` — no secrets, but each key's `last_used_at`. Add `?client_id=acme` to narrow it |
+| Revoke one | `DELETE /admin/api-keys/{key_id}` — effective on the caller's next request |
+| Revoke a holder | `DELETE /admin/clients/{client_id}/api-keys` — every key that holder has, in one call |
+
+```json
+{
+    "data": {
+        "id": "1f4c8a0b6d2e7391",
+        "client_id": "acme",
+        "name": "acme-prod",
+        "scopes": ["validate"],
+        "created_at": "2026-09-11T10:04:00Z",
+        "expires_at": "2026-12-10T10:04:00Z",
+        "key": "garde_1f4c8a0b6d2e7391_Zm9vYmFyYmF6cXV4..."
+    }
+}
+```
+
+Store the `key` value at the caller's end immediately; `id` is what you use to
+revoke that one key, and `client_id` is what you use to revoke all of them.
+
+`client_id` names the holder and `name` labels the individual key, so one
+holder can carry several — which is how you roll a credential without a gap:
+issue the new key, let the caller cut over, then revoke the old one.
 
 ## Common Workflows
 
@@ -432,15 +516,18 @@ Notes:
 
 #### A. Overview — how the model fits together
 
-garde uses **three layers**. Mixing them up is the usual source of confusion:
+garde uses **four layers**. Mixing them up is the usual source of confusion:
 
 | Layer | What it is | Where it lives | Purpose |
 |-------|------------|----------------|---------|
 | **Privilege tier** | Superuser / Admin / User | Email lists in Vault (`SUPERUSER_EMAIL`, `ADMIN_USERS_JSON`) | Bootstrap administration (who can manage users, permissions catalog, etc.) |
+| **Scopes** | Named operations one credential or admin may perform | Compiled-in vocabulary; granted per admin in Vault (`ADMIN_SCOPES_JSON`) and per key on the API key record | Narrow *which endpoints* a caller may reach |
 | **Groups** | Named membership sets | SQLite `groups` + per-user `groups` map in Redis | Scope *which users an admin may manage* and *which permissions are visible* |
 | **Permissions** | Named boolean flags on a user | SQLite catalog + per-user `permissions` map in Redis | Application-level access rights your services interpret |
 
-There are **no OAuth-style scopes**. Privilege tier is not an app permission; app permissions are not roles.
+Scopes and permissions sound alike and are opposites. garde **enforces** scopes: a missing scope is a `403` from middleware, before the handler runs. garde only **stores** permissions — it never acts on them, and what they mean is up to the services that read them. Admin scopes carry a `garde:` prefix so the enforced set stays visibly distinct on a principal that holds both.
+
+Scopes also say nothing about *whose* records a call may touch. `garde:users:read` gets an admin past the door of the list-users endpoint; group sharing then decides which users come back. Privilege tier is not an app permission; app permissions are not roles.
 
 **Storage split:**
 - Redis: each user's enabled permissions/groups, sessions, password hash (`user_password:{id}`), encrypted MFA secret (`user_mfa:{id}`)
@@ -662,7 +749,31 @@ Admins are provisioned from secrets (no public signup):
 - Existing admin permissions/groups are preserved on refresh; only credentials/status/MFA flags are updated.
 - New admins start with **no groups**. Initial group assignments can only be done by Superuser.
 
+**Admin Scopes (optional):**
+
+By default "admin" is one bundle: an admin who may update a user may also delete them and revoke their sessions. `ADMIN_SCOPES_JSON` splits that bundle per admin.
+
+| Scope | Endpoints it permits |
+|-------|----------------------|
+| `garde:users:read` | `GET /users`, `GET /users/{user_id}` |
+| `garde:users:write` | `PUT /users/{user_id}` |
+| `garde:users:delete` | `DELETE /users/{user_id}` |
+| `garde:sessions:revoke` | `POST /sessions/revoke` |
+
+```json
+{"helpdesk@example.com":["garde:users:read","garde:users:write"]}
+```
+
+- Restricting is **opt-in per admin**: an admin with no entry keeps all four scopes, exactly as before. An explicit `[]` denies all four.
+- Superusers hold every scope and must not be listed; startup fails if they are.
+- Every listed address must also appear in `ADMIN_USERS_JSON`, and every scope name must be known — startup fails otherwise, because an entry naming nobody would silently restrict nobody.
+- A request missing the route's scope gets `403` with `"admin account is not permitted for this endpoint"`.
+- Scopes are provisioned through Vault, not the admin API, so an admin cannot widen their own reach. They resolve per request, so changes apply on the admin's next call.
+- Scopes gate the endpoint only. The group rules below still decide which users are in reach.
+
 **Group-Based Access Control:**
+
+Admins **cannot target their own record** on `PUT /users/{user_id}` or `DELETE /users/{user_id}`. Permissions and groups are set through the update path, so self-modification is the shape an escalation would take. Only the superuser may update themselves, having nothing to escalate to — and because blocking them would strand a superuser's own pending update request, which no admin can approve.
 
 Admins can only manage users who **already share at least one group** with them. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met:
 
@@ -828,11 +939,64 @@ This removes visibility of `a_permission` from group `x`.
 
 4. **Get Admin User Management:** `GET /admin/users/management` — Returns admin-to-managed-users mapping. Superuser only.
 
+**Service API Key Management:**
+
+Credentials for external callers of `/validate`. See
+[External Callers](#4-external-callers-per-tenant-api-keys) for how a caller
+uses one.
+
+1. **Issue a Key:**
+```http
+POST /admin/api-keys
+Authorization: Bearer <superuser_token>
+Content-Type: application/json
+
+{
+    "client_id": "acme",
+    "name": "acme-prod",
+    "scopes": ["validate"],
+    "expires_in": "4320h",
+    "rate_limit": 600
+}
+```
+
+`client_id`, `name` and `scopes` are all required. **Scopes are never granted
+by default** — an empty or missing list is a `400`, because a credential issued
+without a stated grant should carry nothing.
+
+Lifetime is bounded unless you say otherwise. Omitting `expires_in` gives the
+default 90 days; it may not exceed `8760h` (one year); and a key that never
+expires takes `"never_expires": true`, which cannot be combined with
+`expires_in`. `rate_limit` still defaults to the authenticated tier.
+
+**The response is the only time the plaintext key is returned** — it is stored
+as a SHA-256 and cannot be recovered.
+
+2. **List Keys:** `GET /admin/api-keys` — every issued key, newest first, with
+   `last_used_at` so idle credentials can be spotted. Secrets are never
+   returned. `?client_id=acme` narrows it to one holder.
+
+3. **Revoke a Key:** `DELETE /admin/api-keys/{key_id}` — takes effect on the
+   caller's next request. The record is kept, so the revocation stays visible
+   in the listing.
+
+4. **Revoke Every Key a Client Holds:**
+```http
+DELETE /admin/clients/acme/api-keys
+Authorization: Bearer <superuser_token>
+```
+
+   For when a holder is compromised. Reading the listing and revoking ids by
+   hand leaves live credentials in play while you work; this is one call. It is
+   idempotent, reports what it took out, and `404`s when the client holds
+   nothing.
+
 **Important Notes:**
 - All these operations require superuser authentication
 - Deleting a permission or group will cascade delete all related visibility mappings
 - Permission and group names must be unique
 - Visibility mappings must be unique (cannot add the same mapping twice)
+- API key names and client ids are 1-64 characters, alphanumeric with `_`, `-` or `.`
 
 #### G. Superuser Management
 
@@ -928,7 +1092,7 @@ For internal services to validate sessions of other applications.
 ```http
 GET /validate?session_id=2e8aa13e-3c...
 X-API-Key: your_api_key
-// Requires mTLS
+// plus a client certificate, on any listener configured to verify one
 ```
 
 Response:
@@ -944,11 +1108,12 @@ Response:
 ```
 
 Notes:
-- Requires both API key and mTLS
+- Always requires an API key; also requires a client certificate on the private service listener (and on a single listener with built-in TLS + a client CA)
 - Used by internal services to verify sessions
 - Returns simple valid/invalid response
-- Can validate any session, not just own sessions
-- This endpoint can ONLY be accessed using API key + mTLS authentication
+- Can validate any session, not just own sessions — which is why it is kept off the public hostname
+- Where the endpoint is published alongside the private service listener, the shared `api_key` is refused and each caller presents a [per-tenant key](#4-external-callers-per-tenant-api-keys). A single-listener deployment states which of the two it accepts through `public_validate_shared_key`, and will not start until it does
+- Cookie and Bearer authentication are not accepted here
 
 #### C. User Details
 Get detailed information about specific users:

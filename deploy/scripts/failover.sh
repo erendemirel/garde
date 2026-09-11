@@ -223,7 +223,11 @@ if [ "$DRY_RUN" = "false" ]; then
     fi
   fi
 
-  if [ "$public_ok" = "false" ] && [ -n "${FAILOVER_IP:-}" ]; then
+  # Only in the floating-IP lane. Under a managed load balancer the address
+  # belongs to the balancer, and the Elastic IP the inventory still carries
+  # (so the mode can be switched back) is attached to nothing — probing it
+  # would report a failure that has nothing to do with the cutover.
+  if [ "$public_ok" = "false" ] && [ "$(traffic_mode)" = "floating_ip" ] && [ -n "${FAILOVER_IP:-}" ]; then
     if retry_until "$verify_attempts" 5 \
          sh -c "curl -sf --max-time 10 -H 'Host: ${API_DOMAIN:-localhost}' \
            'http://${FAILOVER_IP}/health' >/dev/null \

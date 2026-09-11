@@ -61,7 +61,7 @@
 - HashiCorp Vault
 - Redis
 - Docker & Docker Compose
-- TLS certificates (for mTLS)
+- TLS certificates, if you enable built-in TLS or the service listener (`deploy/scripts/service-pki.sh` generates the latter)
 
 ### Deployment paths
 
@@ -153,34 +153,113 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### TLS and mTLS configuration
 
-garde supports two different TLS concerns. They are easy to confuse:
+garde serves two audiences with opposite needs, and each has its own switch.
+They are easy to confuse, so start here:
 
-| Concern | Purpose | Typical setup |
-|---------|---------|---------------|
-| **Public HTTPS (browser / UI)** | Encrypt traffic for users and cookie-based login | Reverse proxy terminates TLS; garde `use_tls` **false**, `cookie_secure` **true**, `trusted_proxies` set to the proxy |
-| **Built-in TLS + mTLS on `/validate`** | HTTPS on garde; service calls present client certs | `use_tls` **true** with server certs + client CA |
+| Audience | What it needs | Setting | Default |
+|----------|---------------|---------|---------|
+| **Browsers / UI** | HTTPS, and **never** a client certificate prompt | `browser_mtls` | `off` |
+| **Your services calling `/validate`** | A client certificate **and** an API key, on a private path | `service_mtls` | `required` |
+| **External callers of `/validate`** | HTTPS and a key issued to them alone, with no certificate to maintain | `public_validate` | unset (endpoint is private) |
+
+One process-wide switch cannot do both: a listener that demands certificates
+cannot serve a login page, and a listener that never asks for one cannot
+authenticate a service. So garde can run two listeners.
 
 #### Recommended production layout (browser + services)
 
-1. **Browsers and the web UI** talk HTTPS only to a reverse proxy (Caddy, nginx, etc.). The proxy forwards to garde over the private network (Compose network / localhost). Do **not** expose Redis or Vault publicly.
-2. Leave **`secret/garde/use_tls` = `false`** on the browser-facing instance (or enable built-in TLS if you prefer HTTPS on garde itself — browsers no longer need client certs for login). Set **`cookie_secure=true`** and **`trusted_proxies`** to the proxy CIDR when TLS is terminated at the proxy.
+1. **Browsers and the web UI** talk HTTPS only to a reverse proxy or load balancer (Caddy, nginx, ALB, …). It forwards to garde over the private network (Compose network / localhost). Do **not** expose Redis or Vault publicly.
+2. Leave **`secret/garde/use_tls` = `false`** on the browser-facing listener (or enable built-in TLS if you prefer HTTPS on garde itself). Set **`cookie_secure=true`** and **`trusted_proxies`** to the proxy CIDR when TLS is terminated at the edge. Leave **`browser_mtls` = `off`**.
 3. Set **`cookie_same_site`** for your topology: `strict` when UI and API share a site; `lax` (default) when they are different origins (common in dev); `none` when you need cross-site cookies (requires Secure cookies over HTTPS).
-4. **Internal services** that call `/validate` need an API key, and a client certificate when built-in TLS + `tls_ca_path` are enabled. Prefer a **private** network path to garde.
+4. **Turn on the service listener** so `/validate` leaves the public hostname entirely:
 
-#### Built-in `USE_TLS` behavior (important)
+| Secret | Value |
+|--------|-------|
+| `service_listener` | `true` |
+| `service_port` | `8444` |
+| `service_mtls` | `required` |
+| `service_tls_cert_path` | `/app/certs/service-cert.pem` |
+| `service_tls_key_path` | `/app/certs/service-key.pem` |
+| `service_tls_ca_path` | `/app/certs/ca-cert.pem` |
 
-When `use_tls` is **true**, garde serves HTTPS with **optional** client certificates at the handshake (`VerifyClientCertIfGiven` when `tls_ca_path` is set). Browsers can use cookie login without a client cert.
+Publish that port on a private interface only — the HA compose file binds it to
+the WireGuard address. Generate the CA and the certificates with
+`deploy/scripts/service-pki.sh` (see
+[Service authentication](DEPLOY.md#service-authentication-validate)).
 
-`/validate` still **requires** a verified client certificate (via middleware) when both `use_tls` and `tls_ca_path` are set, plus `X-API-Key`.
+> [!IMPORTANT]
+> Terminating TLS at a proxy means client certificates never reach garde. If
+> your edge terminates TLS and you leave `/validate` on the public listener, it
+> is protected by an API key alone. That is why enabling `service_listener`
+> moves the endpoint by default.
 
-When `use_tls` is **false** (recommended behind a reverse proxy), `/validate` is API-key-only — keep that path on a private network.
+#### External callers of `/validate`
+
+Some callers are not yours: they cannot join your private network, and asking
+them to install and renew a client certificate is how partner integrations
+break. For those, set `public_validate` = `true` and issue each caller its own
+key with `POST /admin/api-keys` (superuser only).
+
+On that listener garde **refuses the shared `api_key`** and accepts per-tenant
+keys only. That is the whole point — one long-lived secret held by every
+caller, in front of an endpoint that can validate any user's session, is what
+the private listener was introduced to avoid. The shared key stays valid on the
+service listener, where callers also present a certificate.
+
+Per-tenant keys are stored as a SHA-256 (the plaintext is shown once, at
+issue), expire after 90 days unless issued otherwise, carry a per-key rate
+limit, record when they were last used, and are revocable one at a time with
+`DELETE /admin/api-keys/{key_id}` or all at once for a single holder with
+`DELETE /admin/clients/{client_id}/api-keys`. See
+[External Callers](API_INTEGRATION_GUIDE.md#4-external-callers-per-tenant-api-keys).
+
+In a deployment fronted by the HA Caddy config, the edge blocks `/validate`
+independently, so publishing it also takes `PUBLIC_VALIDATE=true` in the
+inventory. Two switches, so that one mistaken value cannot expose the endpoint.
+
+#### Single-listener deployments (the older layout)
+
+Without `service_listener`, `/validate` stays on the main listener:
+
+- `use_tls` **true** with `tls_ca_path` set → garde asks for client certificates but does not require them at the handshake (`VerifyClientCertIfGiven`), and `/validate` requires a verified certificate plus `X-API-Key`. Browsers still log in without one.
+- `use_tls` **false** → `/validate` is protected by an API key alone. Keep it on a private network, or move it to the service listener.
+
+Which API key that is, is now a decision you have to make. Set
+`public_validate_shared_key`:
+
+| Value | `/validate` on the public listener accepts |
+|---|---|
+| `true` | the shared `api_key`, as single-listener deployments have always done |
+| `false` | per-caller keys from `POST /admin/api-keys` only; the shared key is refused |
+
+**There is no default, and garde will not start without one.** The shared key
+is one long-lived secret, held by every caller, in front of an endpoint that
+can validate any user's session — fine while you are the only caller, and the
+wrong answer the moment anyone else is. That is not a posture to arrive at by
+leaving a field blank, so garde asks instead of assuming. Whichever you pick,
+the startup log says which one is in force.
+
+`false` is also the only way to refuse the shared key without standing up the
+service listener and its PKI, so a single-node deployment with a couple of
+callers can harden `/validate` by issuing them keys and flipping one value.
+
+Leave the key unset when `service_listener` is `true`: `/validate` is private
+then, and its public copy accepts per-caller keys only. Setting it to `true`
+there is a startup error rather than something quietly ignored.
+
+#### Browser client certificates
+
+`browser_mtls` accepts `off`, `optional` or `required`, and needs `use_tls` plus
+`tls_ca_path`. Use `required` only on a hostname that exists to serve
+certificate holders — on a public login page it locks out every user who does
+not have one. The service listener is unaffected either way.
 
 **Cookies:** `Secure` follows `COOKIE_SECURE` when set; otherwise it is true if `USE_TLS` is true, or if `COOKIE_SAME_SITE=none`. Behind an HTTPS reverse proxy with `use_tls=false`, set `cookie_secure=true`.
 
 **Client IP:** Set `TRUSTED_PROXIES` to your reverse-proxy CIDR(s) so `X-Forwarded-For` is honored. When unset, forwarded headers are ignored (prevents ClientIP spoofing).
 
 > [!IMPORTANT]
-> For a public UI, prefer reverse-proxy TLS and `use_tls=false` with `cookie_secure=true` and `trusted_proxies` set to the proxy. Enable built-in `use_tls` when you want HTTPS (and optional mTLS on `/validate`) directly on garde.
+> For a public UI, prefer edge TLS and `use_tls=false` with `cookie_secure=true` and `trusted_proxies` set to the proxy — and put `/validate` on the service listener rather than leaving it on the public one.
 
 **Server TLS materials (required when `use_tls=true`):**
 - Valid TLS certificate from a trusted CA
@@ -197,7 +276,7 @@ When `use_tls` is **false** (recommended behind a reverse proxy), `/validate` is
 | `secret/garde/tls_ca_path` | Path to client CA (enables mTLS checks on `/validate`) |
 
 > [!NOTE]
-> Without built-in `use_tls`, cookie/session authentication still works. Put HTTPS at your reverse proxy for production browser traffic. With `use_tls` + `tls_ca_path`, `/validate` requires API key + client certificate.
+> Without built-in `use_tls`, cookie/session authentication still works. Put HTTPS at your reverse proxy for production browser traffic. Service-call mTLS does not depend on `use_tls` at all when the service listener is on: that listener always speaks TLS and has its own certificates.
 
 ### Additional production configuration (optional)
 
@@ -228,11 +307,20 @@ When `use_tls` is **false** (recommended behind a reverse proxy), `/validate` is
 | `secret/garde/cookie_secure` | Optional. `true`/`false` to force the cookie `Secure` flag. When unset: follows `use_tls`, or forced true if `cookie_same_site=none`. Set `true` behind HTTPS reverse proxies with `use_tls=false`. |
 | `secret/garde/trusted_proxies` | Optional. Comma-separated proxy CIDRs/IPs trusted for `X-Forwarded-For`. When unset, forwarded headers are ignored. |
 | `secret/garde/testing_mode` | Set to `true` to relax mTLS checks (e.g. for testing). Do not use in production. |
+| `secret/garde/browser_mtls` | Client certificates on the public listener: `off` (default), `optional`, `required`. Needs `use_tls` and `tls_ca_path`. Leave `off` for anything browsers reach. |
+| `secret/garde/service_listener` | `true` to serve `/validate` on a separate private listener. Moves it off the public listener unless `public_validate` says otherwise. |
+| `secret/garde/service_port` | Port for that listener. Default `8444`; must differ from `port`. |
+| `secret/garde/service_mtls` | `required` (default) or `off`. `off` leaves `/validate` on the API key and the network alone. |
+| `secret/garde/service_tls_cert_path`, `…_key_path`, `…_ca_path` | The listener's keypair and the CA that signs callers. Required when `service_listener` is `true`. |
+| `secret/garde/public_validate` | Also serve `/validate` on the public listener, for external callers. Defaults to the opposite of `service_listener`. On this path the shared `api_key` is refused and each caller presents a per-tenant key. |
 
 **Admin Configuration**:
 | Secret Path | Description |
 |-------------|-------------|
 | `secret/garde/admin_users_json` | JSON object: `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`. Admins are auto-created/updated at startup and on secret reload. Public/admin-created signup cannot create these accounts. |
+| `secret/garde/admin_scopes_json` | Optional. JSON object of email→scope list, e.g. `{"helpdesk@example.com":["garde:users:read","garde:users:write"]}`. Narrows what the admins it names may do on the admin routes. Known scopes: `garde:users:read`, `garde:users:write`, `garde:users:delete`, `garde:sessions:revoke`. An admin with no entry keeps all four. An explicit `[]` denies all four. Every address must also appear in `admin_users_json` or startup fails. |
+
+Admin scopes are provisioned here rather than through the admin API on purpose: an admin's own authorization data must not live somewhere an admin can write it. Superusers are unaffected — they hold every scope and may not be listed.
 
 **Permissions & Groups**:
 - Permissions and groups are managed via SQLite database (separate from Redis user/session storage).
@@ -258,6 +346,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | Secret / key | Behavior |
 |--------------|----------|
 | `api_key` | Checked on each `/validate` (and other API-key uses) |
+| Per-tenant API keys | Issued, revoked and rate-limited through the admin API, not through Vault; changes take effect on the caller's next request |
 | `cors_allow_origins` | Read on each request |
 | `cookie_same_site`, `cookie_secure` | Applied when setting/clearing session cookies |
 | `domain_name` | Cookie domain + mTLS CN/SAN checks |
@@ -267,12 +356,16 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `mfa_encryption_key` | Used for new encrypt/decrypt calls (**does not** re-encrypt existing MFA secrets) |
 | `redis_*` | Reload hook reconnects the Redis client |
 | `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply) |
+| `admin_scopes_json` | Resolved per request, so scope changes apply to the admin's next call. A reload that leaves it unparseable denies every scoped admin route until it is fixed, rather than restoring full admin access |
 
 #### Requires process restart
 
 | Secret / key | Why |
 |--------------|-----|
 | `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
+| `browser_mtls`, `service_mtls`, `public_validate` | The client-certificate policy is part of the handshake configuration, and which routes exist is decided when the listeners are built |
+| `public_validate_shared_key` | Which credentials `/validate` accepts is fixed when the route is mounted. A reload that empties or mistypes it does not weaken the running process, but the next restart will refuse to start |
+| `service_listener`, `service_port`, `service_tls_*` | Same: a second listener is opened, or not, at startup |
 | `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
 | `rate_limit` | Numeric thresholds are parsed into the rate-limiter struct at startup |
 | `rapid_request_config` | Parsed once into package-level thresholds at startup |

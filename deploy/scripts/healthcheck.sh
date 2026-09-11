@@ -143,6 +143,29 @@ if [ "$CHECK_PUBLIC" = "true" ]; then
     code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)"
     if [ "$code" = "200" ]; then ok "$url -> $code"; else fail "$url -> $code"; fi
   done
+
+  # /validate can validate any user's session, so what counts as healthy here
+  # depends on whether this deployment serves external callers.
+  validate_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://${API_DOMAIN}/validate" || echo 000)"
+  if [ "$(public_validate)" = "true" ]; then
+    # Published for tenants. An unauthenticated request must still be refused,
+    # and 404 means Caddy is passing it through while garde is not serving it —
+    # every tenant is broken, so say so rather than call it secure.
+    case "$validate_code" in
+      401) ok "https://${API_DOMAIN}/validate -> 401 (published, unauthenticated calls refused)" ;;
+      404) fail "https://${API_DOMAIN}/validate -> 404 with PUBLIC_VALIDATE=true; set the public_validate key in Vault" ;;
+      000) fail "https://${API_DOMAIN}/validate -> unreachable" ;;
+      *)   fail "https://${API_DOMAIN}/validate -> $validate_code; an unauthenticated call must be refused" ;;
+    esac
+  else
+    # Internal callers use the mesh listener, so finding it here is a real
+    # exposure and not a cosmetic problem: fail rather than warn.
+    case "$validate_code" in
+      404) ok "https://${API_DOMAIN}/validate -> 404 (not published, as intended)" ;;
+      000) fail "https://${API_DOMAIN}/validate -> unreachable; cannot confirm it is unpublished" ;;
+      *)   fail "https://${API_DOMAIN}/validate -> $validate_code; the service endpoint is exposed on the public edge" ;;
+    esac
+  fi
 fi
 
 step "Result"

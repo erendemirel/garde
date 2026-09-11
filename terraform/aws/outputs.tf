@@ -45,6 +45,16 @@ output "acme_secret_access_key" {
   sensitive   = true
 }
 
+output "target_group_arn" {
+  description = "Store as AWS_TARGET_GROUP_ARN in the inventory. Null unless traffic_mode = managed_lb."
+  value       = try(aws_lb_target_group.app[0].arn, null)
+}
+
+output "lb_dns_name" {
+  description = "The load balancer's own name. app/api alias records point here; useful for checking the edge before DNS propagates."
+  value       = try(aws_lb.main[0].dns_name, null)
+}
+
 output "vault_kms_key_id" {
   description = "Pass to inventory as VAULT_KMS_KEY_ID (alias or key id for seal awskms)."
   value       = aws_kms_alias.vault.name
@@ -67,6 +77,9 @@ output "inventory_fragment" {
     AWS_IMAGE_BUCKET=${aws_s3_bucket.images.id}
     BOOTSTRAP_SSH_USER=ubuntu
     VAULT_KMS_KEY_ID=${aws_kms_alias.vault.name}
+
+    TRAFFIC_MODE=${var.traffic_mode}
+    ${local.lb_inventory_lines}
 
     FAILOVER_IP=${aws_eip.failover.public_ip}
 

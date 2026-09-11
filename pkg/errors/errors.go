@@ -53,6 +53,28 @@ const (
 	ErrCannotAddGroupsNotIn       = "cannot approve adding groups you are not a member of"
 )
 
+// Service API key errors
+//
+// Nothing here distinguishes an unknown key from a wrong secret or a revoked
+// one: authentication failures all answer with ErrUnauthorized. These are the
+// two cases a caller is entitled to act on — the admin API reporting a key id
+// it does not hold, and a holder of a valid key calling a route it was not
+// issued for.
+const (
+	ErrAPIKeyNotFound     = "api key not found"
+	ErrAPIKeyNotPermitted = "api key is not permitted for this endpoint"
+)
+
+// Admin scope errors
+//
+// Anyone who reaches this is authenticated and is an admin; what they lack is
+// the one scope the route declares. Saying so discloses nothing they could
+// not already infer, and gives whoever is debugging the 403 something to act
+// on — the same reasoning as ErrAPIKeyNotPermitted.
+const (
+	ErrAdminScopeNotPermitted = "admin account is not permitted for this endpoint"
+)
+
 // Input validation errors
 const (
 	ErrEmailLength            = "email is max 254 characters"
@@ -61,6 +83,14 @@ const (
 	ErrPasswordComplexity     = "password complexity requirements not met"
 	ErrDisallowedCharacters  = "disallowed characters"
 	ErrInvalidPermissionName  = "permission and group names must be 1-128 characters, alphanumeric and underscore only"
+	ErrInvalidAPIKeyName      = "API key name must be 1-64 characters, alphanumeric with underscore, hyphen or dot"
+	ErrInvalidAPIKeyClientID  = "client_id must be 1-64 characters, alphanumeric with underscore, hyphen or dot"
+	ErrInvalidAPIKeyScope     = "unknown API key scope"
+	ErrAPIKeyScopesRequired   = "at least one scope must be listed; scopes are not granted by default"
+	ErrInvalidAPIKeyExpiry    = "expires_in must be a positive duration such as 2160h"
+	ErrAPIKeyExpiryTooLong    = "expires_in cannot exceed 8760h; pass never_expires to issue a key that does not expire"
+	ErrAPIKeyExpiryConflict   = "expires_in and never_expires cannot both be set"
+	ErrInvalidAPIKeyRateLimit = "rate_limit cannot be negative"
 )
 
 // Mail errors

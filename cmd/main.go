@@ -11,7 +11,6 @@ import (
 	"garde/internal/repository"
 	"garde/internal/service"
 	"garde/pkg/config"
-	"garde/pkg/errors"
 	"garde/pkg/session"
 	"garde/pkg/validation"
 	"log/slog"
@@ -44,6 +43,17 @@ import (
 // @in header
 // @name Authorization
 // @BasePath /
+
+// Everything the HTTP surfaces need. Both listeners serve the same objects;
+// only the routes they mount and the certificates they demand differ.
+type routerDeps struct {
+	repo             *repository.RedisRepository
+	authService      *service.AuthService
+	securityAnalyzer *service.SecurityAnalyzer
+	authHandler      *handlers.AuthHandler
+	apiKeyHandler    *handlers.APIKeyHandler
+	rateLimiter      *middleware.RateLimiter
+}
 
 func main() {
 	// Initialize config loader (reads from /run/secrets - should be tmpfs)
@@ -138,11 +148,98 @@ func main() {
 	})
 
 	authService := service.NewAuthService(repo)
-	securityAnalyzer := service.NewSecurityAnalyzer(repo)
-	authHandler := handlers.NewAuthHandler(authService)
+	deps := &routerDeps{
+		repo:             repo,
+		authService:      authService,
+		securityAnalyzer: service.NewSecurityAnalyzer(repo),
+		authHandler:      handlers.NewAuthHandler(authService),
+		apiKeyHandler:    handlers.NewAPIKeyHandler(repo),
+		rateLimiter:      middleware.NewRateLimiter(repo),
+	}
 
-	rateLimiter := middleware.NewRateLimiter(repo)
+	router := newEngine(deps)
+	mountPublicRoutes(router, deps)
 
+	// /validate answers on the public listener only when nothing more private
+	// is carrying it. A service endpoint that can validate any user's session
+	// does not belong on the hostname browsers reach.
+	if config.PublicValidateEnabled() {
+		opts := validateRouteOptions{
+			mtls:           config.PublicValidateMTLS(),
+			allowLegacyKey: config.PublicValidateLegacyKey(),
+		}
+		mountValidateRoute(router, deps, opts)
+
+		if opts.allowLegacyKey {
+			// Reaching here takes an explicit acknowledgement, so this is not
+			// news to whoever configured it. It is logged as a warning anyway,
+			// for the people who did not: one long-lived secret, held by every
+			// caller, in front of an endpoint that can validate any user's
+			// session, on the hostname the internet reaches. An acknowledgement
+			// that bought silence too would just be a way to stop being told.
+			slog.Warn("/validate is public and accepts the shared API_KEY",
+				"mtls", opts.mtls.String(),
+				"acknowledged_by", config.PublicValidateSharedKeyKey,
+				"remedy", "issue per-caller keys with POST /admin/api-keys, then set "+config.PublicValidateSharedKeyKey+"=false to refuse the shared key here — or set service_listener=true to move /validate to the private listener")
+		} else {
+			slog.Info("/validate mounted on the public listener",
+				"mtls", opts.mtls.String(), "shared_api_key_accepted", false)
+		}
+	} else {
+		slog.Info("/validate is not served on the public listener")
+	}
+
+	// Swagger — opt-in via ENABLE_SWAGGER (off by default)
+	if config.GetBool("ENABLE_SWAGGER") {
+		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		slog.Info("Swagger UI enabled at /swagger/index.html")
+	}
+
+	servers := make([]*http.Server, 0, 2)
+
+	publicSrv, err := newPublicServer(router)
+	if err != nil {
+		slog.Error("Failed to configure the public listener", "error", err)
+		os.Exit(1)
+	}
+	servers = append(servers, publicSrv)
+
+	if config.ServiceListenerEnabled() {
+		serviceSrv, err := newServiceServer(deps)
+		if err != nil {
+			slog.Error("Failed to configure the service listener", "error", err)
+			os.Exit(1)
+		}
+		servers = append(servers, serviceSrv)
+	}
+
+	for _, srv := range servers {
+		go serve(srv)
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	slog.Info("Shutting down server", "signal", sig.String())
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	failed := false
+	for _, srv := range servers {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Server forced to shutdown", "addr", srv.Addr, "error", err)
+			failed = true
+		}
+	}
+	if failed {
+		os.Exit(1)
+	}
+	slog.Info("Server stopped")
+}
+
+// newEngine builds the middleware stack both listeners share. /health is
+// registered before the rate limiter so probes are never throttled.
+func newEngine(deps *routerDeps) *gin.Engine {
 	router := gin.New()
 	// Do not trust X-Forwarded-For unless TRUSTED_PROXIES is set (comma-separated CIDRs/IPs).
 	// Gin's default trusts all proxies, which allows ClientIP spoofing.
@@ -193,7 +290,7 @@ func main() {
 
 	// Liveness/readiness — before rate limiting so probes are not throttled
 	router.GET("/health", func(c *gin.Context) {
-		if err := repo.Ping(c.Request.Context()); err != nil {
+		if err := deps.repo.Ping(c.Request.Context()); err != nil {
 			slog.Warn("Health check failed", "error", err)
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
 			return
@@ -201,10 +298,18 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	router.Use(rateLimiter.Limit())
+	router.Use(deps.rateLimiter.Limit())
+
+	return router
+}
+
+// mountPublicRoutes registers everything browsers and API clients use. None of
+// it requires a client certificate.
+func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
+	authHandler := deps.authHandler
 
 	public := router.Group("")
-	public.Use(middleware.SecurityMiddleware(securityAnalyzer))
+	public.Use(middleware.SecurityMiddleware(deps.securityAnalyzer))
 	{
 		public.POST("/login", authHandler.Login)
 		public.POST("/users", authHandler.CreateUser)
@@ -214,8 +319,8 @@ func main() {
 
 	// Regular protected routes (no mTLS or admin login required)
 	protected := router.Group("")
-	protected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
-	protected.Use(rateLimiter.LimitByUser())
+	protected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer))
+	protected.Use(deps.rateLimiter.LimitByUser())
 	{
 		protected.GET("/users/me", authHandler.GetCurrentUser)
 		protected.POST("/logout", authHandler.Logout)
@@ -232,24 +337,33 @@ func main() {
 	// AuthMiddleware runs first to set is_admin/is_superuser flags
 	// AdminMiddleware then checks those flags and blocks non-admins
 	adminProtected := router.Group("")
-	adminProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
-	adminProtected.Use(middleware.AdminMiddleware(authService))
-	adminProtected.Use(rateLimiter.LimitByUser())
+	adminProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer))
+	adminProtected.Use(middleware.AdminMiddleware(deps.authService))
+	adminProtected.Use(deps.rateLimiter.LimitByUser())
+	// RequireAdminScope is per route, not on the group, because separating
+	// these five is the whole point: an admin listed in ADMIN_SCOPES_JSON can
+	// be given reading and updating without deletion. An admin with no entry
+	// keeps all five, as before.
 	{
-		adminProtected.GET("/users", authHandler.ListUsers)
-		adminProtected.GET("/users/:user_id", authHandler.GetUser)
-		adminProtected.PUT("/users/:user_id", authHandler.UpdateUser)
-		adminProtected.DELETE("/users/:user_id", authHandler.DeleteUser)
-		adminProtected.POST("/sessions/revoke", authHandler.RevokeUserSession)
+		adminProtected.GET("/users",
+			middleware.RequireAdminScope(config.ScopeAdminUsersRead), authHandler.ListUsers)
+		adminProtected.GET("/users/:user_id",
+			middleware.RequireAdminScope(config.ScopeAdminUsersRead), authHandler.GetUser)
+		adminProtected.PUT("/users/:user_id",
+			middleware.RequireAdminScope(config.ScopeAdminUsersWrite), authHandler.UpdateUser)
+		adminProtected.DELETE("/users/:user_id",
+			middleware.RequireAdminScope(config.ScopeAdminUsersDelete), authHandler.DeleteUser)
+		adminProtected.POST("/sessions/revoke",
+			middleware.RequireAdminScope(config.ScopeAdminSessionsRevoke), authHandler.RevokeUserSession)
 	}
 
 	// Superuser-only endpoints (require superuser login)
 	// AuthMiddleware runs first to set is_superuser flag
 	// SuperuserMiddleware then checks that flag and blocks non-superusers
 	superuserProtected := router.Group("")
-	superuserProtected.Use(middleware.AuthMiddleware(authService, securityAnalyzer))
+	superuserProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer))
 	superuserProtected.Use(middleware.SuperuserMiddleware())
-	superuserProtected.Use(rateLimiter.LimitByUser())
+	superuserProtected.Use(deps.rateLimiter.LimitByUser())
 	{
 		// Permission management
 		superuserProtected.POST("/admin/permissions", authHandler.CreatePermission)
@@ -268,137 +382,193 @@ func main() {
 
 		// Admin-user management mapping
 		superuserProtected.GET("/admin/users/management", authHandler.GetAdminUserManagement)
-	}
 
-	// /validate: API key (+ mTLS when built-in TLS and a client CA are configured).
-	// No cookie/Bearer AuthMiddleware — services pass session via X-Session-ID (preferred) or session_id query.
+		// Per-tenant credentials for external callers of /validate
+		superuserProtected.POST("/admin/api-keys", deps.apiKeyHandler.CreateAPIKey)
+		superuserProtected.GET("/admin/api-keys", deps.apiKeyHandler.ListAPIKeys)
+		superuserProtected.DELETE("/admin/api-keys/:key_id", deps.apiKeyHandler.RevokeAPIKey)
+		superuserProtected.DELETE("/admin/clients/:client_id/api-keys", deps.apiKeyHandler.RevokeClientAPIKeys)
+	}
+}
+
+// validateRouteOptions describes how one listener authenticates /validate.
+type validateRouteOptions struct {
+	// mtls requires a verified client certificate when it is required.
+	mtls config.ClientCertPolicy
+
+	// allowLegacyKey accepts the single shared API_KEY alongside per-tenant
+	// keys. See config.PublicValidateLegacyKey for where that is appropriate.
+	allowLegacyKey bool
+}
+
+// mountValidateRoute registers the service session-validation endpoint.
+//
+// No cookie/Bearer AuthMiddleware — callers pass the session via X-Session-ID
+// (preferred) or the session_id query parameter. An API key is always
+// required; the client certificate is required whenever the listener carrying
+// this route was built to verify one.
+func mountValidateRoute(router *gin.Engine, deps *routerDeps, opts validateRouteOptions) {
 	validateEndpoint := router.Group("/validate")
-	validateEndpoint.Use(func(c *gin.Context) {
-		useTLS := config.GetBool("USE_TLS")
-		caPath := strings.TrimSpace(config.Get("TLS_CA_PATH"))
-		if useTLS && caPath != "" {
-			middleware.MTLSMiddleware()(c)
-			if c.IsAborted() {
-				return
-			}
-		}
 
-		apiKey := c.GetHeader(middleware.APIKeyHeader)
-		if apiKey == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
-			return
-		}
-		middleware.APIKeyMiddleware()(c)
-	})
-	validateEndpoint.GET("", authHandler.ValidateSession)
-
-	// Swagger — opt-in via ENABLE_SWAGGER (off by default)
-	if config.GetBool("ENABLE_SWAGGER") {
-		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-		slog.Info("Swagger UI enabled at /swagger/index.html")
+	if opts.mtls == config.ClientCertRequired {
+		validateEndpoint.Use(middleware.MTLSMiddleware())
 	}
 
-	var srv *http.Server
+	validateEndpoint.Use(middleware.APIKeyAuth(middleware.APIKeyAuthOptions{
+		Repo:           deps.repo,
+		AllowLegacyKey: opts.allowLegacyKey,
+		RequiredScope:  models.ScopeValidate,
+	}))
+
+	// Charges the request to the calling tenant rather than to its address,
+	// so that callers sharing one NAT do not share one budget. A no-op for the
+	// shared key, which carries no per-caller identity.
+	validateEndpoint.Use(deps.rateLimiter.LimitByAPIKey())
+
+	validateEndpoint.GET("", deps.authHandler.ValidateSession)
+}
+
+// newPublicServer builds the listener browsers and API clients reach. Its
+// client-certificate policy defaults to off, because a public listener that
+// demands certificates cannot serve a login page.
+func newPublicServer(handler http.Handler) (*http.Server, error) {
 	port := config.GetWithDefault("PORT", "8443")
-	useTLS := config.GetBool("USE_TLS")
+	srv := newHTTPServer(":"+port, handler)
 
-	// Built-in server TLS. Client certs are optional at the handshake so browsers
-	// can use cookie auth; /validate enforces mTLS in middleware when a CA is set.
-	if useTLS {
-
-		tlsConfig := &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ClientAuth: tls.NoClientCert,
-		}
-
-		cert, err := tls.LoadX509KeyPair(config.Get("TLS_CERT_PATH"), config.Get("TLS_KEY_PATH"))
-		if err != nil {
-			slog.Error("Failed to load server certificate", "error", err)
-			os.Exit(1)
-		}
-		tlsConfig.Certificates = []tls.Certificate{cert}
-
-		if caPath := config.Get("TLS_CA_PATH"); caPath != "" {
-			caCertPool := x509.NewCertPool()
-			caCert, err := os.ReadFile(caPath)
-			if err != nil {
-				slog.Error("Failed to read CA certificate", "error", err)
-				os.Exit(1)
-			}
-			if !caCertPool.AppendCertsFromPEM(caCert) {
-				slog.Error("Failed to append CA certificate")
-				os.Exit(1)
-			}
-
-			block, _ := pem.Decode(caCert)
-			if block != nil {
-				parsed, err := x509.ParseCertificate(block.Bytes)
-				if err == nil {
-					slog.Info("Server loaded CA cert", "subject", parsed.Subject, "issuer", parsed.Issuer)
-				}
-			}
-
-			tlsConfig.ClientCAs = caCertPool
-			// Verify client certs when presented; do not require them on every connection.
-			tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
-			slog.Info("Loaded CA certificates — client certs verified when presented (required on /validate)")
-		} else {
-			slog.Warn("No TLS_CA_PATH — /validate will not require mTLS")
-		}
-
-		if len(cert.Certificate) > 0 {
-			x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
-			if err == nil {
-				slog.Info("Server using certificate", "subject", x509Cert.Subject, "issuer", x509Cert.Issuer)
-			}
-		}
-
-		srv = &http.Server{
-			Addr:              ":" + port,
-			Handler:           router,
-			TLSConfig:         tlsConfig,
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       30 * time.Second,
-			WriteTimeout:      60 * time.Second,
-			IdleTimeout:       120 * time.Second,
-		}
-
-		slog.Info("Starting server with TLS", "port", port)
-		go func() {
-			if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				slog.Error("Failed to start server", "error", err)
-				os.Exit(1)
-			}
-		}()
-	} else {
-		srv = &http.Server{
-			Addr:              ":" + port,
-			Handler:           router,
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       30 * time.Second,
-			WriteTimeout:      60 * time.Second,
-			IdleTimeout:       120 * time.Second,
-		}
-
-		slog.Warn("Starting server without TLS", "port", port)
-		go func() {
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("Failed to start server", "error", err)
-				os.Exit(1)
-			}
-		}()
+	if !config.GetBool("USE_TLS") {
+		slog.Warn("Starting public listener without TLS", "port", port)
+		return srv, nil
 	}
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	slog.Info("Shutting down server", "signal", sig.String())
+	tlsConfig, err := buildTLSConfig(
+		config.Get("TLS_CERT_PATH"),
+		config.Get("TLS_KEY_PATH"),
+		strings.TrimSpace(config.Get("TLS_CA_PATH")),
+		config.BrowserMTLS(),
+		"public",
+	)
+	if err != nil {
+		return nil, err
+	}
+	srv.TLSConfig = tlsConfig
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("Server forced to shutdown", "error", err)
+	slog.Info("Starting public listener with TLS", "port", port, "browser_mtls", config.BrowserMTLS().String())
+	return srv, nil
+}
+
+// newServiceServer builds the private listener that carries /validate. It is
+// always TLS: the point of moving the endpoint here is that service calls can
+// be authenticated by certificate, which is impossible over plaintext.
+func newServiceServer(deps *routerDeps) (*http.Server, error) {
+	policy := config.ServiceMTLS()
+	router := newEngine(deps)
+	// The shared key stays valid here: this listener is mesh-only, its callers
+	// are the operator's own services, and they authenticate by certificate too.
+	mountValidateRoute(router, deps, validateRouteOptions{mtls: policy, allowLegacyKey: true})
+
+	tlsConfig, err := buildTLSConfig(
+		config.ServiceTLSCertPath(),
+		config.ServiceTLSKeyPath(),
+		config.ServiceTLSCAPath(),
+		policy,
+		"service",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	port := config.ServicePort()
+	srv := newHTTPServer(config.ServiceBind()+":"+port, router)
+	srv.TLSConfig = tlsConfig
+
+	if policy != config.ClientCertRequired {
+		slog.Warn("Service listener does not require client certificates — keep it on a private network",
+			"port", port)
+	}
+	slog.Info("Starting service listener with TLS", "port", port, "service_mtls", policy.String())
+	return srv, nil
+}
+
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
+// buildTLSConfig loads the server keypair and maps a client-certificate policy
+// onto the handshake.
+//
+// "Off" is not the same as "no client CA". When a CA is configured, a
+// certificate that is presented is still verified — that is what allows
+// /validate to demand mTLS while browsers on the same listener present
+// nothing.
+func buildTLSConfig(certPath, keyPath, caPath string, policy config.ClientCertPolicy, surface string) (*tls.Config, error) {
+	if certPath == "" || keyPath == "" {
+		return nil, fmt.Errorf("%s listener needs both a certificate and a key path", surface)
+	}
+
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load the %s server certificate: %w", surface, err)
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.NoClientCert,
+	}
+
+	if caPath != "" {
+		caCertPool := x509.NewCertPool()
+		caCert, err := os.ReadFile(caPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read the %s client CA: %w", surface, err)
+		}
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("no usable certificate in the %s client CA at %s", surface, caPath)
+		}
+
+		if block, _ := pem.Decode(caCert); block != nil {
+			if parsed, err := x509.ParseCertificate(block.Bytes); err == nil {
+				slog.Info("Loaded client CA", "surface", surface, "subject", parsed.Subject, "issuer", parsed.Issuer)
+			}
+		}
+
+		tlsConfig.ClientCAs = caCertPool
+		if policy == config.ClientCertRequired {
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		} else {
+			// Verify client certs when presented; do not require them on every
+			// connection.
+			tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+		}
+	} else if policy != config.ClientCertOff {
+		return nil, fmt.Errorf("%s listener asks for client certificates but no client CA is configured", surface)
+	}
+
+	if len(cert.Certificate) > 0 {
+		if x509Cert, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
+			slog.Info("Server using certificate", "surface", surface, "subject", x509Cert.Subject, "issuer", x509Cert.Issuer)
+		}
+	}
+
+	return tlsConfig, nil
+}
+
+func serve(srv *http.Server) {
+	var err error
+	if srv.TLSConfig != nil {
+		err = srv.ListenAndServeTLS("", "")
+	} else {
+		err = srv.ListenAndServe()
+	}
+	if err != nil && err != http.ErrServerClosed {
+		slog.Error("Failed to start server", "addr", srv.Addr, "error", err)
 		os.Exit(1)
 	}
-	slog.Info("Server stopped")
 }

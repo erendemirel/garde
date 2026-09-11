@@ -4,22 +4,37 @@
 # Sourced by load_provider(). Defines functions and facts only - sourcing this
 # file must have no side effects.
 #
-# Targets EC2 instances you run yourself. On AWS the native answer to this
-# problem is a Network Load Balancer in front of an Auto Scaling group, and if
-# you are building for AWS alone that is the better design. This driver exists
-# so the same three-host architecture runs here unchanged, which is the point of
-# the seam: portability, not a claim that this is the most AWS-shaped solution.
+# Targets EC2 instances you run yourself, in one of two traffic modes.
+#
+#   TRAFFIC_MODE=floating_ip   (default) an Elastic IP, moved between hosts
+#   TRAFFIC_MODE=managed_lb    an Application Load Balancer, repointed
+#
+# floating_ip keeps the same three-host architecture every VPS provider runs,
+# which is the point of the seam: portability. managed_lb is what AWS itself
+# would suggest - a load balancer terminating TLS with an ACM certificate in
+# front of the instances - and if you are building for AWS alone it is the
+# better design: no Elastic IP remaps, no ACME on the hosts, and health checks
+# rather than an operator deciding a node is gone.
+#
+# Both modes move traffic deliberately. Even in managed_lb the target group
+# holds exactly one instance, because this is a warm-standby cluster: the
+# standby's Redis is a replica and must not serve writes. Health checks remove
+# a broken node; they do not add the standby on their own.
 #
 # Credentials: an IAM access key whose policy allows ec2:AssociateAddress,
 # ec2:DescribeAddresses, ec2:DescribeInstances, ec2:StartInstances,
-# ec2:StopInstances and ec2:RebootInstances.
+# ec2:StopInstances and ec2:RebootInstances - plus, in managed_lb mode,
+# elasticloadbalancing:RegisterTargets, :DeregisterTargets and
+# :DescribeTargetHealth.
 #
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 #
 # Inventory mapping:
-#   NODE*_PROVIDER_ID   EC2 instance id (i-0123456789abcdef0)
-#   FAILOVER_IP         the Elastic IP; FAILOVER_IP_ID optional (eipalloc-...)
-#   AWS_REGION          region, read by the CLI directly
+#   NODE*_PROVIDER_ID       EC2 instance id (i-0123456789abcdef0)
+#   FAILOVER_IP             the Elastic IP; FAILOVER_IP_ID optional (eipalloc-...)
+#   AWS_REGION              region, read by the CLI directly
+#   AWS_TARGET_GROUP_ARN    managed_lb only: the target group the listener
+#                           forwards to (terraform output target_group_arn)
 #
 # An Elastic IP moves freely between availability zones within one region, so
 # the three hosts can and should sit in different AZs. They cannot span regions.
@@ -42,12 +57,22 @@
 PROVIDER_NAME="AWS"
 PROVIDER_CREDENTIALS="AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY"
 
-# No rate limit on remapping. AWS bills a small charge per remap, which is a
-# cost signal rather than a constraint on how soon you may move.
+PROVIDER_TRAFFIC_MODES="floating_ip managed_lb"
+
+# No rate limit on either mechanism. AWS bills a small charge per Elastic IP
+# remap, which is a cost signal rather than a constraint on how soon you may
+# move.
 PROVIDER_TRAFFIC_COOLDOWN_SECONDS=0
 
-# One API call, and the remap takes effect in seconds.
-PROVIDER_TRAFFIC_PROPAGATION_SECONDS=30
+# floating_ip: one API call, and the remap takes effect in seconds.
+# managed_lb: registration is immediate but the listener only forwards once the
+# target passes its health checks, and the old target drains first. The default
+# target group in terraform/aws checks every 10s and needs 2 passes.
+if [ "${TRAFFIC_MODE:-floating_ip}" = "managed_lb" ]; then
+  PROVIDER_TRAFFIC_PROPAGATION_SECONDS=90
+else
+  PROVIDER_TRAFFIC_PROPAGATION_SECONDS=30
+fi
 
 # EC2 never puts the public address on the guest interface: the VPC translates
 # the Elastic IP to the instance's private address, and `ip addr` inside the
@@ -109,7 +134,76 @@ _aws_eip_holder() {
   printf '%s' "$id"
 }
 
+# --- managed_lb --------------------------------------------------------------
+
+_aws_target_group_arn() {
+  printf '%s' "${AWS_TARGET_GROUP_ARN:?set AWS_TARGET_GROUP_ARN in the inventory (terraform output target_group_arn)}"
+}
+
+# Instance ids currently registered, one per line. Draining targets are still
+# registered and still listed, which is what we want: a second registration
+# while the old one drains would put two writers behind the balancer.
+_aws_registered_targets() {
+  _aws elbv2 describe-target-health \
+    --target-group-arn "$(_aws_target_group_arn)" \
+    --query 'TargetHealthDescriptions[].Target.Id' | tr '\t' '\n' | grep -v '^$' || true
+}
+
+_aws_route_via_target_group() {
+  local node="$1" instance_id other other_id registered
+  instance_id="$(node_provider_id "$node")"
+  [ -n "$instance_id" ] || die "no provider id configured for $node (set NODE*_PROVIDER_ID to the EC2 instance id)"
+  provider_preflight
+
+  # Register first, deregister second. The reverse order would empty the target
+  # group for as long as the new target takes to pass its first health check,
+  # and an ALB with no healthy targets answers 503.
+  _aws elbv2 register-targets \
+    --target-group-arn "$(_aws_target_group_arn)" \
+    --targets "Id=$instance_id" >/dev/null
+
+  registered="$(_aws_registered_targets)"
+  for other in $NODES; do
+    [ "$other" = "$node" ] && continue
+    other_id="$(node_provider_id "$other")"
+    [ -n "$other_id" ] || continue
+    printf '%s\n' "$registered" | grep -qx "$other_id" || continue
+    log "deregistering $other ($other_id) from the target group"
+    _aws elbv2 deregister-targets \
+      --target-group-arn "$(_aws_target_group_arn)" \
+      --targets "Id=$other_id" >/dev/null
+  done
+
+  printf '%s\n' "$(_aws_registered_targets)" | grep -qx "$instance_id" \
+    || die "AWS accepted the registration but $node ($instance_id) is not in the target group"
+
+  ok "AWS registered $node ($instance_id) as the load balancer target"
+}
+
+_aws_target_group_location() {
+  provider_preflight
+  local instance_id
+  # Healthy first: during a cutover both the new and the draining target are
+  # registered, and the healthy one is the honest answer to "where is traffic
+  # arriving".
+  instance_id="$(_aws elbv2 describe-target-health \
+    --target-group-arn "$(_aws_target_group_arn)" \
+    --query 'TargetHealthDescriptions[?TargetHealth.State==`healthy`].Target.Id | [0]')"
+  if [ -z "$instance_id" ] || [ "$instance_id" = "None" ]; then
+    instance_id="$(_aws_registered_targets | head -n1)"
+  fi
+  [ -n "$instance_id" ] || return 0
+  node_for_provider_id "$instance_id"
+}
+
+# --- traffic -----------------------------------------------------------------
+
 provider_route_traffic_to() {
+  if [ "$(traffic_mode)" = "managed_lb" ]; then
+    _aws_route_via_target_group "$1"
+    return
+  fi
+
   local node="$1" instance_id holder
   instance_id="$(node_provider_id "$node")"
   [ -n "$instance_id" ] || die "no provider id configured for $node (set NODE*_PROVIDER_ID to the EC2 instance id)"
@@ -132,6 +226,11 @@ provider_route_traffic_to() {
 }
 
 provider_traffic_location() {
+  if [ "$(traffic_mode)" = "managed_lb" ]; then
+    _aws_target_group_location
+    return
+  fi
+
   provider_preflight
   local instance_id
   instance_id="$(_aws_eip_holder)"

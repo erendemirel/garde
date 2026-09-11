@@ -5,9 +5,22 @@
 # Sourced by load_provider(). Defines functions and facts only - sourcing this
 # file must have no side effects.
 #
-# Targets Compute Engine instances you run yourself. As on AWS, the native GCP
-# answer is a load balancer in front of a managed instance group; this driver
-# exists so the same three-host architecture runs here unchanged.
+# Targets Compute Engine instances you run yourself, in one of two traffic
+# modes.
+#
+#   TRAFFIC_MODE=floating_ip   (default) a static external IP, reassigned
+#   TRAFFIC_MODE=managed_lb    an HTTPS load balancer, repointed
+#
+# floating_ip keeps the three-host architecture every VPS provider runs.
+# managed_lb is the GCP-shaped answer: a global HTTPS load balancer with a
+# Google-managed certificate in front of the instances, so no host ever holds
+# the public address or proves domain control.
+#
+# managed_lb here still routes deliberately rather than load-balancing across
+# both app nodes: this is a warm-standby cluster whose standby runs a Redis
+# replica. Each node sits in its own zonal unmanaged instance group, all
+# attached to one backend service, and routing means making sure only the
+# intended node's group holds its instance.
 #
 # Credentials: a service account key with compute.instances.get,
 # compute.instances.start/stop/reset, compute.instances.addAccessConfig and
@@ -33,17 +46,27 @@
 # the control plane arrives through IAP TCP forwarding.
 #
 # Additional inventory keys:
-#   NODE*_MESH_ENDPOINT   internal address peers dial for WireGuard
-#   GCP_IMAGE_BUCKET      Cloud Storage bucket used to stage images
+#   NODE*_MESH_ENDPOINT    internal address peers dial for WireGuard
+#   GCP_IMAGE_BUCKET       Cloud Storage bucket used to stage images
+#   NODE*_INSTANCE_GROUP   managed_lb only: <zone>/<unmanaged-group-name>, the
+#                          backend this node is served through
 
 PROVIDER_NAME="Google Cloud"
 PROVIDER_CREDENTIALS="GOOGLE_APPLICATION_CREDENTIALS GOOGLE_CLOUD_PROJECT"
 
-# No rate limit on reassignment.
+PROVIDER_TRAFFIC_MODES="floating_ip managed_lb"
+
+# No rate limit on either mechanism.
 PROVIDER_TRAFFIC_COOLDOWN_SECONDS=0
 
-# Two zonal operations, delete then add, each taking a few seconds.
-PROVIDER_TRAFFIC_PROPAGATION_SECONDS=60
+# floating_ip: two zonal operations, delete then add, each taking a few seconds.
+# managed_lb: Google's global load balancers take noticeably longer to converge
+# on a backend change than a zonal address swap does.
+if [ "${TRAFFIC_MODE:-floating_ip}" = "managed_lb" ]; then
+  PROVIDER_TRAFFIC_PROPAGATION_SECONDS=120
+else
+  PROVIDER_TRAFFIC_PROPAGATION_SECONDS=60
+fi
 
 # Compute Engine translates the external address to the instance's internal one
 # and the guest interface only ever carries the internal address, so there is
@@ -129,7 +152,85 @@ _gcp_drop_access_config() {
     --zone "$(_gcp_zone_of "$node")" --access-config-name "$name" >/dev/null
 }
 
+# --- managed_lb --------------------------------------------------------------
+
+# NODE*_INSTANCE_GROUP is <zone>/<group-name>, the same shape as the instance id.
+_gcp_group_field() {
+  local node="$1" part="$2" id
+  id="$(node_var "$node" INSTANCE_GROUP)"
+  [ -n "$id" ] \
+    || die "no instance group configured for $node (set NODE*_INSTANCE_GROUP=<zone>/<group> for TRAFFIC_MODE=managed_lb)"
+  case "$id" in
+    */*) ;;
+    *) die "NODE*_INSTANCE_GROUP for $node must be <zone>/<group-name>, got '$id'" ;;
+  esac
+  case "$part" in
+    zone) printf '%s' "${id%%/*}" ;;
+    name) printf '%s' "${id##*/}" ;;
+  esac
+}
+
+_gcp_group_holds_instance() {
+  local node="$1" instance
+  instance="$(_gcp compute instance-groups unmanaged list-instances \
+    "$(_gcp_group_field "$node" name)" --zone "$(_gcp_group_field "$node" zone)" \
+    --format 'value(instance)' 2>/dev/null | head -n1)"
+  [ -n "$instance" ]
+}
+
+_gcp_route_via_backend() {
+  local node="$1" other
+  provider_preflight
+
+  # Add before removing, for the same reason the AWS driver registers first: a
+  # backend service with no instances anywhere answers 502.
+  if _gcp_group_holds_instance "$node"; then
+    log "$node is already the backend instance"
+  else
+    _gcp compute instance-groups unmanaged add-instances \
+      "$(_gcp_group_field "$node" name)" \
+      --zone "$(_gcp_group_field "$node" zone)" \
+      --instances "$(_gcp_name_of "$node")" >/dev/null
+  fi
+
+  for other in $NODES; do
+    [ "$other" = "$node" ] && continue
+    [ -n "$(node_var "$other" INSTANCE_GROUP)" ] || continue
+    _gcp_group_holds_instance "$other" || continue
+    log "removing $other from its instance group"
+    _gcp compute instance-groups unmanaged remove-instances \
+      "$(_gcp_group_field "$other" name)" \
+      --zone "$(_gcp_group_field "$other" zone)" \
+      --instances "$(_gcp_name_of "$other")" >/dev/null
+  done
+
+  _gcp_group_holds_instance "$node" \
+    || die "Google Cloud accepted the change but $node is not in its instance group"
+
+  ok "Google Cloud pointed the backend service at $node"
+}
+
+_gcp_backend_location() {
+  provider_preflight
+  local node
+  for node in $NODES; do
+    [ -n "$(node_var "$node" INSTANCE_GROUP)" ] || continue
+    if _gcp_group_holds_instance "$node"; then
+      printf '%s' "$node"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# --- traffic -----------------------------------------------------------------
+
 provider_route_traffic_to() {
+  if [ "$(traffic_mode)" = "managed_lb" ]; then
+    _gcp_route_via_backend "$1"
+    return
+  fi
+
   local node="$1" other status
   provider_preflight
   : "${FAILOVER_IP:?set FAILOVER_IP in the inventory}"
@@ -177,6 +278,11 @@ provider_route_traffic_to() {
 }
 
 provider_traffic_location() {
+  if [ "$(traffic_mode)" = "managed_lb" ]; then
+    _gcp_backend_location
+    return
+  fi
+
   provider_preflight
   : "${FAILOVER_IP:?set FAILOVER_IP in the inventory}"
   local node

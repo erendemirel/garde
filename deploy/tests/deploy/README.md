@@ -11,6 +11,9 @@ optional auth / public HTTPS.
 export REDIS_PASSWORD=...
 # optional:
 export SUPERUSER_EMAIL=... SUPERUSER_PASSWORD=...   # enables auth smoke
+export API_KEY=... \
+       SERVICE_CLIENT_CERT=deploy/pki/client-ci-cert.pem \
+       SERVICE_CLIENT_KEY=deploy/pki/client-ci-key.pem   # enables the positive mTLS check
 ./deploy/tests/deploy/run.sh
 # or:
 ./deploy/tests/run.sh deploy
@@ -25,3 +28,4 @@ export SUPERUSER_EMAIL=... SUPERUSER_PASSWORD=...   # enables auth smoke
 | `05-failover-dry-run.sh` | `failover.sh --dry-run` |
 | `06-auth-smoke.sh` | Login + `/users/me` (skipped if no superuser env) |
 | `07-public-https.sh` | Real `API_DOMAIN`/`APP_DOMAIN` HTTPS (skipped for example.com) |
+| `08-service-listener.sh` | `/validate` is unpublished on the public edge (or, with `PUBLIC_VALIDATE=true`, published but closed to the shared key), refused on the mesh listener without a client certificate, and accepted with one |

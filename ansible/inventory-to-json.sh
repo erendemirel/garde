@@ -64,6 +64,17 @@ printf '  "requires_ip_binding": %s,\n' "${PROVIDER_REQUIRES_IP_BINDING:-true}"
 printf '  "admin_access": "%s",\n' "$(json_escape "${PROVIDER_ADMIN_ACCESS:-mesh}")"
 printf '  "admin_ssh_sources": "%s",\n' \
   "$(json_escape "${ADMIN_SSH_SOURCES:-${PROVIDER_ADMIN_SSH_SOURCES:-}}")"
+printf '  "traffic_mode": "%s",\n' "$(json_escape "${TRAFFIC_MODE:-floating_ip}")"
+# Only reported in the managed-load-balancer lane, where the edge is the
+# platform's balancer rather than the internet and :80 is opened to it alone.
+# Gated on the mode so a stale LB_SOURCE_CIDRS cannot quietly firewall off the
+# public edge of a floating-IP deployment.
+if [ "${TRAFFIC_MODE:-floating_ip}" = "managed_lb" ]; then
+  printf '  "edge_sources": "%s",\n' "$(json_escape "${LB_SOURCE_CIDRS:?LB_SOURCE_CIDRS is required when TRAFFIC_MODE=managed_lb}")"
+else
+  printf '  "edge_sources": "",\n'
+fi
+printf '  "service_port": "%s",\n' "$(json_escape "${SERVICE_PORT:-8444}")"
 printf '  "failover_ip": "%s",\n'  "$(json_escape "${FAILOVER_IP:-}")"
 printf '  "primary_node": "%s",\n' "$(json_escape "${PRIMARY_NODE:-}")"
 printf '  "standby_node": "%s",\n' "$(json_escape "${STANDBY_NODE:-}")"

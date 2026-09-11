@@ -632,6 +632,23 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
+	// An admin may not modify their own record. Permissions and groups are set
+	// through this path, so self-modification is the shape an escalation would
+	// take. The existing bounds narrow it — an admin may only grant
+	// permissions visible to their groups, and may only add groups they are
+	// already in — but there is no reason to allow it at all.
+	//
+	// Unlike the guard in DeleteUser this one exempts the superuser. That one
+	// is about locking yourself out; this one is about escalation, and a
+	// superuser has nothing to escalate to. Blocking them would also leave a
+	// superuser's own pending update request with nobody able to approve it,
+	// since admins cannot target the superuser record and there is only ever
+	// one superuser.
+	if !isSuperUser && adminID == targetUserID {
+		slog.Debug("Unauthorized update attempt", "reason", "admin targeted their own record", "admin_id", adminID)
+		return fmt.Errorf(errors.ErrUnauthorized)
+	}
+
 	// Check if admin has permission to modify this user
 	if !isSuperUser && !isAdmin {
 		slog.Debug("Unauthorized update attempt", "reason", "user is neither superuser nor admin", "admin_id", adminID)

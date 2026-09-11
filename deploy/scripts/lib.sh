@@ -107,6 +107,20 @@ require_node() {
   esac
 }
 
+# Whether the public edge passes /validate through to garde.
+#
+# It does not by default: the operator's own services reach the endpoint on the
+# mesh-only service listener instead. Turn this on only when external callers
+# need it, and note that it takes two switches — this one opens Caddy, and the
+# public_validate key in Vault mounts the route in garde. On that path garde
+# accepts per-tenant API keys only, never the shared one.
+public_validate() {
+  case "$(printf '%s' "${PUBLIC_VALIDATE:-false}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) printf 'true' ;;
+    *)             printf 'false' ;;
+  esac
+}
+
 # Resolve a role name (app-primary/app-standby/witness) to a node name.
 node_with_role() {
   local want="$1" node

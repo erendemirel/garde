@@ -27,6 +27,23 @@ data "aws_iam_policy_document" "ci" {
     resources = ["*"]
   }
 
+  # Same verb, different mechanism: in managed_lb mode "route traffic to this
+  # node" is a target registration rather than an address move. Granted only in
+  # that mode, so a floating-IP deployment's key cannot touch load balancers.
+  dynamic "statement" {
+    for_each = local.managed_lb ? [1] : []
+
+    content {
+      sid = "MoveTheLoadBalancerTarget"
+      actions = [
+        "elasticloadbalancing:RegisterTargets",
+        "elasticloadbalancing:DeregisterTargets",
+        "elasticloadbalancing:DescribeTargetHealth",
+      ]
+      resources = ["*"]
+    }
+  }
+
   statement {
     sid = "Fence"
     actions = [
@@ -80,9 +97,13 @@ resource "aws_iam_access_key" "ci" {
 # Separate from the compute CI user on purpose: Caddy on the hosts needs
 # ChangeResourceRecordSets for DNS-01, and that must not ride on the same key
 # that can fence instances and move the Elastic IP.
+#
+# Not created in managed_lb mode: ACM owns the certificate there, nothing on a
+# host answers a challenge, and the best credential is the one that does not
+# exist.
 
 data "aws_iam_policy_document" "acme" {
-  count = local.manage_dns ? 1 : 0
+  count = local.manage_acme ? 1 : 0
 
   statement {
     sid = "ChangeChallengeRecords"
@@ -105,18 +126,18 @@ data "aws_iam_policy_document" "acme" {
 }
 
 resource "aws_iam_user" "acme" {
-  count = local.manage_dns ? 1 : 0
+  count = local.manage_acme ? 1 : 0
   name  = "${var.name}-acme"
 }
 
 resource "aws_iam_user_policy" "acme" {
-  count  = local.manage_dns ? 1 : 0
+  count  = local.manage_acme ? 1 : 0
   name   = "${var.name}-acme"
   user   = aws_iam_user.acme[0].name
   policy = data.aws_iam_policy_document.acme[0].json
 }
 
 resource "aws_iam_access_key" "acme" {
-  count = local.manage_dns ? 1 : 0
+  count = local.manage_acme ? 1 : 0
   user  = aws_iam_user.acme[0].name
 }

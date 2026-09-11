@@ -209,3 +209,42 @@ func ValidatePermissionOrGroupName(name string) error {
 	}
 	return nil
 }
+
+const MaxAPIKeyNameLength = 64
+
+// API key names identify the caller in logs and in the admin listing, so they
+// allow the hyphens and dots that service and tenant names normally carry.
+func ValidateAPIKeyName(name string) error {
+	if !isAPIKeyLabel(name) {
+		return fmt.Errorf(errors.ErrInvalidAPIKeyName)
+	}
+	return nil
+}
+
+// Client ids take the same shape as names but answer a different question:
+// the name labels one key, the client id names the holder of several. It is
+// also a path segment on the revoke-by-client route, so the charset has to
+// stay free of anything that would need escaping.
+func ValidateAPIKeyClientID(clientID string) error {
+	if !isAPIKeyLabel(clientID) {
+		return fmt.Errorf(errors.ErrInvalidAPIKeyClientID)
+	}
+	return nil
+}
+
+func isAPIKeyLabel(value string) bool {
+	if value == "" || len(value) > MaxAPIKeyNameLength {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '_', r == '-', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}

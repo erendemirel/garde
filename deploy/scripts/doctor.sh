@@ -89,11 +89,22 @@ esac
 printf '\n==> 2/8 inventory\n'
 if [ "$INV_OK" = "true" ]; then
   have "inventory.env present"
-  for key in PROVIDER NODES SSH_USER REMOTE_ROOT PRIMARY_NODE STANDBY_NODE FAILOVER_IP; do
+  # FAILOVER_IP is only meaningful in the floating-IP lane; under a managed
+  # load balancer the platform owns the address and the target group replaces
+  # it as the thing routing depends on.
+  required_keys="PROVIDER NODES SSH_USER REMOTE_ROOT PRIMARY_NODE STANDBY_NODE"
+  if [ "${TRAFFIC_MODE:-floating_ip}" = "managed_lb" ]; then
+    required_keys="$required_keys LB_SOURCE_CIDRS LB_TRUSTED_PROXIES"
+    [ "${PROVIDER:-}" = "aws" ] && required_keys="$required_keys AWS_TARGET_GROUP_ARN"
+  else
+    required_keys="$required_keys FAILOVER_IP"
+  fi
+  for key in $required_keys; do
     eval "val=\${$key:-}"
     if [ -z "$val" ]; then miss "inventory missing $key"
     else have "$key=$val"; fi
   done
+  have "TRAFFIC_MODE=${TRAFFIC_MODE:-floating_ip}"
   if [ "${PROVIDER:-}" = "aws" ]; then
     for key in AWS_REGION ADMIN_SSH_SOURCES AWS_IMAGE_BUCKET \
                NODE1_PROVIDER_ID NODE2_PROVIDER_ID NODE3_PROVIDER_ID \

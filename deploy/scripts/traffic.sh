@@ -5,7 +5,9 @@
 #   ./deploy/scripts/traffic.sh route node2
 #
 # Provider-neutral: the mechanism is whatever the driver named by PROVIDER in
-# the inventory implements. On netcup and Hetzner that is a floating IP.
+# the inventory implements, in the mode TRAFFIC_MODE selects. On netcup and
+# Hetzner that is a floating IP; on AWS and GCP it can instead be the target
+# registered behind a managed load balancer.
 #
 # This moves traffic and nothing else. It does not fence the old primary or
 # promote Redis, so calling it directly on a live cluster will send requests to
@@ -22,7 +24,7 @@ TARGET_NODE="${2:-}"
 
 case "$ACTION" in
   status)
-    step "Traffic status ($PROVIDER_NAME)"
+    step "Traffic status ($PROVIDER_NAME, $(traffic_mode))"
     location="$(provider_traffic_location)"
     if [ -n "$location" ]; then
       log "public traffic is routed to: $location"

@@ -1,5 +1,8 @@
-# Public edge. Runs on both app nodes; only the one holding the failover
-# address actually receives traffic.
+# Public edge for the floating-IP lane. Runs on both app nodes; only the one
+# holding the failover address actually receives traffic.
+#
+# The managed-load-balancer lane uses Caddyfile.lb.tpl instead, where the
+# platform terminates TLS and this file's ACME machinery has nothing to do.
 #
 # Certificates are issued over DNS-01, not HTTP-01. That is deliberate: the
 # standby has no public traffic routed to it, so it could never answer an
@@ -27,6 +30,20 @@
 	}
 }
 
+# /validate validates any user's session for a calling service, so it belongs
+# on the private service listener, not on the hostname browsers reach. garde is
+# configured not to serve it here either; this is the second lock, so a Vault
+# key flipped by mistake does not silently publish the endpoint.
+#
+# Deployments with external callers set PUBLIC_VALIDATE=true in the inventory,
+# and sync-config drops the import below. The endpoint then answers here, but
+# only to a per-tenant API key — the shared key is refused on this listener.
+(no_public_validate) {
+	handle /validate* {
+		respond 404
+	}
+}
+
 {$APP_DOMAIN} {
 	import hardening
 	encode zstd gzip
@@ -41,11 +58,15 @@
 	import hardening
 	encode zstd gzip
 
+	import no_public_validate
+
 	# garde runs with use_tls=false behind this proxy. Set cookie_secure=true
 	# and trusted_proxies to the compose subnet in Vault so X-Forwarded-For is
 	# honoured and session cookies keep the Secure flag.
-	reverse_proxy garde:8443 {
-		header_up X-Forwarded-Proto https
+	handle {
+		reverse_proxy garde:8443 {
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	log {

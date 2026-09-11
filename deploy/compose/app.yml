@@ -64,6 +64,13 @@ services:
   garde:
     image: "${GARDE_IMAGE:?GARDE_IMAGE is required}:${IMAGE_TAG:-latest}"
     container_name: garde-api
+    ports:
+      # The service listener carrying /validate. Published on the mesh address
+      # only: calling services reach it over WireGuard and present a client
+      # certificate, and nothing on the public edge can route to it. The public
+      # API listener is deliberately absent here — Caddy reaches it inside the
+      # compose network.
+      - "${NODE_WG_IP}:${SERVICE_PORT:-8444}:${SERVICE_PORT:-8444}"
     volumes:
       - ../certs:/app/certs:ro
       - ../configs:/app/configs:ro
@@ -100,13 +107,20 @@ services:
     image: "${CADDY_IMAGE:?CADDY_IMAGE is required}:${IMAGE_TAG:-latest}"
     container_name: garde-caddy
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      # In the managed-load-balancer lane sync-config binds the HTTPS ports to
+      # loopback: the platform terminates TLS and this Caddy must not answer
+      # 443 from outside. The floating-IP lane keeps the published defaults.
+      - "${CADDY_HTTP_PUBLISH:-80:80}"
+      - "${CADDY_HTTPS_PUBLISH:-443:443}"
+      - "${CADDY_HTTPS_UDP_PUBLISH:-443:443/udp}"
     environment:
       APP_DOMAIN: "${APP_DOMAIN:?APP_DOMAIN is required}"
       API_DOMAIN: "${API_DOMAIN:?API_DOMAIN is required}"
-      ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"
+      # Required by the ACME Caddyfile and unused by the load-balancer one, so
+      # sync-config enforces it per edge mode rather than compose doing it here.
+      ACME_EMAIL: "${ACME_EMAIL:-}"
+      # Only read by the managed-load-balancer Caddyfile.
+      LB_TRUSTED_PROXIES: "${LB_TRUSTED_PROXIES:-}"
       # DNS-01 credentials — which subset is populated depends on DNS_PROVIDER
       # (see sync-config.sh). Unused keys stay empty; Caddy only reads the
       # ones referenced by the rendered acme_dns block.

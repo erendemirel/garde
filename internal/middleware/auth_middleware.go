@@ -101,6 +101,14 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 		c.Set("is_superuser", isSuperUser)
 		c.Set("is_admin", isAdmin)
 
+		// Resolved here, alongside is_admin, because the email that keys the
+		// restriction is not carried any further down the chain.
+		if isAdmin {
+			scopes, enforced := config.AdminScopesFor(user.Email)
+			c.Set(contextAdminScopes, scopes)
+			c.Set(contextAdminScopesEnforced, enforced)
+		}
+
 		// Check for suspicious patterns (after we know user role, use role-aware thresholds)
 		if !session.IsRapidRequestCheckDisabled() && securityAnalyzer != nil {
 			patterns := securityAnalyzer.DetectSuspiciousPatternsWithRole(c.Request.Context(), validationResult.UserID, ip, userAgent, isAdmin, isSuperUser)
