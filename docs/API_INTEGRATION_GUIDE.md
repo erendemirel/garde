@@ -10,6 +10,7 @@ This guide explains how to integrate and use garde in your applications.
 - [Authentication Methods](#authentication-methods)
   - [1. Browser-based Authentication](#1-browser-based-authentication)
   - [2. API Authentication](#2-api-authentication)
+  - [2b. Personal Access Tokens](#2b-personal-access-tokens)
   - [3. Internal Service Authentication (mTLS + API Key)](#3-internal-service-authentication-mtls--api-key)
   - [4. External Callers (Per-Tenant API Keys)](#4-external-callers-per-tenant-api-keys)
 - [Common Workflows](#common-workflows)
@@ -50,7 +51,7 @@ This guide explains how to integrate and use garde in your applications.
 
 ## Authentication Methods
 
-garde supports four authentication styles, and they are meant to coexist: browser sessions, API sessions, certificate-authenticated service calls, and per-tenant keys for callers outside your network. Browsers are never asked for a client certificate. Service calls to `/validate` are, on any listener configured to verify one — which in the recommended layout is a separate private listener rather than the public API host. See [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
+garde supports five authentication styles, and they are meant to coexist: browser sessions, API sessions, personal access tokens, certificate-authenticated service calls, and per-tenant keys for callers outside your network. Browsers are never asked for a client certificate. Service calls to `/validate` are, on any listener configured to verify one — which in the recommended layout is a separate private listener rather than the public API host. See [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
 
 ### 1. Browser-based Authentication
 For web applications where users log in through a browser interface.
@@ -133,6 +134,39 @@ Use the session token in subsequent requests:
 GET /users/me
 Authorization: Bearer 6cc0595f-f3...
 ```
+
+### 2b. Personal Access Tokens
+For scripts and CI that need to call garde **as a user**, without keeping a
+browser session. A PAT carries the same live permissions, groups, and admin
+flags as the issuing account. It is **not** a tenant `/validate` key.
+
+**Issue / manage** (browser session required — another PAT cannot create PATs):
+
+```http
+POST /users/me/tokens
+Authorization: Bearer <session_id>
+Content-Type: application/json
+
+{
+  "name": "ci-laptop",
+  "expires_in": "720h"
+}
+```
+
+The plaintext (`garde_pat_<id>_<secret>`) is returned once in `data.token`.
+List with `GET /users/me/tokens`; revoke with `DELETE /users/me/tokens/{token_id}`.
+Default lifetime is 90 days; pass `never_expires: true` to opt out (max 25
+tokens per user).
+
+**Use:**
+
+```http
+GET /users/me
+Authorization: Bearer garde_pat_…
+```
+
+PATs are refused on `/validate` (that endpoint accepts tenant keys or the
+shared internal key only).
 
 ### 3. Internal Service Authentication (mTLS + API Key)
 For internal services communicating within your infrastructure.

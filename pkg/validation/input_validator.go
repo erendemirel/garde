@@ -232,6 +232,13 @@ func ValidateAPIKeyTenantID(tenantID string) error {
 	return nil
 }
 
+func ValidatePATName(name string) error {
+	if !isAPIKeyLabel(name) {
+		return fmt.Errorf(errors.ErrInvalidPATName)
+	}
+	return nil
+}
+
 func isAPIKeyLabel(value string) bool {
 	if value == "" || len(value) > MaxAPIKeyNameLength {
 		return false

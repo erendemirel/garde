@@ -135,6 +135,9 @@
 				<a href="/password" class="btn-secondary" data-testid="dashboard-link-password"
 					><KeyRound size={18} />Change Password</a
 				>
+				<a href="/tokens" class="btn-secondary" data-testid="dashboard-link-tokens"
+					><KeyRound size={18} />Access tokens</a
+				>
 				{#if !$isSuperuser}
 					<a href="/request-update" class="btn-secondary" data-testid="dashboard-link-request-update"
 						><MailQuestion size={18} />Request Update</a

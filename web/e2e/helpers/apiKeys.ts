@@ -51,7 +51,7 @@ export async function cleanupTenantKeys(suRequest: APIRequestContext, tenantId: 
 	await revokeTenantAPIKeys(suRequest, tenantId).catch(() => undefined);
 }
 
-/** Well-formed session id that will never exist — passes format checks, fails lookup. */
+/** Passes format checks, fails lookup. */
 export const FAKE_SESSION_ID =
 	'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 

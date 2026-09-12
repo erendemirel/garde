@@ -52,6 +52,7 @@ type routerDeps struct {
 	securityAnalyzer *service.SecurityAnalyzer
 	authHandler      *handlers.AuthHandler
 	apiKeyHandler    *handlers.APIKeyHandler
+	patHandler       *handlers.PATHandler
 	rateLimiter      *middleware.RateLimiter
 }
 
@@ -154,6 +155,7 @@ func main() {
 		securityAnalyzer: service.NewSecurityAnalyzer(repo),
 		authHandler:      handlers.NewAuthHandler(authService),
 		apiKeyHandler:    handlers.NewAPIKeyHandler(repo),
+		patHandler:       handlers.NewPATHandler(repo),
 		rateLimiter:      middleware.NewRateLimiter(repo),
 	}
 
@@ -319,7 +321,7 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 
 	// Regular protected routes (no mTLS or admin login required)
 	protected := router.Group("")
-	protected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer))
+	protected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
 	protected.Use(deps.rateLimiter.LimitByUser())
 	{
 		protected.GET("/users/me", authHandler.GetCurrentUser)
@@ -331,13 +333,16 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 		protected.POST("/users/request-update-from-admin", authHandler.RequestUpdate)
 		protected.GET("/permissions", authHandler.ListPermissions)
 		protected.GET("/groups", authHandler.ListGroups)
+		protected.POST("/users/me/tokens", deps.patHandler.CreatePAT)
+		protected.GET("/users/me/tokens", deps.patHandler.ListPATs)
+		protected.DELETE("/users/me/tokens/:token_id", deps.patHandler.RevokePAT)
 	}
 
 	// Admin-only endpoints (require admin login, but no mTLS)
 	// AuthMiddleware runs first to set is_admin/is_superuser flags
 	// AdminMiddleware then checks those flags and blocks non-admins
 	adminProtected := router.Group("")
-	adminProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer))
+	adminProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
 	adminProtected.Use(middleware.AdminMiddleware(deps.authService))
 	adminProtected.Use(deps.rateLimiter.LimitByUser())
 	// RequireAdminScope is per route, not on the group, because separating
@@ -361,7 +366,7 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 	// AuthMiddleware runs first to set is_superuser flag
 	// SuperuserMiddleware then checks that flag and blocks non-superusers
 	superuserProtected := router.Group("")
-	superuserProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer))
+	superuserProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
 	superuserProtected.Use(middleware.SuperuserMiddleware())
 	superuserProtected.Use(deps.rateLimiter.LimitByUser())
 	{

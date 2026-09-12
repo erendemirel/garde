@@ -365,3 +365,42 @@ export const revokeTenantAPIKeys = (tenant_id: string) =>
 		`/admin/tenants/${encodeURIComponent(tenant_id)}/api-keys`,
 		{ method: 'DELETE' }
 	);
+
+// Personal access tokens — act as the issuing user on garde APIs (not /validate tenant keys)
+export interface PATInfo {
+	id: string;
+	name: string;
+	created_at: string;
+	expires_at?: string | null;
+	revoked_at?: string | null;
+	last_used_at?: string | null;
+}
+
+export interface CreatePATResult extends PATInfo {
+	/** Plaintext shown once; never returned by list again. */
+	token: string;
+}
+
+export interface ListPATsResult {
+	tokens: PATInfo[];
+	total: number;
+}
+
+export interface CreatePATInput {
+	name: string;
+	expires_in?: string;
+	never_expires?: boolean;
+}
+
+export const listPATs = () => request<ListPATsResult>('/users/me/tokens');
+
+export const createPAT = (input: CreatePATInput) =>
+	request<CreatePATResult>('/users/me/tokens', {
+		method: 'POST',
+		body: JSON.stringify(input)
+	});
+
+export const revokePAT = (token_id: string) =>
+	request<PATInfo>(`/users/me/tokens/${encodeURIComponent(token_id)}`, {
+		method: 'DELETE'
+	});
