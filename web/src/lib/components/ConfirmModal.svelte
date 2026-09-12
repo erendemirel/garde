@@ -12,13 +12,19 @@
 	const dispatch = createEventDispatcher();
 
 	function handleConfirm() {
-		open = false;
+		// Dispatch first, then defer close so the activating click finishes before unmount
+		// (Playwright otherwise sees click hangs or fall-through under remount).
 		dispatch('confirm');
+		queueMicrotask(() => {
+			open = false;
+		});
 	}
 
 	function handleCancel() {
-		open = false;
 		dispatch('cancel');
+		queueMicrotask(() => {
+			open = false;
+		});
 	}
 </script>
 

@@ -79,7 +79,10 @@ func getPATWithClient(ctx context.Context, client *redis.Client, id string) (*mo
 	return &token, nil
 }
 
-// ListPATsByUser returns every token the user has issued, newest first.
+// ListPATsByUser returns the user's active (non-revoked) tokens, newest first.
+// Revoked ids are removed from the per-user set on revoke, so they do not
+// appear here; the Redis record itself is kept so a presented secret still
+// resolves and is refused as revoked.
 func (r *RedisRepository) ListPATsByUser(ctx context.Context, userID string) ([]*models.PersonalAccessToken, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -99,6 +102,9 @@ func (r *RedisRepository) ListPATsByUser(ctx context.Context, userID string) ([]
 		if err != nil {
 			continue
 		}
+		if token.Revoked() {
+			continue
+		}
 		tokens = append(tokens, token)
 	}
 
@@ -108,15 +114,15 @@ func (r *RedisRepository) ListPATsByUser(ctx context.Context, userID string) ([]
 	return tokens, nil
 }
 
+// CountPATsByUser counts tokens that still consume the per-user cap — active
+// ones only. Revoked entries must not count, or issue/revoke cycles would
+// permanently lock the user out at MaxPATsPerUser.
 func (r *RedisRepository) CountPATsByUser(ctx context.Context, userID string) (int, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	client := r.client
-	if client == nil {
-		return 0, errRedisClientUnavailable
+	tokens, err := r.ListPATsByUser(ctx, userID)
+	if err != nil {
+		return 0, err
 	}
-	n, err := client.SCard(ctx, userPATsSetKey(userID)).Result()
-	return int(n), err
+	return len(tokens), nil
 }
 
 func (r *RedisRepository) RevokePAT(ctx context.Context, id, userID string) (*models.PersonalAccessToken, error) {
@@ -134,6 +140,11 @@ func (r *RedisRepository) RevokePAT(ctx context.Context, id, userID string) (*mo
 	if token.UserID != userID {
 		return nil, ErrPATNotFound
 	}
+
+	// Drop the id from the active set even when already revoked, so a prior
+	// partial failure cannot leave a phantom slot that consumes the cap.
+	_ = client.SRem(ctx, userPATsSetKey(userID), id).Err()
+
 	if token.Revoked() {
 		return token, nil
 	}

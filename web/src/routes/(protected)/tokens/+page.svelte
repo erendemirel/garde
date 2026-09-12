@@ -70,8 +70,9 @@
 			revealed = created;
 			copied = false;
 			revealAcknowledged = false;
-			await load();
+			// Toast before reload — same order as API keys so UI feedback is not gated on list fetch.
 			showToast(`Issued token "${created.name}"`, 'success');
+			await load();
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'Failed to issue token', 'error');
 		} finally {
@@ -105,12 +106,11 @@
 	async function confirmRevoke() {
 		if (!revoking) return;
 		const id = revoking.id;
+		revoking = null;
 		try {
 			await revokePAT(id);
-			showRevokeConfirm = false;
-			revoking = null;
-			await load();
 			showToast('Token revoked', 'success');
+			await load();
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'Failed to revoke token', 'error');
 		}
@@ -242,7 +242,17 @@
 			{/if}
 		</div>
 		<div class="flex justify-end gap-2">
-			<button type="button" class="btn-secondary" data-testid="tokens-issue-cancel" on:click={() => (showIssueModal = false)}>
+			<button
+				type="button"
+				class="btn-secondary"
+				data-testid="tokens-issue-cancel"
+				on:click={() => {
+					// Defer unmount so Playwright's click can finish (same class of hang as ConfirmModal).
+					queueMicrotask(() => {
+						showIssueModal = false;
+					});
+				}}
+			>
 				Cancel
 			</button>
 			<button type="submit" class="btn-primary" data-testid="tokens-issue-submit" disabled={!canIssue}>
@@ -298,7 +308,7 @@
 	message={revoking
 		? `Revoke "${revoking.name}" (${revoking.id})?\n\nAnything using this token will be refused immediately.`
 		: ''}
-	confirmLabel="Revoke"
+	confirmText="Revoke"
 	on:confirm={confirmRevoke}
 	on:cancel={() => {
 		showRevokeConfirm = false;

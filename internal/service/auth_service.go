@@ -1144,6 +1144,14 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
+	// List sessions before mutating the password so a Redis outage cannot leave
+	// a success response with live sessions after the password already changed.
+	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
+	if err != nil {
+		slog.Error("Failed to get active sessions before password reset", "error", err, "user_id", user.ID)
+		return fmt.Errorf(errors.ErrOperationFailed)
+	}
+
 	// Update password; keep existing status so a verified OTP reset does not force re-approval
 	// (pending users stay pending until an admin approves; ok users can log in immediately).
 	user.PasswordHash = hashedPassword
@@ -1153,16 +1161,13 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	// Revoke all sessions after password change
-	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
-	if err != nil {
-		slog.Debug("Failed to get active sessions", "error", err)
-		return nil // Continue with login despite session revocation failure
-	}
-
 	for _, sessionID := range sessions {
 		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration)
+			if blacklistErr := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); blacklistErr != nil {
+				slog.Error("Failed to revoke session after password reset",
+					"delete_error", err, "blacklist_error", blacklistErr, "session_id", sessionID)
+				return fmt.Errorf(errors.ErrOperationFailed)
+			}
 		}
 	}
 

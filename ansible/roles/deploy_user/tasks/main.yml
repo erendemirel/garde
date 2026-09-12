@@ -54,7 +54,8 @@
     mode: "0755"
 
 - name: Create the Vault credential directory
-  # role-id and secret-id are written here by vault-cluster-init.sh.
+  # role-id and secret-id are written here by vault-cluster-init.sh (mode 600).
+  # Directory 0700 keeps those machine credentials host-private.
   ansible.builtin.file:
     path: "{{ remote_root }}/vault"
     state: directory

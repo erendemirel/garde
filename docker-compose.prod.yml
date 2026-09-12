@@ -34,7 +34,9 @@ services:
       - ./vault/server.hcl:/vault/config/server.hcl:ro
       # /vault/file - see the note in vault/server.hcl
       - vault_data:/vault/file
-    # Bind to localhost only — never expose Vault to the public internet
+    # Bind to localhost only — never expose Vault to the public internet.
+    # Application secrets are rendered by vault-agent into a tmpfs (/run/secrets),
+    # not into ./data. AppRole files live under ./vault/ (mode 600 after vault-init).
     ports:
       - "127.0.0.1:8200:8200"
     networks:

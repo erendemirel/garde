@@ -59,11 +59,12 @@ vault write auth/approle/role/garde \
   token_max_ttl=4h \
   secret_id_ttl=0
 
-# Write role-id and secret-id to /vault (host-mounted ./vault) for the agent
+# Write role-id and secret-id to /vault (host-mounted ./vault) for the agent.
+# These are long-lived machine credentials (secret_id_ttl=0); keep them host-private.
 vault read -field=role_id auth/approle/role/garde/role-id > /vault/role-id
 vault write -f -field=secret_id auth/approle/role/garde/secret-id > /vault/secret-id
-chmod 600 /vault/role-id /vault/secret-id 2>/dev/null || true
-echo "Wrote AppRole credentials to /vault/role-id and /vault/secret-id"
+chmod 600 /vault/role-id /vault/secret-id
+echo "Wrote AppRole credentials to /vault/role-id and /vault/secret-id (mode 600)"
 
 # Seed secrets from file (same format as dev.secrets: KEY=value)
 if [ -f /prod.secrets ]; then

@@ -11,6 +11,7 @@ import {
 	listPATs,
 	meWithPAT,
 	openTokensPage,
+	confirmRevokePAT,
 	revokePATById
 } from '../../helpers/pats';
 import { assertToast, waitForPageShell, waitForTokensPage } from '../../helpers/waits';
@@ -33,7 +34,6 @@ test.describe(
 
 				const name = `e2e_pat_${Date.now()}`;
 				const token = await issuePATViaUI(page, { name });
-				await assertToast(page, name);
 
 				const row = page.locator('[data-testid="tokens-row"]').filter({ hasText: name });
 				await expect(row).toBeVisible();
@@ -55,7 +55,7 @@ test.describe(
 
 				await row.getByTestId('tokens-revoke').click();
 				await expect(page.getByTestId('confirm-modal-message')).toContainText(name);
-				await page.getByTestId('confirm-modal-confirm').click();
+				await confirmRevokePAT(page);
 				await assertToast(page, /revoked/i);
 				await expect(row).toHaveCount(0);
 
@@ -96,6 +96,7 @@ test.describe(
 				await page.getByTestId('tokens-issue-name').fill(name);
 				await page.getByTestId('tokens-issue-submit').click();
 
+				await assertToast(page, name);
 				await expect(page.getByTestId('tokens-reveal-modal')).toBeVisible();
 				await expect(page.getByTestId('tokens-reveal-done')).toBeDisabled();
 				await page.getByTestId('tokens-reveal-ack').check();

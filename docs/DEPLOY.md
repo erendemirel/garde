@@ -21,6 +21,7 @@ to survive losing a host.
 - [Traffic modes: floating IP or managed load balancer](#traffic-modes-floating-ip-or-managed-load-balancer)
 - [Day-to-day operations](#day-to-day-operations)
 - [Runbook: unsealing Vault](#runbook-unsealing-vault)
+- [Runbook: rotate AppRole secret-id](#runbook-rotate-approle-secret-id)
 - [Runbook: failover](#runbook-failover)
 - [Runbook: rebuilding after failover](#runbook-rebuilding-after-failover)
 - [HA infra test suite](#ha-infra-test-suite)
@@ -653,6 +654,7 @@ on port 80, which is what the load-balancer Caddyfile serves.
 | Snapshot now | **Snapshot and verify** workflow |
 | Change host config | Edit `ansible/roles/…`, then `ansible-playbook playbooks/bootstrap.yml` |
 | Audit host drift | `ansible-playbook playbooks/bootstrap.yml --check --diff` |
+| Rotate AppRole after leak | See [Runbook: rotate AppRole secret-id](#runbook-rotate-approle-secret-id) |
 | Logs | `ssh deploy@10.10.0.1 'cd /opt/garde && docker compose -f compose/app.yml -p garde-app logs -f garde'` |
 | Grafana | Tunnel to `10.10.0.3:3000` over the mesh |
 
@@ -699,6 +701,37 @@ point `VAULT_UNSEAL_KEYS_FILE` at; they never go into GitHub.
 
 If all three are sealed, unseal them one by one — the first one back becomes the
 leader and the others rejoin.
+
+---
+
+## Runbook: rotate AppRole secret-id
+
+AppRole credentials on app nodes (`$REMOTE_ROOT/vault/role-id` and
+`secret-id`) are long-lived machine identities (`secret_id_ttl=0`, kept after
+agent read). That is intentional for reboot survival; protect the host files
+(`vault/` `0700`, credentials `600`) and rotate when they may be leaked.
+
+```bash
+# From a workstation with Vault access (root token or AppRole admin policy):
+ROLE_ID=$(vault read -field=role_id auth/approle/role/garde/role-id)
+SECRET_ID=$(vault write -f -field=secret_id auth/approle/role/garde/secret-id)
+
+# On each app-primary / app-standby node:
+#   printf '%s' "$ROLE_ID"   > /opt/garde/vault/role-id
+#   printf '%s' "$SECRET_ID" > /opt/garde/vault/secret-id
+#   chmod 700 /opt/garde/vault && chmod 600 /opt/garde/vault/role-id /opt/garde/vault/secret-id
+#   cd /opt/garde && docker compose -f compose/app.yml -p garde-app restart vault-agent
+
+# Destroy accessors for old secret-ids when your Vault build lists them:
+#   vault list auth/approle/role/garde/secret-id
+#   vault write -f auth/approle/role/garde/secret-id/destroy secret_id=<old>
+```
+
+Re-running `./deploy/scripts/vault-cluster-init.sh` also redistributes a fresh
+secret-id (and re-seeds secrets). Prefer the targeted mint+copy above if you
+only need credential rotation. Application secrets stay on the agent’s **tmpfs**
+(`/run/secrets`); Vault itself stays on the mesh — never publish `:8200`
+publicly.
 
 ---
 

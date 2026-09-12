@@ -87,9 +87,11 @@ vault write -f auth/approle/role/garde/secret-id
 Save the role-id and secret-id to files:
 
 ```bash
-# These files should NOT be in version control
+# These files should NOT be in version control. Mode 600 on the host only.
 echo "your-role-id" > vault/role-id
 echo "your-secret-id" > vault/secret-id
+chmod 600 vault/role-id vault/secret-id
+chmod 700 vault   # directory itself should not be world-readable
 ```
 
 ### 4. (Optional) Dynamic Redis credentials
@@ -150,10 +152,13 @@ Full step-by-step: [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-v
 ## Security Notes
 
 - `role-id`, `secret-id`, `vault-credentials.json`, and `vault-unseal-keys` are gitignored — never commit them
-- Secrets are written to tmpfs (`/run/secrets`)
+- On the host, keep `vault/` at `0700` and `role-id` / `secret-id` at `600` (init scripts enforce this). Do not copy them onto shared volumes or world-readable paths.
+- AppRole uses a long-lived `secret_id` (`secret_id_ttl=0`) so agents survive reboot without re-init. That is intentional: the **node** is the trust boundary. Agent keeps the secret-id file after reading so restarts work.
+- **Rotate on compromise** (leaked `secret-id`, departed operator with host access): mint a new secret-id, write it to each app node’s `vault/secret-id` (`chmod 600`), restart `vault-agent`, then invalidate old secret-ids if your Vault version supports it (`vault list auth/approle/role/garde/secret-id` / destroy). Re-running `vault-init` / `vault-cluster-init.sh` also issues a fresh secret-id.
+- Secrets are written to tmpfs (`/run/secrets`) only — not persisted on the host data volume. Compose uses a tmpfs volume for that path.
 - Vault Agent authenticates with AppRole and auto-renews tokens
 - Templates rerender when secrets rotate
-- Prod Vault listens on `127.0.0.1:8200` only in Compose; do not expose it publicly
+- Prod Vault listens on `127.0.0.1:8200` only in single-VPS Compose; HA Vault speaks on the WireGuard mesh only. Never publish `:8200` on a public interface.
 - The app reloads the in-memory secret map when files under `/run/secrets` change. Only some keys apply live (API key, CORS, cookies, feature flags, SMTP, Redis reconnect, superuser/admin bootstrap). **TLS binding, trusted proxies, rate-limit / rapid-request thresholds, and log level require a restart.** See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
 ## Development (dev profile)
 

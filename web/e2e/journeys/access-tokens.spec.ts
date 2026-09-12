@@ -3,6 +3,7 @@ import { test } from '../helpers/fixtures';
 import { describeTags, TAG } from '../helpers/tags';
 import {
 	cleanupPATs,
+	confirmRevokePAT,
 	expectPATAccepted,
 	expectPATRejected,
 	issuePATViaUI,
@@ -30,7 +31,6 @@ test.describe(
 			try {
 				const v1Name = `v1_${uniqueSuffix}`;
 				const v1 = await issuePATViaUI(page, { name: v1Name });
-				await assertToast(page, v1Name);
 				await expectPATAccepted(await meWithPAT(request, v1));
 				await expect(page.locator('[data-testid="tokens-row"]')).toHaveCount(1);
 
@@ -43,7 +43,7 @@ test.describe(
 				const oldRow = page.locator('[data-testid="tokens-row"]').filter({ hasText: v1Name });
 				await oldRow.getByTestId('tokens-revoke').click();
 				await expect(page.getByTestId('confirm-modal-message')).toContainText(v1Name);
-				await page.getByTestId('confirm-modal-confirm').click();
+				await confirmRevokePAT(page);
 				await assertToast(page, /revoked/i);
 				await expect(oldRow).toHaveCount(0);
 				await expect(page.locator('[data-testid="tokens-row"]')).toHaveCount(1);
@@ -53,7 +53,7 @@ test.describe(
 
 				const newRow = page.locator('[data-testid="tokens-row"]').filter({ hasText: v2Name });
 				await newRow.getByTestId('tokens-revoke').click();
-				await page.getByTestId('confirm-modal-confirm').click();
+				await confirmRevokePAT(page);
 				await expect(page.getByTestId('tokens-empty').or(page.getByTestId('tokens-list'))).toBeVisible();
 				await expect(page.locator('[data-testid="tokens-row"]')).toHaveCount(0);
 				await expectPATRejected(await meWithPAT(request, v2));

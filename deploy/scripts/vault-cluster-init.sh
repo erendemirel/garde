@@ -181,9 +181,10 @@ for node in $NODES; do
   secret_id="$(vault_on "$FIRST_NODE" "vault write -f -field=secret_id auth/approle/role/garde/secret-id")"
   on_node "$node" "
     mkdir -p '$REMOTE_ROOT/vault'
+    chmod 700 '$REMOTE_ROOT/vault'
     printf '%s' '$role_id'   >'$REMOTE_ROOT/vault/role-id'
     printf '%s' '$secret_id' >'$REMOTE_ROOT/vault/secret-id'
-    chmod 644 '$REMOTE_ROOT/vault/role-id' '$REMOTE_ROOT/vault/secret-id'
+    chmod 600 '$REMOTE_ROOT/vault/role-id' '$REMOTE_ROOT/vault/secret-id'
   "
   ok "$node has AppRole credentials"
 done

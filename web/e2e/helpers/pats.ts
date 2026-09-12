@@ -4,6 +4,7 @@ import {
 	FAKE_SESSION_ID,
 	validateWithAPIKey
 } from './apiKeys';
+import { assertToast, LOAD_TIMEOUT } from './waits';
 
 export type IssuedPAT = {
 	id: string;
@@ -110,7 +111,10 @@ export async function acknowledgePATReveal(page: Page) {
 	return plaintext;
 }
 
-/** UI issue flow; returns plaintext. Assumes already on /tokens. */
+/** UI issue flow; returns plaintext. Assumes already on /tokens.
+ * Asserts the success toast before acknowledge — same order as API-key specs
+ * (toast auto-hides in 5s and must not be checked after the reveal modal).
+ */
 export async function issuePATViaUI(
 	page: Page,
 	opts: { name: string; expiry?: 'default' | 'never' | 'custom'; expiresIn?: string }
@@ -128,5 +132,24 @@ export async function issuePATViaUI(
 	}
 
 	await page.getByTestId('tokens-issue-submit').click();
+	await assertToast(page, opts.name);
 	return acknowledgePATReveal(page);
+}
+
+/** Click revoke confirm and wait for the DELETE to settle (then toast is safe to assert). */
+export async function confirmRevokePAT(page: Page) {
+	const revokeResponse = page.waitForResponse(
+		(res) => {
+			if (res.request().method() !== 'DELETE') return false;
+			try {
+				return /\/api\/users\/me\/tokens\/[^/]+$/.test(new URL(res.url()).pathname);
+			} catch {
+				return false;
+			}
+		},
+		{ timeout: LOAD_TIMEOUT }
+	);
+	await page.getByTestId('confirm-modal-confirm').click();
+	const res = await revokeResponse;
+	expect(res.ok(), await res.text()).toBeTruthy();
 }
