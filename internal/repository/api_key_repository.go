@@ -155,10 +155,10 @@ func (r *RedisRepository) RevokeServiceAPIKey(ctx context.Context, id string) (*
 	return key, nil
 }
 
-// ListServiceAPIKeysByClient narrows the listing to one holder. The filter is
+// ListServiceAPIKeysByTenant narrows the listing to one holder. The filter is
 // applied after the scan because records are stored by id: the id is what a
 // request presents, so it is what the lookup has to be keyed on.
-func (r *RedisRepository) ListServiceAPIKeysByClient(ctx context.Context, clientID string) ([]*models.ServiceAPIKey, error) {
+func (r *RedisRepository) ListServiceAPIKeysByTenant(ctx context.Context, tenantID string) ([]*models.ServiceAPIKey, error) {
 	all, err := r.ListServiceAPIKeys(ctx)
 	if err != nil {
 		return nil, err
@@ -166,22 +166,22 @@ func (r *RedisRepository) ListServiceAPIKeysByClient(ctx context.Context, client
 
 	keys := make([]*models.ServiceAPIKey, 0, len(all))
 	for _, key := range all {
-		if key.ClientID == clientID {
+		if key.TenantID == tenantID {
 			keys = append(keys, key)
 		}
 	}
 	return keys, nil
 }
 
-// RevokeServiceAPIKeysByClient revokes every key one holder has. This is the
+// RevokeServiceAPIKeysByTenant revokes every key one holder has. This is the
 // incident-response path: a single call, rather than reading the listing and
 // revoking ids by hand while the credential is still live.
 //
 // A failure part way through does not discard the work already done — the
 // keys that were revoked come back alongside the error, because during an
 // incident "which ones are dead" is the question that matters.
-func (r *RedisRepository) RevokeServiceAPIKeysByClient(ctx context.Context, clientID string) ([]*models.ServiceAPIKey, error) {
-	keys, err := r.ListServiceAPIKeysByClient(ctx, clientID)
+func (r *RedisRepository) RevokeServiceAPIKeysByTenant(ctx context.Context, tenantID string) ([]*models.ServiceAPIKey, error) {
+	keys, err := r.ListServiceAPIKeysByTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,10 @@ vault {
 }
 
 # Auto-auth with AppRole
+# AppRole files are host-mounted (mode 600) and intentionally kept after read so
+# vault-agent restarts can re-auth without re-running init. Rotate secret-id on
+# compromise (see vault/README.md Security Notes); do not flip remove_secret_id
+# or secret_id_ttl without a redistribution path.
 auto_auth {
   method "approle" {
     config = {

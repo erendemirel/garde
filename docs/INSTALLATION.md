@@ -117,7 +117,7 @@
 
    docker compose -f docker-compose.prod.yml up -d --build
    ```
-   Vault Agent authenticates with **AppRole** (`vault/role-id`, `vault/secret-id`), not with the root token. Do not commit those files or `vault-credentials.json` / `vault-unseal-keys`.
+   Vault Agent authenticates with **AppRole** (`vault/role-id`, `vault/secret-id`), not with the root token. Do not commit those files or `vault-credentials.json` / `vault-unseal-keys`. Init writes them mode `600` under `./vault/` (`0700` directory). Keep them host-private; agent renders application secrets into a **tmpfs** at `/run/secrets`, not onto `./data`.
 
 6. **Firewall:** Allow SSH (22), UI (80 or 443), and API (8443) as needed. Vault is bound to `127.0.0.1:8200` only—do not publish it publicly.
 
@@ -136,6 +136,7 @@ docker compose -f docker-compose.prod.yml up -d
 - **Logs:** `docker compose -f docker-compose.prod.yml logs -f garde` (or `ui`, `vault-agent`, `vault`, etc.).
 - **Restarts:** `docker compose -f docker-compose.prod.yml restart garde` (or another service name).
 - **Reseed secrets:** edit `prod.secrets`, ensure Vault is unsealed and `VAULT_TOKEN` is set, then `docker compose -f docker-compose.prod.yml --profile init run --rm vault-init`.
+- **Rotate AppRole after compromise:** with Vault unsealed and a root (or AppRole-admin) token, mint a new secret-id, replace `./vault/secret-id` (`chmod 600`), restart `vault-agent`, and destroy old secret-ids when possible. See [Vault Security Notes](../vault/README.md#security-notes).
 
 > [!IMPORTANT]
 > Production Vault requires offline credentials (`vault-credentials.json`). On the HA path with AWS KMS auto-unseal, day-to-day reboots do not need Shamir keys; keep recovery keys for break-glass. The single-VPS Compose stack below still uses Shamir unseal after reboot. Losing credentials without a backup means permanent loss of access to the Vault data volume.
@@ -210,7 +211,7 @@ Per-tenant keys are stored as a SHA-256 (the plaintext is shown once, at
 issue), expire after 90 days unless issued otherwise, carry a per-key rate
 limit, record when they were last used, and are revocable one at a time with
 `DELETE /admin/api-keys/{key_id}` or all at once for a single holder with
-`DELETE /admin/clients/{client_id}/api-keys`. See
+`DELETE /admin/tenants/{tenant_id}/api-keys`. See
 [External Callers](API_INTEGRATION_GUIDE.md#4-external-callers-per-tenant-api-keys).
 
 In a deployment fronted by the HA Caddy config, the edge blocks `/validate`

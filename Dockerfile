@@ -15,7 +15,7 @@ FROM alpine:3.19 AS service
 WORKDIR /app
 
 # sqlite: host snapshot timer / CI run `sqlite3 … VACUUM INTO` via docker exec.
-# su-exec: entrypoint chowns bind-mounted /app/data then drops to nonroot.
+# su-exec: entrypoint chowns bind-mounted /app/data (fail-closed, never chmod 777) then drops to nonroot.
 RUN apk add --no-cache ca-certificates sqlite su-exec \
 	&& adduser -D -H -u 65532 nonroot \
 	&& mkdir -p /app/certs /app/configs /app/data \

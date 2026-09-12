@@ -306,7 +306,7 @@ export interface APIKeyScopeInfo {
 
 export interface APIKeyInfo {
 	id: string;
-	client_id: string;
+	tenant_id: string;
 	name: string;
 	scopes: string[];
 	rate_limit?: number;
@@ -327,14 +327,14 @@ export interface ListAPIKeysResult {
 	total: number;
 }
 
-export interface RevokeClientAPIKeysResult {
-	client_id: string;
+export interface RevokeTenantAPIKeysResult {
+	tenant_id: string;
 	keys: APIKeyInfo[];
 	revoked: number;
 }
 
 export interface CreateAPIKeyInput {
-	client_id: string;
+	tenant_id: string;
 	name: string;
 	scopes: string[];
 	expires_in?: string;
@@ -344,8 +344,8 @@ export interface CreateAPIKeyInput {
 
 export const listAPIKeyScopes = () => request<APIKeyScopeInfo[]>('/admin/api-key-scopes');
 
-export const listAPIKeys = (client_id?: string) => {
-	const q = client_id ? `?client_id=${encodeURIComponent(client_id)}` : '';
+export const listAPIKeys = (tenant_id?: string) => {
+	const q = tenant_id ? `?tenant_id=${encodeURIComponent(tenant_id)}` : '';
 	return request<ListAPIKeysResult>(`/admin/api-keys${q}`);
 };
 
@@ -360,8 +360,47 @@ export const revokeAPIKey = (key_id: string) =>
 		method: 'DELETE'
 	});
 
-export const revokeClientAPIKeys = (client_id: string) =>
-	request<RevokeClientAPIKeysResult>(
-		`/admin/clients/${encodeURIComponent(client_id)}/api-keys`,
+export const revokeTenantAPIKeys = (tenant_id: string) =>
+	request<RevokeTenantAPIKeysResult>(
+		`/admin/tenants/${encodeURIComponent(tenant_id)}/api-keys`,
 		{ method: 'DELETE' }
 	);
+
+// Personal access tokens — act as the issuing user on garde APIs (not /validate tenant keys)
+export interface PATInfo {
+	id: string;
+	name: string;
+	created_at: string;
+	expires_at?: string | null;
+	revoked_at?: string | null;
+	last_used_at?: string | null;
+}
+
+export interface CreatePATResult extends PATInfo {
+	/** Plaintext shown once; never returned by list again. */
+	token: string;
+}
+
+export interface ListPATsResult {
+	tokens: PATInfo[];
+	total: number;
+}
+
+export interface CreatePATInput {
+	name: string;
+	expires_in?: string;
+	never_expires?: boolean;
+}
+
+export const listPATs = () => request<ListPATsResult>('/users/me/tokens');
+
+export const createPAT = (input: CreatePATInput) =>
+	request<CreatePATResult>('/users/me/tokens', {
+		method: 'POST',
+		body: JSON.stringify(input)
+	});
+
+export const revokePAT = (token_id: string) =>
+	request<PATInfo>(`/users/me/tokens/${encodeURIComponent(token_id)}`, {
+		method: 'DELETE'
+	});

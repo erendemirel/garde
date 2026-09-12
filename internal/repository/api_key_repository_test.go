@@ -24,11 +24,11 @@ func storeKey(t *testing.T, repo *RedisRepository, id, name string) *models.Serv
 	return key
 }
 
-func storeClientKey(t *testing.T, repo *RedisRepository, id, clientID, name string) *models.ServiceAPIKey {
+func storeTenantKey(t *testing.T, repo *RedisRepository, id, tenantID, name string) *models.ServiceAPIKey {
 	t.Helper()
 	key := &models.ServiceAPIKey{
 		ID:         id,
-		ClientID:   clientID,
+		TenantID:   tenantID,
 		Name:       name,
 		SecretHash: "hash-" + id,
 		Scopes:     []string{models.ScopeValidate},
@@ -40,49 +40,49 @@ func storeClientKey(t *testing.T, repo *RedisRepository, id, clientID, name stri
 	return key
 }
 
-func TestListServiceAPIKeysByClient(t *testing.T) {
+func TestListServiceAPIKeysByTenant(t *testing.T) {
 	repo, _ := newTestRepo(t)
 	ctx := context.Background()
 
-	storeClientKey(t, repo, "aa01", "acme", "acme-prod")
-	storeClientKey(t, repo, "aa02", "acme", "acme-staging")
-	storeClientKey(t, repo, "bb01", "globex", "globex-prod")
+	storeTenantKey(t, repo, "aa01", "acme", "acme-prod")
+	storeTenantKey(t, repo, "aa02", "acme", "acme-staging")
+	storeTenantKey(t, repo, "bb01", "globex", "globex-prod")
 
-	acme, err := repo.ListServiceAPIKeysByClient(ctx, "acme")
+	acme, err := repo.ListServiceAPIKeysByTenant(ctx, "acme")
 	if err != nil {
-		t.Fatalf("ListServiceAPIKeysByClient: %v", err)
+		t.Fatalf("ListServiceAPIKeysByTenant: %v", err)
 	}
 	if len(acme) != 2 {
 		t.Fatalf("got %d keys, want 2", len(acme))
 	}
 	for _, key := range acme {
-		if key.ClientID != "acme" {
-			t.Fatalf("listing leaked a key held by %q", key.ClientID)
+		if key.TenantID != "acme" {
+			t.Fatalf("listing leaked a key held by %q", key.TenantID)
 		}
 	}
 
-	none, err := repo.ListServiceAPIKeysByClient(ctx, "nobody")
+	none, err := repo.ListServiceAPIKeysByTenant(ctx, "nobody")
 	if err != nil {
-		t.Fatalf("ListServiceAPIKeysByClient: %v", err)
+		t.Fatalf("ListServiceAPIKeysByTenant: %v", err)
 	}
 	if len(none) != 0 {
-		t.Fatalf("got %d keys for an unknown client, want 0", len(none))
+		t.Fatalf("got %d keys for an unknown tenant, want 0", len(none))
 	}
 }
 
 // The incident-response path: one call takes out a compromised holder and
 // leaves everyone else alone.
-func TestRevokeServiceAPIKeysByClient(t *testing.T) {
+func TestRevokeServiceAPIKeysByTenant(t *testing.T) {
 	repo, _ := newTestRepo(t)
 	ctx := context.Background()
 
-	storeClientKey(t, repo, "aa01", "acme", "acme-prod")
-	storeClientKey(t, repo, "aa02", "acme", "acme-staging")
-	storeClientKey(t, repo, "bb01", "globex", "globex-prod")
+	storeTenantKey(t, repo, "aa01", "acme", "acme-prod")
+	storeTenantKey(t, repo, "aa02", "acme", "acme-staging")
+	storeTenantKey(t, repo, "bb01", "globex", "globex-prod")
 
-	revoked, err := repo.RevokeServiceAPIKeysByClient(ctx, "acme")
+	revoked, err := repo.RevokeServiceAPIKeysByTenant(ctx, "acme")
 	if err != nil {
-		t.Fatalf("RevokeServiceAPIKeysByClient: %v", err)
+		t.Fatalf("RevokeServiceAPIKeysByTenant: %v", err)
 	}
 	if len(revoked) != 2 {
 		t.Fatalf("revoked %d keys, want 2", len(revoked))
@@ -104,17 +104,17 @@ func TestRevokeServiceAPIKeysByClient(t *testing.T) {
 
 // Calling it twice must not fail or change the reported set, so that an
 // operator can re-run it without wondering whether it worked the first time.
-func TestRevokeServiceAPIKeysByClientIsIdempotent(t *testing.T) {
+func TestRevokeServiceAPIKeysByTenantIsIdempotent(t *testing.T) {
 	repo, _ := newTestRepo(t)
 	ctx := context.Background()
 
-	storeClientKey(t, repo, "aa01", "acme", "acme-prod")
+	storeTenantKey(t, repo, "aa01", "acme", "acme-prod")
 
-	if _, err := repo.RevokeServiceAPIKeysByClient(ctx, "acme"); err != nil {
+	if _, err := repo.RevokeServiceAPIKeysByTenant(ctx, "acme"); err != nil {
 		t.Fatalf("first revoke: %v", err)
 	}
 
-	again, err := repo.RevokeServiceAPIKeysByClient(ctx, "acme")
+	again, err := repo.RevokeServiceAPIKeysByTenant(ctx, "acme")
 	if err != nil {
 		t.Fatalf("second revoke: %v", err)
 	}

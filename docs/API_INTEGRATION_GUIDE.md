@@ -10,6 +10,7 @@ This guide explains how to integrate and use garde in your applications.
 - [Authentication Methods](#authentication-methods)
   - [1. Browser-based Authentication](#1-browser-based-authentication)
   - [2. API Authentication](#2-api-authentication)
+  - [2b. Personal Access Tokens](#2b-personal-access-tokens)
   - [3. Internal Service Authentication (mTLS + API Key)](#3-internal-service-authentication-mtls--api-key)
   - [4. External Callers (Per-Tenant API Keys)](#4-external-callers-per-tenant-api-keys)
 - [Common Workflows](#common-workflows)
@@ -50,7 +51,7 @@ This guide explains how to integrate and use garde in your applications.
 
 ## Authentication Methods
 
-garde supports four authentication styles, and they are meant to coexist: browser sessions, API sessions, certificate-authenticated service calls, and per-tenant keys for callers outside your network. Browsers are never asked for a client certificate. Service calls to `/validate` are, on any listener configured to verify one — which in the recommended layout is a separate private listener rather than the public API host. See [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
+garde supports five authentication styles, and they are meant to coexist: browser sessions, API sessions, personal access tokens, certificate-authenticated service calls, and per-tenant keys for callers outside your network. Browsers are never asked for a client certificate. Service calls to `/validate` are, on any listener configured to verify one — which in the recommended layout is a separate private listener rather than the public API host. See [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
 
 ### 1. Browser-based Authentication
 For web applications where users log in through a browser interface.
@@ -133,6 +134,39 @@ Use the session token in subsequent requests:
 GET /users/me
 Authorization: Bearer 6cc0595f-f3...
 ```
+
+### 2b. Personal Access Tokens
+For scripts and CI that need to call garde **as a user**, without keeping a
+browser session. A PAT carries the same live permissions, groups, and admin
+flags as the issuing account. It is **not** a tenant `/validate` key.
+
+**Issue / manage** (browser session required — another PAT cannot create PATs):
+
+```http
+POST /users/me/tokens
+Authorization: Bearer <session_id>
+Content-Type: application/json
+
+{
+  "name": "ci-laptop",
+  "expires_in": "720h"
+}
+```
+
+The plaintext (`garde_pat_<id>_<secret>`) is returned once in `data.token`.
+List with `GET /users/me/tokens`; revoke with `DELETE /users/me/tokens/{token_id}`.
+Default lifetime is 90 days; pass `never_expires: true` to opt out (max 25
+tokens per user).
+
+**Use:**
+
+```http
+GET /users/me
+Authorization: Bearer garde_pat_…
+```
+
+PATs are refused on `/validate` (that endpoint accepts tenant keys or the
+shared internal key only).
 
 ### 3. Internal Service Authentication (mTLS + API Key)
 For internal services communicating within your infrastructure.
@@ -231,16 +265,16 @@ X-Session-ID: 8e8217f1-4f...
 
 | Operation | Request |
 |-----------|---------|
-| Issue | `POST /admin/api-keys` with `client_id`, `name` and `scopes`; optional `expires_in`, `never_expires`, `rate_limit` |
-| List | `GET /admin/api-keys` — no secrets, but each key's `last_used_at`. Add `?client_id=acme` to narrow it |
+| Issue | `POST /admin/api-keys` with `tenant_id`, `name` and `scopes`; optional `expires_in`, `never_expires`, `rate_limit` |
+| List | `GET /admin/api-keys` — no secrets, but each key's `last_used_at`. Add `?tenant_id=acme` to narrow it |
 | Revoke one | `DELETE /admin/api-keys/{key_id}` — effective on the caller's next request |
-| Revoke a holder | `DELETE /admin/clients/{client_id}/api-keys` — every key that holder has, in one call |
+| Revoke a holder | `DELETE /admin/tenants/{tenant_id}/api-keys` — every key that holder has, in one call |
 
 ```json
 {
     "data": {
         "id": "1f4c8a0b6d2e7391",
-        "client_id": "acme",
+        "tenant_id": "acme",
         "name": "acme-prod",
         "scopes": ["validate"],
         "created_at": "2026-09-11T10:04:00Z",
@@ -251,9 +285,9 @@ X-Session-ID: 8e8217f1-4f...
 ```
 
 Store the `key` value at the caller's end immediately; `id` is what you use to
-revoke that one key, and `client_id` is what you use to revoke all of them.
+revoke that one key, and `tenant_id` is what you use to revoke all of them.
 
-`client_id` names the holder and `name` labels the individual key, so one
+`tenant_id` names the holder and `name` labels the individual key, so one
 holder can carry several — which is how you roll a credential without a gap:
 issue the new key, let the caller cut over, then revoke the old one.
 
@@ -952,7 +986,7 @@ Authorization: Bearer <superuser_token>
 Content-Type: application/json
 
 {
-    "client_id": "acme",
+    "tenant_id": "acme",
     "name": "acme-prod",
     "scopes": ["validate"],
     "expires_in": "4320h",
@@ -960,7 +994,7 @@ Content-Type: application/json
 }
 ```
 
-`client_id`, `name` and `scopes` are all required. **Scopes are never granted
+`tenant_id`, `name` and `scopes` are all required. **Scopes are never granted
 by default** — an empty or missing list is a `400`, because a credential issued
 without a stated grant should carry nothing.
 
@@ -974,7 +1008,7 @@ as a SHA-256 and cannot be recovered.
 
 2. **List Keys:** `GET /admin/api-keys` — every issued key, newest first, with
    `last_used_at` so idle credentials can be spotted. Secrets are never
-   returned. `?client_id=acme` narrows it to one holder.
+   returned. `?tenant_id=acme` narrows it to one holder.
 
 3. **Revoke a Key:** `DELETE /admin/api-keys/{key_id}` — takes effect on the
    caller's next request. The record is kept, so the revocation stays visible
@@ -982,7 +1016,7 @@ as a SHA-256 and cannot be recovered.
 
 4. **Revoke Every Key a Client Holds:**
 ```http
-DELETE /admin/clients/acme/api-keys
+DELETE /admin/tenants/acme/api-keys
 Authorization: Bearer <superuser_token>
 ```
 

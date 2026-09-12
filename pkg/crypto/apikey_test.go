@@ -51,6 +51,7 @@ func TestParseAPIKeyRejectsNonKeys(t *testing.T) {
 	// The legacy shared key must not parse, or the middleware would look it up
 	// in Redis instead of comparing it against configuration.
 	cases := map[string]string{
+		"personal access token": "garde_pat_0011223344556677_c2VjcmV0",
 		"legacy shared secret":  "TestApiKey123!TestApiKey123!",
 		"empty":                 "",
 		"prefix only":           "garde_",

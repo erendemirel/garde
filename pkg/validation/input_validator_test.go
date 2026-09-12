@@ -24,8 +24,8 @@ func TestAPIKeyLabelValidators(t *testing.T) {
 		if err := ValidateAPIKeyName(value); err != nil {
 			t.Fatalf("ValidateAPIKeyName(%q) = %v, want nil", value, err)
 		}
-		if err := ValidateAPIKeyClientID(value); err != nil {
-			t.Fatalf("ValidateAPIKeyClientID(%q) = %v, want nil", value, err)
+		if err := ValidateAPIKeyTenantID(value); err != nil {
+			t.Fatalf("ValidateAPIKeyTenantID(%q) = %v, want nil", value, err)
 		}
 	}
 
@@ -33,8 +33,8 @@ func TestAPIKeyLabelValidators(t *testing.T) {
 		if err := ValidateAPIKeyName(value); err == nil {
 			t.Fatalf("ValidateAPIKeyName(%q) = nil, want an error", value)
 		}
-		if err := ValidateAPIKeyClientID(value); err == nil {
-			t.Fatalf("ValidateAPIKeyClientID(%q) = nil, want an error", value)
+		if err := ValidateAPIKeyTenantID(value); err == nil {
+			t.Fatalf("ValidateAPIKeyTenantID(%q) = nil, want an error", value)
 		}
 	}
 }
@@ -43,12 +43,12 @@ func TestAPIKeyLabelValidators(t *testing.T) {
 // which field they got wrong.
 func TestAPIKeyLabelErrorsNameTheField(t *testing.T) {
 	nameErr := ValidateAPIKeyName("")
-	clientErr := ValidateAPIKeyClientID("")
+	tenantErr := ValidateAPIKeyTenantID("")
 
-	if nameErr == nil || clientErr == nil {
+	if nameErr == nil || tenantErr == nil {
 		t.Fatal("empty labels must be refused")
 	}
-	if nameErr.Error() == clientErr.Error() {
+	if nameErr.Error() == tenantErr.Error() {
 		t.Fatalf("both validators answer %q; the message should name the field", nameErr.Error())
 	}
 }

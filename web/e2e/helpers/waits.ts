@@ -247,10 +247,21 @@ export async function waitForAdminManagement(page: Page, timeout = LOAD_TIMEOUT)
 export async function waitForApiKeysPanel(page: Page, timeout = LOAD_TIMEOUT) {
 	await waitForSessionReady(page, timeout);
 	const ready = page
-		.getByTestId('api-keys-client-list')
+		.getByTestId('api-keys-tenant-list')
 		.or(page.getByTestId('api-keys-empty'))
 		.or(page.getByTestId('api-keys-error'));
 	await waitOutOfLoading(page, 'api-keys-loading', ready, timeout);
+}
+
+/** Personal access tokens page — ready when loading clears. */
+export async function waitForTokensPage(page: Page, timeout = LOAD_TIMEOUT) {
+	await waitForSessionReady(page, timeout);
+	await expect(page.getByTestId('tokens-page')).toBeVisible({ timeout });
+	const ready = page
+		.getByTestId('tokens-list')
+		.or(page.getByTestId('tokens-empty'))
+		.or(page.getByTestId('tokens-error'));
+	await waitOutOfLoading(page, 'tokens-loading', ready, timeout);
 }
 
 /** Wait until a specific admin row is rendered (users cache + management map settled). */

@@ -35,6 +35,7 @@ test.describe('Regular user dashboard', describeTags(TAG.regular, TAG.dashboard,
 		).toBeVisible();
 		await expect(page.getByTestId('dashboard-link-mfa')).toBeVisible();
 		await expect(page.getByTestId('dashboard-link-password')).toBeVisible();
+		await expect(page.getByTestId('dashboard-link-tokens')).toBeVisible();
 		await expect(page.getByTestId('dashboard-link-request-update')).toBeVisible();
 	});
 
