@@ -191,6 +191,9 @@ func (r *RedisRepository) attachUserCredentials(ctx context.Context, client *red
 
 	legacyPassword, legacyMFA := models.ParseLegacyCredentials(rawUserJSON)
 
+	// TODO(bugfix): remove legacy inline-credential migration. No deployment
+	// still runs the old layout (see TODO on legacyUserCredentials in
+	// internal/models/user.go); these branches should go with it.
 	if password == "" && legacyPassword != "" {
 		password = legacyPassword
 		if setErr := client.Set(ctx, userPasswordKey(user.ID), password, 0).Err(); setErr != nil {

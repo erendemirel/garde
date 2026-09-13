@@ -90,6 +90,11 @@ type UserUpdateFields struct {
 	GroupsRemove      []UserGroup  `json:"groups_remove,omitempty"`
 }
 
+// TODO(bugfix): remove the legacy inline-credential migration (password_hash
+// / mfa_secret inside the user JSON blob) along with the migration branches
+// in attachUserCredentials (internal/repository/redis_repository.go). No
+// deployment still runs the old layout, so the JSON fallback, the re-encrypt
+// path and the backfill writes are dead weight and extra audit surface.
 // legacyUserCredentials extracts sensitive fields that may still exist in older
 // Redis user JSON blobs (pre separate-key storage). Used only for one-time migration.
 type legacyUserCredentials struct {
