@@ -78,7 +78,11 @@ func adminScopes() (m map[string][]string, configured, ok bool) {
 		slog.Error("Config: ADMIN_SCOPES_JSON is not valid JSON; denying every scoped admin route until it is fixed", "error", err)
 		return nil, true, false
 	}
-	return parsed, true, true
+	normalized := make(map[string][]string, len(parsed))
+	for k, v := range parsed {
+		normalized[strings.ToLower(strings.TrimSpace(k))] = v
+	}
+	return normalized, true, true
 }
 
 // GetAdminScopesMap exposes the configured restrictions. It is nil when the
@@ -117,7 +121,7 @@ func AdminScopesFor(email string) (scopes []string, enforced bool) {
 		return nil, true
 	}
 
-	scopes, listed := m[email]
+	scopes, listed := m[strings.ToLower(strings.TrimSpace(email))]
 	if !listed {
 		return nil, false
 	}

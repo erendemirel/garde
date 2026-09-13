@@ -43,7 +43,7 @@ func contextUserID(c *gin.Context) (string, bool) {
 // @Accept json
 // @Produce json
 // @Param request body models.LoginRequest true "Login credentials"
-// @Success 200 {object} models.SuccessResponse{data=models.LoginResponse} "Returns session ID and sets session cookie"
+// @Success 200 {object} models.SuccessResponse{data=models.LoginResponse} "Sets session cookie; session_id in body only with X-Return-Session"
 // @Failure 400 {object} models.ErrorResponse "Invalid request format"
 // @Failure 401 {object} models.ErrorResponse "Authentication failed, invalid credentials, MFA required, or invalid MFA code"
 // @Failure 429 {object} models.ErrorResponse "Too many login attempts"
@@ -74,7 +74,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		SameSite: config.GetCookieSameSite(),
 	})
 
-	c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
+	// Browser clients use the HttpOnly cookie. API clients that need a Bearer
+	// session must opt in so the credential is not exposed to page JS by default.
+	if strings.EqualFold(c.GetHeader("X-Return-Session"), "true") || c.GetHeader("X-Return-Session") == "1" {
+		c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
+		return
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.LoginResponse{}))
 }
 
 // @Summary Logout user
@@ -121,18 +127,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	cookieDomain := config.Get("DOMAIN_NAME")
-
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    "",
-		Path:     "/",
-		Domain:   cookieDomain,
-		MaxAge:   0,
-		Secure:   config.GetCookieSecure(),
-		HttpOnly: true,
-		SameSite: config.GetCookieSameSite(),
-	})
+	middleware.ClearSessionCookie(c)
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
 }
@@ -306,8 +301,35 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	}
 
 	userID := c.Param("user_id")
+	isSuperUser := c.GetBool("is_superuser")
+	isAdmin := c.GetBool("is_admin")
 
-	// Try to acquire lock
+	req, exists := middleware.GetValidatedRequest[models.UpdateUserRequest](c)
+	if !exists {
+		// Fallback when validation middleware did not run (tests / miswired routes).
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+			return
+		}
+		if req.Status != nil && !models.IsValidUserStatus(*req.Status) {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+			return
+		}
+		if req.Permissions == nil && req.Groups == nil &&
+			req.Status == nil && req.MFAEnforced == nil &&
+			!req.ApproveUpdate && !req.RejectUpdate {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+			return
+		}
+	}
+
+	// Authorize before taking the lock so arbitrary user_id values cannot be
+	// DoS'd by unprivileged admins. Existence and scope failures both look like 404.
+	if _, err := h.authService.GetUser(c.Request.Context(), adminID, userID, isSuperUser, isAdmin); err != nil {
+		c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
+		return
+	}
+
 	locked, err := h.authService.AcquireUserLock(c.Request.Context(), userID, 30*time.Second)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.NewErrorResponse("Failed to process request"))
@@ -319,17 +341,6 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	}
 	defer h.authService.ReleaseUserLock(c.Request.Context(), userID)
 
-	var req models.UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
-		return
-	}
-
-	// Get superuser/admin flags
-	isSuperUser := c.GetBool("is_superuser")
-	isAdmin := c.GetBool("is_admin")
-
-	// Update user
 	if err := h.authService.UpdateUser(
 		c.Request.Context(),
 		adminID,
@@ -344,11 +355,18 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 		}
 		errStr := err.Error()
 		if errStr == pkgerrors.ErrUserNotFound {
-			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
 			return
 		}
-		if errStr == pkgerrors.ErrUnauthorized ||
-			errStr == pkgerrors.ErrInvalidPermissionRequested ||
+		if errStr == pkgerrors.ErrUnauthorized {
+			if adminID == userID {
+				c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+				return
+			}
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
+			return
+		}
+		if errStr == pkgerrors.ErrInvalidPermissionRequested ||
 			errStr == pkgerrors.ErrInvalidGroupRequested ||
 			errStr == pkgerrors.ErrCannotRemoveAllPermissions ||
 			errStr == pkgerrors.ErrCannotRemoveAllGroups ||
@@ -360,16 +378,14 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// Fetch and return the updated user
 	updatedUser, err := h.authService.GetUser(
 		c.Request.Context(),
 		adminID,
 		userID,
-		c.GetBool("is_superuser"),
-		c.GetBool("is_admin"),
+		isSuperUser,
+		isAdmin,
 	)
 	if err != nil {
-		// If we can't fetch the user, still return success but log the error
 		slog.Warn("Failed to fetch updated user after update", "error", err, "user_id", userID)
 		c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
 		return
@@ -379,7 +395,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 }
 
 // @Summary Change password
-// @Description Changes the user's password. No mTLS required for this endpoint.
+// @Description Changes the user's password and revokes all of their active sessions. No mTLS required for this endpoint.
 // @Tags Protected Routes
 // @Accept json
 // @Produce json
@@ -491,12 +507,8 @@ func (h *AuthHandler) RevokeUserSession(c *gin.Context) {
 	)
 	if err != nil {
 		errStr := err.Error()
-		if errStr == pkgerrors.ErrUserNotFound {
-			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
-			return
-		}
-		if errStr == pkgerrors.ErrUnauthorized {
-			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+		if errStr == pkgerrors.ErrUserNotFound || errStr == pkgerrors.ErrUnauthorized {
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
 			return
 		}
 		if errStr == pkgerrors.ErrMFARequired || errStr == pkgerrors.ErrInvalidMFACode {
@@ -778,11 +790,8 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 		c.GetBool("is_admin"),
 	)
 	if err != nil {
-		status := http.StatusUnauthorized
-		if err.Error() == pkgerrors.ErrUserNotFound {
-			status = http.StatusNotFound
-		}
-		c.JSON(status, models.NewErrorResponse(err.Error()))
+		// Existence and out-of-scope look identical to callers.
+		c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
 		return
 	}
 
@@ -822,11 +831,19 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	); err != nil {
 		errStr := err.Error()
 		if errStr == pkgerrors.ErrUserNotFound {
-			c.JSON(http.StatusNotFound, models.NewErrorResponse(errStr))
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
 			return
 		}
-		if errStr == pkgerrors.ErrUnauthorized ||
-			errStr == pkgerrors.ErrGroupsNotLoaded {
+		if errStr == pkgerrors.ErrUnauthorized {
+			// Self-action refusals are not an existence oracle; out-of-scope is.
+			if adminID == userID {
+				c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
+				return
+			}
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
+			return
+		}
+		if errStr == pkgerrors.ErrGroupsNotLoaded {
 			c.JSON(http.StatusForbidden, models.NewErrorResponse(errStr))
 			return
 		}
@@ -963,10 +980,16 @@ func (h *AuthHandler) ListPermissions(c *gin.Context) {
 // @Success 200 {object} models.SuccessResponse{data=[]models.GroupResponse} "List of groups"
 // @Router /groups [get]
 func (h *AuthHandler) ListGroups(c *gin.Context) {
-	allGroups := service.GetAllUserGroups()
+	if _, ok := contextUserID(c); !ok {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
 
-	response := make([]models.GroupResponse, 0, len(allGroups))
-	for _, group := range allGroups {
+	// Full catalog for authenticated callers — request-update and admin pickers need
+	// groups the user does not already belong to. Membership is not a visibility gate here.
+	groups := service.GetAllUserGroups()
+	response := make([]models.GroupResponse, 0, len(groups))
+	for _, group := range groups {
 		info := service.GetGroupInfo(group)
 		response = append(response, models.GroupResponse{
 			Key:         string(group),
@@ -1036,7 +1059,7 @@ func (h *AuthHandler) GetAdminUserManagement(c *gin.Context) {
 	// Get all admins
 	admins := []models.UserResponse{}
 	for _, user := range allUsers {
-		_, isAdminInConfig := adminMap[user.Email]
+		_, isAdminInConfig := adminMap[validation.NormalizeEmail(user.Email)]
 		if user.IsAdmin || isAdminInConfig {
 			admins = append(admins, user)
 		}
@@ -1088,6 +1111,11 @@ func (h *AuthHandler) CreatePermission(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
 	}
+	definition, err := validation.Sanitize(req.Definition)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
 
 	permRepo, err := repository.GetPermissionRepository()
 	if err != nil {
@@ -1096,7 +1124,7 @@ func (h *AuthHandler) CreatePermission(c *gin.Context) {
 		return
 	}
 
-	perm, err := permRepo.CreatePermission(c.Request.Context(), req.Name, req.Definition)
+	perm, err := permRepo.CreatePermission(c.Request.Context(), req.Name, definition)
 	if err != nil {
 		// Check for unique constraint violation
 		errStr := err.Error()
@@ -1144,6 +1172,11 @@ func (h *AuthHandler) UpdatePermission(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
+	definition, err := validation.Sanitize(req.Definition)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
 
 	permRepo, err := repository.GetPermissionRepository()
 	if err != nil {
@@ -1160,7 +1193,7 @@ func (h *AuthHandler) UpdatePermission(c *gin.Context) {
 	}
 
 	// Update permission
-	err = permRepo.UpdatePermission(c.Request.Context(), perm.ID, req.Definition)
+	err = permRepo.UpdatePermission(c.Request.Context(), perm.ID, definition)
 	if err != nil {
 		if err.Error() == "permission not found" {
 			c.JSON(http.StatusNotFound, models.NewErrorResponse("permission not found"))
@@ -1174,7 +1207,7 @@ func (h *AuthHandler) UpdatePermission(c *gin.Context) {
 	response := models.PermissionResponse{
 		Key:         perm.Name,
 		Name:        perm.Name,
-		Description: req.Definition,
+		Description: definition,
 	}
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(response))
@@ -1252,6 +1285,11 @@ func (h *AuthHandler) CreateGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
 		return
 	}
+	definition, err := validation.Sanitize(req.Definition)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
 
 	permRepo, err := repository.GetPermissionRepository()
 	if err != nil {
@@ -1260,7 +1298,7 @@ func (h *AuthHandler) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	group, err := permRepo.CreateGroup(c.Request.Context(), req.Name, req.Definition)
+	group, err := permRepo.CreateGroup(c.Request.Context(), req.Name, definition)
 	if err != nil {
 		// Check for unique constraint violation
 		errStr := err.Error()
@@ -1308,6 +1346,11 @@ func (h *AuthHandler) UpdateGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
 		return
 	}
+	definition, err := validation.Sanitize(req.Definition)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
 
 	permRepo, err := repository.GetPermissionRepository()
 	if err != nil {
@@ -1324,7 +1367,7 @@ func (h *AuthHandler) UpdateGroup(c *gin.Context) {
 	}
 
 	// Update group
-	err = permRepo.UpdateGroup(c.Request.Context(), group.ID, req.Definition)
+	err = permRepo.UpdateGroup(c.Request.Context(), group.ID, definition)
 	if err != nil {
 		if err.Error() == "group not found" {
 			c.JSON(http.StatusNotFound, models.NewErrorResponse("group not found"))
@@ -1338,7 +1381,7 @@ func (h *AuthHandler) UpdateGroup(c *gin.Context) {
 	response := models.GroupResponse{
 		Key:         group.Name,
 		Name:        group.Name,
-		Description: req.Definition,
+		Description: definition,
 	}
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(response))

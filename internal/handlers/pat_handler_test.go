@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"garde/internal/models"
+	"garde/internal/middleware"
 	"garde/internal/repository"
 	pkgerrors "garde/pkg/errors"
 
@@ -36,6 +37,7 @@ func patRouter(h *PATHandler, withSession bool) *gin.Engine {
 		c.Set("user_id", "user-1")
 		if withSession {
 			c.Set("session_id", "sess-1")
+			c.Set(middleware.ContextAuthMethod, middleware.AuthMethodCookie)
 		}
 		c.Next()
 	})
@@ -132,5 +134,26 @@ func TestCreatePATNeverExpires(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
 	if created.Data.ExpiresAt != nil {
 		t.Fatal("never_expires should omit expiry")
+	}
+}
+
+func TestCreatePATRejectsBearerSession(t *testing.T) {
+	h := newPATTestHandler(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Set("session_id", "sess-1")
+		c.Set(middleware.ContextAuthMethod, middleware.AuthMethodBearer)
+		c.Next()
+	})
+	router.POST("/users/me/tokens", h.CreatePAT)
+	body, _ := json.Marshal(map[string]any{"name": "ci"})
+	req := httptest.NewRequest(http.MethodPost, "/users/me/tokens", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("bearer mint: status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }

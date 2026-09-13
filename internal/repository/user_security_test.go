@@ -118,6 +118,11 @@ func TestSessionStoreGetDelete(t *testing.T) {
 	if _, err := r.GetSessionData(ctx, "sess-1"); err == nil {
 		t.Fatal("deleted session still readable")
 	}
+	// Blacklist must survive DeleteSession so revocation bans persist.
+	stillBanned, err := r.IsSessionBlacklisted(ctx, "sess-1")
+	if err != nil || !stillBanned {
+		t.Fatalf("blacklist after delete = %v, %v; want still blacklisted", stillBanned, err)
+	}
 }
 
 func TestOTPStoreGetDeleteAndAttempts(t *testing.T) {

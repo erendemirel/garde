@@ -88,6 +88,14 @@ type SessionData struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+func IDPrefix(id string) string {
+	const n = 10
+	if len(id) <= n {
+		return id
+	}
+	return id[:n]
+}
+
 func HashString(s string) string {
 	hash := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(hash[:])

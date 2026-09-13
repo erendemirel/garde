@@ -22,6 +22,11 @@ const (
 	// ContextPATID is set when the request authenticated with a personal
 	// access token rather than a browser session.
 	ContextPATID = "pat_id"
+	// ContextAuthMethod records how the caller authenticated.
+	ContextAuthMethod = "auth_method"
+	AuthMethodCookie  = "session_cookie"
+	AuthMethodBearer  = "session_bearer"
+	AuthMethodPAT     = "pat"
 )
 
 func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.SecurityAnalyzer, repo *repository.RedisRepository) gin.HandlerFunc {
@@ -29,25 +34,36 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 		ip := c.ClientIP()
 		userAgent := c.Request.UserAgent()
 
-		// Cookie always means session — never treat a cookie value as a PAT.
-		if cookie, err := c.Cookie("session"); err == nil && cookie != "" {
-			authenticateSession(c, authService, securityAnalyzer, cookie, ip, userAgent)
+		cookie, cookieErr := c.Cookie("session")
+		hasCookie := cookieErr == nil && cookie != ""
+		authHeader := c.GetHeader(AuthHeaderKey)
+		hasBearer := authHeader != ""
+
+		// Cookie and Authorization must not be presented together: a stale
+		// cookie would silently override a valid Bearer/PAT (or the reverse).
+		if hasCookie && hasBearer {
+			slog.Debug("Auth middleware: conflicting cookie and Authorization", "path", c.Request.URL.Path)
+			c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
 
-		header := c.GetHeader(AuthHeaderKey)
-		if header == "" {
+		if hasCookie {
+			authenticateSession(c, authService, securityAnalyzer, cookie, ip, userAgent, AuthMethodCookie)
+			return
+		}
+
+		if !hasBearer {
 			slog.Debug("Auth middleware: Missing authentication", "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}
-		if !strings.HasPrefix(header, SessionPrefix) {
+		if !strings.HasPrefix(authHeader, SessionPrefix) {
 			slog.Debug("Auth middleware: Invalid format", "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
 
-		presented := strings.TrimPrefix(header, SessionPrefix)
+		presented := strings.TrimPrefix(authHeader, SessionPrefix)
 
 		// PATs before sessions: a garde_pat_… token must not be treated as a
 		// session id (ValidateSession would fail noisily and clear cookies).
@@ -63,7 +79,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			return
 		}
 
-		authenticateSession(c, authService, securityAnalyzer, presented, ip, userAgent)
+		authenticateSession(c, authService, securityAnalyzer, presented, ip, userAgent, AuthMethodBearer)
 	}
 }
 
@@ -71,19 +87,11 @@ func authenticateSession(
 	c *gin.Context,
 	authService *service.AuthService,
 	securityAnalyzer *service.SecurityAnalyzer,
-	sessionID, ip, userAgent string,
+	sessionID, ip, userAgent, authMethod string,
 ) {
 	validationResult, err := authService.ValidateSession(c.Request.Context(), sessionID, ip, userAgent)
 	if err != nil || validationResult == nil || !validationResult.Response.Valid {
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "session",
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			Secure:   config.GetCookieSecure(),
-			HttpOnly: true,
-			SameSite: config.GetCookieSameSite(),
-		})
+		clearSessionCookie(c)
 		c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
 		return
 	}
@@ -97,6 +105,7 @@ func authenticateSession(
 	}
 
 	c.Set("session_id", sessionID)
+	c.Set(ContextAuthMethod, authMethod)
 	c.Next()
 }
 
@@ -132,7 +141,27 @@ func authenticatePAT(
 	}
 
 	c.Set(ContextPATID, id)
+	c.Set(ContextAuthMethod, AuthMethodPAT)
 	c.Next()
+}
+
+// ClearSessionCookie clears the session cookie with the same Domain/Path/Secure/
+// SameSite attributes used when the cookie was issued, so browsers actually drop it.
+func ClearSessionCookie(c *gin.Context) {
+	clearSessionCookie(c)
+}
+
+func clearSessionCookie(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    "",
+		Path:     "/",
+		Domain:   config.Get("DOMAIN_NAME"),
+		MaxAge:   -1,
+		Secure:   config.GetCookieSecure(),
+		HttpOnly: true,
+		SameSite: config.GetCookieSameSite(),
+	})
 }
 
 func enforceMFASetupGate(c *gin.Context, authService *service.AuthService, userID string) bool {
@@ -142,7 +171,12 @@ func enforceMFASetupGate(c *gin.Context, authService *service.AuthService, userI
 		return true
 	}
 	needsMFA, err := authService.NeedsMFASetup(c.Request.Context(), userID)
-	if err == nil && needsMFA {
+	if err != nil {
+		slog.Warn("Auth middleware: MFA setup check failed", "user_id", userID, "path", path, "error", err)
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, models.NewErrorResponse(errors.ErrOperationFailed))
+		return false
+	}
+	if needsMFA {
 		slog.Debug("Auth middleware: MFA setup required", "user_id", userID, "path", path)
 		c.AbortWithStatusJSON(http.StatusForbidden, models.NewErrorResponse(errors.ErrMFASetupRequired))
 		return false
@@ -170,7 +204,7 @@ func completeUserAuth(
 	}
 
 	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	isSuperUser := user.Email == superUserEmail
+	isSuperUser := strings.EqualFold(user.Email, superUserEmail)
 	isAdmin := user.IsUserAdmin()
 
 	c.Set("is_superuser", isSuperUser)

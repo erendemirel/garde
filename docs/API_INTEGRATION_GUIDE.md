@@ -75,14 +75,27 @@ POST /login
 }
 ```
 
-Success Response:
+Success Response (browser default — session is only in the HttpOnly cookie):
+```json
+{
+    "data": {}
+}
+```
+
+API clients that need a Bearer session must opt in:
+```http
+POST /login
+X-Return-Session: true
+```
 ```json
 {
     "data": {
-        "session_id": "cd374181-b8..."  // Also set in HTTP-only cookie
+        "session_id": "…"
     }
 }
 ```
+
+Cookie-authenticated mutating requests also enforce Origin against `CORS_ALLOW_ORIGINS` when `Origin`/`Referer` is present; with `COOKIE_SAME_SITE=none`, Origin is required.
 
 Error Response:
 ```json
@@ -140,11 +153,11 @@ For scripts and CI that need to call garde **as a user**, without keeping a
 browser session. A PAT carries the same live permissions, groups, and admin
 flags as the issuing account. It is **not** a tenant `/validate` key.
 
-**Issue / manage** (browser session required — another PAT cannot create PATs):
+**Issue / manage** (browser **cookie** session required — Bearer sessions and PATs cannot create PATs):
 
 ```http
 POST /users/me/tokens
-Authorization: Bearer <session_id>
+Cookie: session=<session_id>
 Content-Type: application/json
 
 {
@@ -152,6 +165,9 @@ Content-Type: application/json
   "expires_in": "720h"
 }
 ```
+
+`Authorization: Bearer <session_id>` is refused for PAT management so a stolen
+API session cannot be upgraded into a long-lived PAT.
 
 The plaintext (`garde_pat_<id>_<secret>`) is returned once in `data.token`.
 List with `GET /users/me/tokens`; revoke with `DELETE /users/me/tokens/{token_id}`.
@@ -386,11 +402,12 @@ Important Notes:
   1. Login succeeds without MFA code
   2. User must complete MFA setup before accessing other endpoints
   3. All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, `/logout` return 403
-- Session tokens are delivered two ways:
-  - As HTTP-only cookie for browser-based apps
-  - In response body for API clients
+- Session delivery:
+  - HttpOnly cookie always (browser apps)
+  - JSON `session_id` only when `X-Return-Session: true` (API/Bearer clients)
+- Do not send both a session cookie and `Authorization` on the same request
 - Rate limited per IP (configurable via `RATE_LIMIT`, default 60 requests per minute for public endpoints)
-- Users with `locked by admin` or `locked by security` status cannot log in
+- Locked / pending / unknown accounts share the same opaque login failure
 
 #### Logout
 ```http
@@ -417,7 +434,7 @@ Authorization: Bearer 54492786-1c...
 ```
 
 Notes:
-- All other active sessions are revoked (current session remains valid)
+- All active sessions and personal access tokens are revoked (including the current session; same as password reset)
 - Requires current password verification
 - MFA verification if enabled
 - New password must meet complexity requirements
@@ -466,6 +483,7 @@ Important Notes:
 - MFA code required if enabled
 - Account gets locked after 5 failed attempts
 - Password reset does not change account status (pending users still need admin approval before login)
+- All active sessions and personal access tokens are revoked
 - IP-based rate limiting applies (same as other public endpoints). After 5 failed OTP verification attempts, the account is locked.
 - Cannot reset superuser password through this flow
 
@@ -695,7 +713,7 @@ GET /groups
 Authorization: Bearer bccf1b28-fd...
 ```
 
-**Response Behavior:** Same as permissions—regular users and admins see groups (filtered by visibility where applicable); superusers see all. Response shape matches permissions (array of objects with `key`, `name`, `description`).
+**Response Behavior:** Authenticated callers receive the full group catalog (needed for request-update / admin pickers). Response shape matches permissions (array of objects with `key`, `name`, `description`).
 
 4. Requesting Permission Changes:
 ```http

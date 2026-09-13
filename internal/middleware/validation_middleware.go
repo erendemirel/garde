@@ -415,6 +415,10 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 		slog.Debug("No groups provided in update user request")
 	}
 
+	if req.Status != nil && !models.IsValidUserStatus(*req.Status) {
+		return fmt.Errorf(errors.ErrInvalidRequest)
+	}
+
 	return nil
 }
 

@@ -250,7 +250,7 @@ func TestRevokeUserSessionHandlerTable(t *testing.T) {
 		t.Fatalf("superuser revoke: status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	rec = serveAuth(t, h, http.MethodPost, "/revoke", withRevoke("admin-rv", "target-rv", false, false, true), h.RevokeUserSession, nil)
-	if rec.Code != http.StatusForbidden {
+	if rec.Code != http.StatusNotFound {
 		t.Fatalf("plain revoke: status = %d", rec.Code)
 	}
 	rec = serveAuth(t, h, http.MethodPost, "/revoke", withRevoke("admin-rv", "ghost", true, false, true), h.RevokeUserSession, nil)

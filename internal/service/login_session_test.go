@@ -97,8 +97,8 @@ func TestLoginRejectsTable(t *testing.T) {
 	}{
 		{"unknown", "nobody@example.com", "DevAdminTest123!", pkgerrors.ErrAuthFailed},
 		{"wrong password", "ok@example.com", "WrongPassword1!", pkgerrors.ErrAuthFailed},
-		{"locked", "locked@example.com", "DevAdminTest123!", pkgerrors.ErrAccessRestricted},
-		{"pending", "pending@example.com", "DevAdminTest123!", pkgerrors.ErrAccessRestricted},
+		{"locked", "locked@example.com", "DevAdminTest123!", pkgerrors.ErrAuthFailed},
+		{"pending", "pending@example.com", "DevAdminTest123!", pkgerrors.ErrAuthFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

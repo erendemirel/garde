@@ -237,5 +237,9 @@ func GetAdminUsersMap() map[string]string {
 		slog.Warn("Config: Failed to parse ADMIN_USERS_JSON", "error", err)
 		return nil
 	}
-	return m
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[strings.ToLower(strings.TrimSpace(k))] = v
+	}
+	return out
 }

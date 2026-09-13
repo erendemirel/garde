@@ -19,7 +19,6 @@ import (
 	"garde/pkg/session"
 	"garde/pkg/validation"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -27,6 +26,10 @@ const (
 	maxResetAttempts      = 5
 	securityCodeKeyPrefix = "security_code"
 )
+
+func isSuperuserEmail(email string) bool {
+	return strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(config.Get("SUPERUSER_EMAIL")))
+}
 
 type AuthService struct {
 	repo             *repository.RedisRepository
@@ -173,12 +176,15 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		// Check if IP is blocked
 		isBlocked, err := s.repo.IsIPBlocked(ctx, ip)
 		if err != nil {
-			slog.Debug("Failed to check IP block status", "error", err)
+			slog.Warn("Failed to check IP block status", "error", err)
+			return nil, fmt.Errorf(errors.ErrOperationFailed)
 		}
 		if isBlocked {
 			return nil, fmt.Errorf(errors.ErrAccessRestricted)
 		}
 	}
+
+	req.Email = validation.NormalizeEmail(req.Email)
 
 	// Get user for security checks
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
@@ -187,17 +193,17 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
-	// Check if user is locked or not yet approved
+	// Locked / pending / unknown all look the same to callers (anti-enumeration).
 	if user.Status == models.UserStatusLockedByAdmin || user.Status == models.UserStatusLockedBySecurity {
 		slog.Info("Login attempt by locked user", "email", req.Email, "status", user.Status)
-		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 	if user.Status == models.UserStatusPendingApproval || user.Status == models.UserStatusApprovalRejected {
 		slog.Info("Login attempt by unapproved user", "email", req.Email, "status", user.Status)
-		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 	if user.Status != models.UserStatusOk {
-		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
 	// Global MFA enforcement by config
@@ -210,10 +216,8 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 
 	// Check for suspicious patterns including multiple IP sessions
 	// Determine user role for appropriate threshold
-	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	isSuperuser := user.Email == superUserEmail
-	adminMap := config.GetAdminUsersMap()
-	isAdmin := len(adminMap) > 0 && adminMap[user.Email] != ""
+	isSuperuser := isSuperuserEmail(user.Email)
+	isAdmin := isAdminEmail(user.Email)
 
 	if !session.IsRapidRequestCheckDisabled() {
 		patterns := s.securityAnalyzer.DetectSuspiciousPatternsWithRole(ctx, user.ID, ip, userAgent, isAdmin, isSuperuser)
@@ -268,6 +272,11 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
+	// Successful auth resets lockout counters for this email/IP.
+	if err := s.repo.ClearFailedLogins(ctx, user.Email, ip); err != nil {
+		slog.Debug("Failed to clear failed-login counters", "error", err, "user_id", user.ID)
+	}
+
 	// Update last login time
 	user.LastLogin = time.Now()
 	if err := s.repo.StoreUser(ctx, user); err != nil {
@@ -320,7 +329,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	}
 
 	if isBlacklisted {
-		slog.Debug("Session is blacklisted", "session_id_prefix", sessionID[:10])
+		slog.Debug("Session is blacklisted", "session_id_prefix", session.IDPrefix(sessionID))
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -344,7 +353,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	// Resolve role so rapid-request thresholds match AuthMiddleware (admins/superusers get higher limits)
 	isAdmin, isSuperuser := false, false
 	if user, err := s.repo.GetUserByID(ctx, sessionData.UserID); err == nil && user != nil {
-		isSuperuser = user.Email == config.Get("SUPERUSER_EMAIL")
+		isSuperuser = isSuperuserEmail(user.Email)
 		isAdmin = isAdminEmail(user.Email)
 	}
 
@@ -365,7 +374,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 			slog.Warn("Failed to delete suspicious session", "error", err, "session_id", sessionID)
 		}
 
-		slog.Info("Suspicious patterns detected for session", "session_id_prefix", sessionID[:10], "patterns", patterns)
+		slog.Info("Suspicious patterns detected for session", "session_id_prefix", session.IDPrefix(sessionID), "patterns", patterns)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -384,7 +393,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 
 	// Check session age
 	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
-		slog.Debug("Session has expired", "session_id_prefix", sessionID[:10])
+		slog.Debug("Session has expired", "session_id_prefix", session.IDPrefix(sessionID))
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
@@ -439,8 +448,8 @@ func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID s
 func (s *AuthService) recordFailedAuth(ctx context.Context, user *models.User, email, ip string) error {
 	failedAttempts, err := s.repo.RecordFailedLogin(ctx, email, ip)
 	if err != nil {
-		slog.Debug("Failed to record failed login", "error", err)
-		return nil
+		slog.Warn("Failed to record failed login", "error", err)
+		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
 	if !config.GetBool("DISABLE_IP_BLACKLISTING") && failedAttempts >= session.FailedLoginThreshold {
@@ -555,8 +564,10 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 }
 
 func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.CreateUserResponse, error) {
+	req.Email = validation.NormalizeEmail(req.Email)
+
 	// Block public creation of the configured superuser; it is bootstrapped at startup
-	if req.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(req.Email) {
 		return nil, fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -627,8 +638,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Only superuser can modify superuser
-	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	if targetUser.Email == superUserEmail && !isSuperUser {
+	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -936,7 +946,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 func isAdminEmail(email string) bool {
 	if adminMap := config.GetAdminUsersMap(); len(adminMap) > 0 {
-		if _, ok := adminMap[email]; ok {
+		if _, ok := adminMap[validation.NormalizeEmail(email)]; ok {
 			return true
 		}
 	}
@@ -967,7 +977,7 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 	}
 
 	// Only superuser can revoke superuser's sessions
-	if targetUser.Email == config.Get("SUPERUSER_EMAIL") && !isSuperUser {
+	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1025,8 +1035,7 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Only superuser can delete superuser
-	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	if targetUser.Email == superUserEmail && !isSuperUser {
+	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1089,12 +1098,14 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 }
 
 func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordResetRequest) error {
+	req.Email = validation.NormalizeEmail(req.Email)
+
 	// Get user — unknown emails and superuser use the same InvalidOTP path to avoid enumeration.
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		return fmt.Errorf(errors.ErrInvalidOTP)
 	}
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		return fmt.Errorf(errors.ErrInvalidOTP)
 	}
 
@@ -1161,14 +1172,12 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	for _, sessionID := range sessions {
-		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			if blacklistErr := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); blacklistErr != nil {
-				slog.Error("Failed to revoke session after password reset",
-					"delete_error", err, "blacklist_error", blacklistErr, "session_id", sessionID)
-				return fmt.Errorf(errors.ErrOperationFailed)
-			}
-		}
+	if err := s.revokeAllUserSessions(ctx, user.ID, sessions); err != nil {
+		return err
+	}
+	if err := s.repo.RevokeAllPATsByUser(ctx, user.ID); err != nil {
+		slog.Error("Failed to revoke PATs after password reset", "error", err, "user_id", user.ID)
+		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
 	return nil
@@ -1210,7 +1219,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	}
 
 	// Don't allow superuser password change through this endpoint
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1236,6 +1245,14 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
+	// List sessions before mutating the password so a Redis outage cannot leave
+	// a success response with live sessions after the password already changed.
+	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
+	if err != nil {
+		slog.Error("Failed to get active sessions before password change", "error", err, "user_id", user.ID)
+		return fmt.Errorf(errors.ErrOperationFailed)
+	}
+
 	user.PasswordHash = hashedPassword
 	user.UpdatedAt = time.Now()
 
@@ -1243,55 +1260,39 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	// Extract the current session ID from context if available
-	var currentSessionID string
-	if gc, ok := ctx.(*gin.Context); ok {
-		sessionCookie, err := gc.Cookie("session")
-		if err == nil && sessionCookie != "" {
-			currentSessionID = sessionCookie
-		}
-
-		// Check authorization header if cookie not found
-		if currentSessionID == "" {
-			authHeader := gc.GetHeader("Authorization")
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				currentSessionID = strings.TrimPrefix(authHeader, "Bearer ")
-			}
-		}
-
-		// Also check if stored in context
-		if sessionID, exists := gc.Get("session_id"); exists && currentSessionID == "" {
-			currentSessionID = fmt.Sprintf("%v", sessionID)
-		}
-	} else {
-		// For non-gin contexts (like in tests), try to get session ID from context values
-		if sessionID, ok := ctx.Value("session_id").(string); ok {
-			currentSessionID = sessionID
-		}
+	// Revoke every session, including the caller's — same posture as ResetPassword.
+	// Password change is often a response to suspected compromise; keeping the
+	// current session would leave a stolen cookie usable. The web UI already
+	// logs the user out after a successful change.
+	if err := s.revokeAllUserSessions(ctx, user.ID, sessions); err != nil {
+		return err
 	}
-
-	// Revoke all existing sessions except the current one to prevent connection crash
-	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
-	if err != nil {
+	if err := s.repo.RevokeAllPATsByUser(ctx, user.ID); err != nil {
+		slog.Error("Failed to revoke PATs after password change", "error", err, "user_id", user.ID)
 		return fmt.Errorf(errors.ErrOperationFailed)
-	}
-
-	for _, sessionID := range sessions {
-		// Skip the current session to prevent the connection from being terminated
-		if sessionID == currentSessionID {
-			slog.Debug("Preserving current session", "session_id_prefix", sessionID[:10])
-			continue
-		}
-
-		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration)
-		}
 	}
 
 	return nil
 }
 
+// revokeAllUserSessions blacklists then deletes each session so the 24h ban
+// survives DeleteSession (which no longer clears blacklist entries).
+func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, sessions []string) error {
+	for _, sessionID := range sessions {
+		if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
+			slog.Warn("Failed to blacklist session during credential revoke", "error", err, "session_id", sessionID, "user_id", userID)
+		}
+		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
+			slog.Error("Failed to delete session during credential revoke", "error", err, "session_id", sessionID, "user_id", userID)
+			return fmt.Errorf(errors.ErrOperationFailed)
+		}
+	}
+	return nil
+}
+
 func (s *AuthService) SendOTP(ctx context.Context, email string) error {
+	email = validation.NormalizeEmail(email)
+
 	// Get user by email
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -1300,7 +1301,7 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 	}
 
 	// Don't allow OTP for superuser
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		return nil
 	}
 
@@ -1330,10 +1331,13 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	// Send OTP via email
+	// Send OTP via email — failures are logged only so the endpoint cannot
+	// distinguish unknown emails from mail outages.
 	msg := fmt.Sprintf("Your one-time password is: %s\nThis code will expire in 5 minutes.", otpStr)
 	if err := mail.SendMail(user.Email, "Password Reset OTP", msg); err != nil {
-		return fmt.Errorf(errors.ErrEmailSendFailed)
+		slog.Error("Failed to send password-reset OTP", "error", err, "user_id", user.ID)
+		_ = s.repo.DeleteOTP(ctx, user.ID)
+		return nil
 	}
 
 	return nil
@@ -1349,23 +1353,10 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*model
 		return nil, fmt.Errorf(errors.ErrUserNotFound)
 	}
 
-	// Filter permissions by visibility - regular users only see permissions visible to their groups
+	// Filter permissions by group visibility. Users with no groups must not
+	// see the full catalog — match GetVisiblePermissions([]), which returns empty.
 	userGroupNames := GetUserGroupNames(user.Groups)
-	filteredPermissions := user.Permissions
-	if len(userGroupNames) > 0 {
-		visiblePerms := GetVisiblePermissions(userGroupNames)
-		visiblePermSet := make(map[models.Permission]bool)
-		for _, p := range visiblePerms {
-			visiblePermSet[p] = true
-		}
-		// Only include permissions that are visible to user
-		filteredPermissions = models.UserPermissions{}
-		for perm, enabled := range user.Permissions {
-			if enabled && visiblePermSet[perm] {
-				filteredPermissions[perm] = true
-			}
-		}
-	}
+	filteredPermissions := filterPermissionsByGroups(user.Permissions, userGroupNames)
 
 	return &models.UserResponse{
 		ID:             user.ID,
@@ -1431,23 +1422,8 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string, isSuperUser
 			// Filter pending updates to only show groups admin can approve
 			filteredPendingUpdates := filterPendingUpdatesForAdmin(user.PendingUpdates, admin.Groups)
 
-			// Filter permissions by visibility for admins
 			adminGroupNames := GetUserGroupNames(admin.Groups)
-			filteredPermissions := user.Permissions
-			if len(adminGroupNames) > 0 {
-				visiblePerms := GetVisiblePermissions(adminGroupNames)
-				visiblePermSet := make(map[models.Permission]bool)
-				for _, p := range visiblePerms {
-					visiblePermSet[p] = true
-				}
-				// Only include permissions that are visible to admin
-				filteredPermissions = models.UserPermissions{}
-				for perm, enabled := range user.Permissions {
-					if enabled && visiblePermSet[perm] {
-						filteredPermissions[perm] = true
-					}
-				}
-			}
+			filteredPermissions := filterPermissionsByGroups(user.Permissions, adminGroupNames)
 
 			response = append(response, models.UserResponse{
 				ID:             user.ID,
@@ -1525,20 +1501,7 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 	filteredPermissions := targetUser.Permissions
 	if isAdmin && !isSuperUser {
 		adminGroupNames := GetUserGroupNames(admin.Groups)
-		if len(adminGroupNames) > 0 {
-			visiblePerms := GetVisiblePermissions(adminGroupNames)
-			visiblePermSet := make(map[models.Permission]bool)
-			for _, p := range visiblePerms {
-				visiblePermSet[p] = true
-			}
-			// Only include permissions that are visible to admin
-			filteredPermissions = models.UserPermissions{}
-			for perm, enabled := range targetUser.Permissions {
-				if enabled && visiblePermSet[perm] {
-					filteredPermissions[perm] = true
-				}
-			}
-		}
+		filteredPermissions = filterPermissionsByGroups(targetUser.Permissions, adminGroupNames)
 	}
 
 	response := &models.UserResponse{
@@ -1573,7 +1536,7 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 	}
 
 	// Don't allow superuser to request updates
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		slog.Info("Superuser attempted to request updates", "user_id", userID)
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
@@ -1697,6 +1660,26 @@ func (s *AuthService) AcquireUserLock(ctx context.Context, userID string, ttl ti
 
 func (s *AuthService) ReleaseUserLock(ctx context.Context, userID string) error {
 	return s.repo.ReleaseUserLock(ctx, userID)
+}
+
+// filterPermissionsByGroups keeps only enabled permissions that are visible to
+// the given groups. Empty groups yield an empty map (no catalog leak).
+func filterPermissionsByGroups(perms models.UserPermissions, groupNames []string) models.UserPermissions {
+	if len(groupNames) == 0 {
+		return models.UserPermissions{}
+	}
+	visiblePerms := GetVisiblePermissions(groupNames)
+	visiblePermSet := make(map[models.Permission]bool, len(visiblePerms))
+	for _, p := range visiblePerms {
+		visiblePermSet[p] = true
+	}
+	filtered := models.UserPermissions{}
+	for perm, enabled := range perms {
+		if enabled && visiblePermSet[perm] {
+			filtered[perm] = true
+		}
+	}
+	return filtered
 }
 
 func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups models.UserGroups) *models.UserUpdateRequest {

@@ -89,6 +89,14 @@ func TestAuthMiddlewareSessionCookieTable(t *testing.T) {
 	if code != http.StatusUnauthorized {
 		t.Fatalf("missing credential: status = %d", code)
 	}
+
+	code, _, _ = serveAuthed(t, mw, func(req *http.Request) {
+		req.AddCookie(&http.Cookie{Name: "session", Value: resp.SessionID})
+		req.Header.Set("Authorization", "Bearer "+resp.SessionID)
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("cookie+bearer conflict: status = %d", code)
+	}
 }
 
 func TestAuthMiddlewareBearerTable(t *testing.T) {

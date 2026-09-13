@@ -272,7 +272,8 @@
 			if (isApiError(e) && e.status === 401 && isSessionInvalidMessage(e.message)) {
 				return;
 			}
-			if (isForbidden(e)) {
+			// API maps out-of-scope to 404 (oracle); treat like forbidden for this page.
+			if (isForbidden(e) || (isApiError(e) && e.status === 404)) {
 				accessDenied = true;
 			} else {
 				error = e instanceof Error ? e.message : 'Failed to load user';

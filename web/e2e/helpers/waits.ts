@@ -89,7 +89,7 @@ export function matchUserGet(res: Response, userId?: string) {
 
 /**
  * Admin opened a user outside their scope.
- * Backend: GET /users/:id returns 401 + "unauthorized" (authorization failure, not session expiry).
+ * Backend: GET /users/:id returns 404 + "user not found" (existence/scope oracle).
  * UI: user-detail shows access denied; the admin session stays signed in.
  */
 export async function waitForOutOfScopeDenied(
@@ -104,10 +104,11 @@ export async function waitForOutOfScopeDenied(
 	);
 	await page.goto(path);
 	const res = await userResponse;
-	expect(res.status()).toBe(401);
+	// Out-of-scope looks like not-found (existence/scope oracle); session stays valid.
+	expect(res.status()).toBe(404);
 	const body = await res.json().catch(() => ({}));
 	const message = String(body?.error?.message ?? '').toLowerCase();
-	expect(message).toContain('unauthorized');
+	expect(message).toContain('user not found');
 	expect(message).not.toContain('session invalid');
 
 	await waitForSessionReady(page, timeout);

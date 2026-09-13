@@ -36,7 +36,7 @@ A lightweight yet secure authentication API. Uses Redis as primary database.
 #### Authentication modes:
 - **Browser**: Traditional web login with secure HTTP-only cookies
 - **API session**: Same session model with `Authorization: Bearer <session_id>`
-- **Personal access token (PAT)**: Long-lived `garde_pat_…` credential a user issues for scripts/CI; acts as that user with live permissions and groups. Managed under **Access tokens** in the UI (`POST /users/me/tokens`). Creating or revoking PATs requires a browser session — another PAT cannot mint PATs. PATs are refused on `/validate`.
+- **Personal access token (PAT)**: Long-lived `garde_pat_…` credential a user issues for scripts/CI; acts as that user with live permissions and groups. Managed under **Access tokens** in the UI (`POST /users/me/tokens`). Creating or revoking PATs requires a browser **cookie** session — Bearer sessions and other PATs cannot mint PATs. PATs are refused on `/validate`.
 - **Internal `/validate`**: Private service listener with **client certificate + shared API key** (mesh / not on the public hostname)
 - **External `/validate`**: Per-tenant API key (`garde_…`) over ordinary HTTPS; keyed by `tenant_id`, issued by superuser, shared operator key refused on that path
 
