@@ -74,7 +74,7 @@ func TestLoginHandlerTable(t *testing.T) {
 	h, repo := newAuthTestStack(t)
 	seedHandlerUser(t, repo, "u-login", "login@example.com", "DevAdminTest123!")
 
-	t.Run("success sets cookie", func(t *testing.T) {
+	t.Run("success sets cookie without body session", func(t *testing.T) {
 		rec := serveAuth(t, h, http.MethodPost, "/login", withLogin("login@example.com", "DevAdminTest123!"), h.Login, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
@@ -85,6 +85,27 @@ func TestLoginHandlerTable(t *testing.T) {
 		}
 		if !strings.Contains(cookie, "HttpOnly") {
 			t.Fatalf("cookie missing HttpOnly: %q", cookie)
+		}
+		var parsed struct {
+			Data struct {
+				SessionID string `json:"session_id"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Data.SessionID != "" {
+			t.Fatalf("session_id leaked in default login body: %q", parsed.Data.SessionID)
+		}
+	})
+
+	t.Run("X-Return-Session includes body session", func(t *testing.T) {
+		rec := serveAuth(t, h, http.MethodPost, "/login", func(c *gin.Context) {
+			withLogin("login@example.com", "DevAdminTest123!")(c)
+			c.Request.Header.Set("X-Return-Session", "true")
+		}, h.Login, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 		}
 		var parsed struct {
 			Data struct {
@@ -119,7 +140,10 @@ func TestLogoutHandlerTable(t *testing.T) {
 	seedHandlerUser(t, repo, "u-logout", "logout@example.com", "DevAdminTest123!")
 
 	login := func() string {
-		rec := serveAuth(t, h, http.MethodPost, "/login", withLogin("logout@example.com", "DevAdminTest123!"), h.Login, nil)
+		rec := serveAuth(t, h, http.MethodPost, "/login", func(c *gin.Context) {
+			withLogin("logout@example.com", "DevAdminTest123!")(c)
+			c.Request.Header.Set("X-Return-Session", "true")
+		}, h.Login, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("login status = %d", rec.Code)
 		}

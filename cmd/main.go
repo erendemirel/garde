@@ -322,6 +322,7 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 	// Regular protected routes (no mTLS or admin login required)
 	protected := router.Group("")
 	protected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
+	protected.Use(middleware.CookieCSRFMiddleware())
 	protected.Use(deps.rateLimiter.LimitByUser())
 	{
 		protected.GET("/users/me", authHandler.GetCurrentUser)
@@ -343,6 +344,7 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 	// AdminMiddleware then checks those flags and blocks non-admins
 	adminProtected := router.Group("")
 	adminProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
+	adminProtected.Use(middleware.CookieCSRFMiddleware())
 	adminProtected.Use(middleware.AdminMiddleware(deps.authService))
 	adminProtected.Use(deps.rateLimiter.LimitByUser())
 	// RequireAdminScope is per route, not on the group, because separating
@@ -367,6 +369,7 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 	// SuperuserMiddleware then checks that flag and blocks non-superusers
 	superuserProtected := router.Group("")
 	superuserProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
+	superuserProtected.Use(middleware.CookieCSRFMiddleware())
 	superuserProtected.Use(middleware.SuperuserMiddleware())
 	superuserProtected.Use(deps.rateLimiter.LimitByUser())
 	{

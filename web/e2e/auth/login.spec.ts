@@ -135,9 +135,10 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 	});
 
 	test.describe('blocked accounts', () => {
-		const restrictedMessage = /access temporarily restricted/i;
+		// Locked / pending / rejected share the opaque login failure (anti-enumeration).
+		const authFailedMessage = /authentication failed/i;
 
-		test('pending approval account shows restricted login error', async ({
+		test('pending approval account shows auth-failed login error', async ({
 			page,
 			suRequest,
 			uniqueSuffix
@@ -147,13 +148,13 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 				groups: ['group_a']
 			});
 			try {
-				await expectLoginRejected(page, user, { message: restrictedMessage });
+				await expectLoginRejected(page, user, { message: authFailedMessage });
 			} finally {
 				await deleteUserById(suRequest, user.id).catch(() => undefined);
 			}
 		});
 
-		test('rejected approval account shows restricted login error', async ({
+		test('rejected approval account shows auth-failed login error', async ({
 			page,
 			adminPage,
 			suRequest,
@@ -170,20 +171,20 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('rejected');
 
-				await expectLoginRejected(page, user, { message: restrictedMessage });
+				await expectLoginRejected(page, user, { message: authFailedMessage });
 			} finally {
 				await deleteUserById(suRequest, user.id).catch(() => undefined);
 			}
 		});
 
-		test('security-locked account shows restricted login error', async ({
+		test('security-locked account shows auth-failed login error', async ({
 			page,
 			suRequest,
 			ephemeralUser
 		}) => {
 			await patchUserMaps(suRequest, ephemeralUser.id, { status: 'locked by security' });
 			try {
-				await expectLoginRejected(page, ephemeralUser, { message: restrictedMessage });
+				await expectLoginRejected(page, ephemeralUser, { message: authFailedMessage });
 			} finally {
 				await patchUserMaps(suRequest, ephemeralUser.id, { status: 'ok' }).catch(() => undefined);
 			}

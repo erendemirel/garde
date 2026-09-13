@@ -34,25 +34,36 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 		ip := c.ClientIP()
 		userAgent := c.Request.UserAgent()
 
-		// Cookie always means session — never treat a cookie value as a PAT.
-		if cookie, err := c.Cookie("session"); err == nil && cookie != "" {
+		cookie, cookieErr := c.Cookie("session")
+		hasCookie := cookieErr == nil && cookie != ""
+		authHeader := c.GetHeader(AuthHeaderKey)
+		hasBearer := authHeader != ""
+
+		// Cookie and Authorization must not be presented together: a stale
+		// cookie would silently override a valid Bearer/PAT (or the reverse).
+		if hasCookie && hasBearer {
+			slog.Debug("Auth middleware: conflicting cookie and Authorization", "path", c.Request.URL.Path)
+			c.AbortWithStatusJSON(http.StatusBadRequest, models.NewErrorResponse(errors.ErrInvalidRequest))
+			return
+		}
+
+		if hasCookie {
 			authenticateSession(c, authService, securityAnalyzer, cookie, ip, userAgent, AuthMethodCookie)
 			return
 		}
 
-		header := c.GetHeader(AuthHeaderKey)
-		if header == "" {
+		if !hasBearer {
 			slog.Debug("Auth middleware: Missing authentication", "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}
-		if !strings.HasPrefix(header, SessionPrefix) {
+		if !strings.HasPrefix(authHeader, SessionPrefix) {
 			slog.Debug("Auth middleware: Invalid format", "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
 
-		presented := strings.TrimPrefix(header, SessionPrefix)
+		presented := strings.TrimPrefix(authHeader, SessionPrefix)
 
 		// PATs before sessions: a garde_pat_… token must not be treated as a
 		// session id (ValidateSession would fail noisily and clear cookies).
@@ -160,7 +171,12 @@ func enforceMFASetupGate(c *gin.Context, authService *service.AuthService, userI
 		return true
 	}
 	needsMFA, err := authService.NeedsMFASetup(c.Request.Context(), userID)
-	if err == nil && needsMFA {
+	if err != nil {
+		slog.Warn("Auth middleware: MFA setup check failed", "user_id", userID, "path", path, "error", err)
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, models.NewErrorResponse(errors.ErrOperationFailed))
+		return false
+	}
+	if needsMFA {
 		slog.Debug("Auth middleware: MFA setup required", "user_id", userID, "path", path)
 		c.AbortWithStatusJSON(http.StatusForbidden, models.NewErrorResponse(errors.ErrMFASetupRequired))
 		return false
@@ -188,7 +204,7 @@ func completeUserAuth(
 	}
 
 	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	isSuperUser := user.Email == superUserEmail
+	isSuperUser := strings.EqualFold(user.Email, superUserEmail)
 	isAdmin := user.IsUserAdmin()
 
 	c.Set("is_superuser", isSuperUser)

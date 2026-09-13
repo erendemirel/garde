@@ -5,7 +5,7 @@ import { waitForOutOfScopeDenied } from '../../helpers/waits';
 
 /**
  * Admin scope — admins only manage users who share a group with them.
- * Out-of-scope GET /users/:id → 401 "unauthorized"; UI shows access denied (admin stays signed in).
+ * Out-of-scope GET /users/:id → 404 "user not found"; UI shows access denied (admin stays signed in).
  */
 test.describe('User detail admin scope', describeTags(TAG.userDetail, TAG.admin, TAG.focused), () => {
 	test('admin sees access denied when opening a user outside their groups', async ({

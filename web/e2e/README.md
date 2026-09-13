@@ -177,7 +177,7 @@ Focused journey files (`registration`, `request-update`, `active-session`) keep 
 - Login/register forms expose `data-ready="true"` after mount and stay disabled until then; sign-in uses `type="button"` + click handler so Playwright clicks always fire the handler.
 - **`openLogin` / `openRegister` / `openForgotPassword`** — navigate public auth pages without `networkidle` (waits for testids + `data-ready` where applicable).
 - Request-update waits for `data-ready="true"` on the form (catalog fetch complete) before interacting with multiselects.
-- **`waitForOutOfScopeDenied`** — admin opens `/admin/users/:id` for a user outside their groups: API returns 401 `unauthorized`, UI shows `user-detail-access-denied`, session stays signed in (not a login redirect).
+- **`waitForOutOfScopeDenied`** — admin opens `/admin/users/:id` for a user outside their groups: API returns 404 `user not found`, UI shows `user-detail-access-denied`, session stays signed in (not a login redirect).
 - **`gotoDashboardFresh`** — navigate to `/dashboard` and wait for `/api/users/me` (dashboard refetches on mount).
 - **`assertToast`** — assert toast copy when the spec tests messaging, then click **`toast-dismiss`** (do not wait for auto-hide).
 - **`dismissToast`** — clear a visible toast without re-asserting copy (use between steps in journeys/epics). Production toasts still auto-hide after 5s; tests dismiss immediately.

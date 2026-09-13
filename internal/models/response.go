@@ -1,12 +1,16 @@
 package models
 
 import (
-	"garde/pkg/config"
+	"strings"
 	"time"
+
+	"garde/pkg/config"
 )
 
 type LoginResponse struct {
-	SessionID string `json:"session_id"`
+	// SessionID is omitted unless the client opts in with X-Return-Session
+	// (browser logins rely on the HttpOnly cookie only).
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type MFAResponse struct {
@@ -52,7 +56,7 @@ type UserResponse struct {
 
 func (u *UserResponse) IsUserAdmin() bool {
 	if adminMap := config.GetAdminUsersMap(); len(adminMap) > 0 {
-		if _, ok := adminMap[u.Email]; ok {
+		if _, ok := adminMap[strings.ToLower(strings.TrimSpace(u.Email))]; ok {
 			return true
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"garde/pkg/config"
 	"garde/pkg/crypto"
 	"garde/pkg/session"
+	"garde/pkg/validation"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -213,6 +214,8 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 		return errRedisClientUnavailable
 	}
 
+	user.Email = validation.NormalizeEmail(user.Email)
+
 	// Use Redis WATCH for optimistic locking on user + email index (create uniqueness).
 	txf := func(tx *redis.Tx) error {
 		// Get current data using ID as primary key
@@ -291,8 +294,8 @@ func (r *RedisRepository) GetUserByEmail(ctx context.Context, email string) (*mo
 		return nil, errRedisClientUnavailable
 	}
 
-	// Get user ID from email index
-	userID, err := client.Get(ctx, "email_to_id:"+email).Result()
+	// Get user ID from email index (canonical lower-case key).
+	userID, err := client.Get(ctx, "email_to_id:"+validation.NormalizeEmail(email)).Result()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, errors.New("user not found")

@@ -27,6 +27,10 @@ const (
 	securityCodeKeyPrefix = "security_code"
 )
 
+func isSuperuserEmail(email string) bool {
+	return strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(config.Get("SUPERUSER_EMAIL")))
+}
+
 type AuthService struct {
 	repo             *repository.RedisRepository
 	securityAnalyzer *SecurityAnalyzer
@@ -172,12 +176,15 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		// Check if IP is blocked
 		isBlocked, err := s.repo.IsIPBlocked(ctx, ip)
 		if err != nil {
-			slog.Debug("Failed to check IP block status", "error", err)
+			slog.Warn("Failed to check IP block status", "error", err)
+			return nil, fmt.Errorf(errors.ErrOperationFailed)
 		}
 		if isBlocked {
 			return nil, fmt.Errorf(errors.ErrAccessRestricted)
 		}
 	}
+
+	req.Email = validation.NormalizeEmail(req.Email)
 
 	// Get user for security checks
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
@@ -186,17 +193,17 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
-	// Check if user is locked or not yet approved
+	// Locked / pending / unknown all look the same to callers (anti-enumeration).
 	if user.Status == models.UserStatusLockedByAdmin || user.Status == models.UserStatusLockedBySecurity {
 		slog.Info("Login attempt by locked user", "email", req.Email, "status", user.Status)
-		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 	if user.Status == models.UserStatusPendingApproval || user.Status == models.UserStatusApprovalRejected {
 		slog.Info("Login attempt by unapproved user", "email", req.Email, "status", user.Status)
-		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 	if user.Status != models.UserStatusOk {
-		return nil, fmt.Errorf(errors.ErrAccessRestricted)
+		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
 	// Global MFA enforcement by config
@@ -209,10 +216,8 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 
 	// Check for suspicious patterns including multiple IP sessions
 	// Determine user role for appropriate threshold
-	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	isSuperuser := user.Email == superUserEmail
-	adminMap := config.GetAdminUsersMap()
-	isAdmin := len(adminMap) > 0 && adminMap[user.Email] != ""
+	isSuperuser := isSuperuserEmail(user.Email)
+	isAdmin := isAdminEmail(user.Email)
 
 	if !session.IsRapidRequestCheckDisabled() {
 		patterns := s.securityAnalyzer.DetectSuspiciousPatternsWithRole(ctx, user.ID, ip, userAgent, isAdmin, isSuperuser)
@@ -324,7 +329,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	}
 
 	if isBlacklisted {
-		slog.Debug("Session is blacklisted", "session_id_prefix", sessionID[:10])
+		slog.Debug("Session is blacklisted", "session_id_prefix", session.IDPrefix(sessionID))
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -348,7 +353,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 	// Resolve role so rapid-request thresholds match AuthMiddleware (admins/superusers get higher limits)
 	isAdmin, isSuperuser := false, false
 	if user, err := s.repo.GetUserByID(ctx, sessionData.UserID); err == nil && user != nil {
-		isSuperuser = user.Email == config.Get("SUPERUSER_EMAIL")
+		isSuperuser = isSuperuserEmail(user.Email)
 		isAdmin = isAdminEmail(user.Email)
 	}
 
@@ -369,7 +374,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 			slog.Warn("Failed to delete suspicious session", "error", err, "session_id", sessionID)
 		}
 
-		slog.Info("Suspicious patterns detected for session", "session_id_prefix", sessionID[:10], "patterns", patterns)
+		slog.Info("Suspicious patterns detected for session", "session_id_prefix", session.IDPrefix(sessionID), "patterns", patterns)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -388,7 +393,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 
 	// Check session age
 	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
-		slog.Debug("Session has expired", "session_id_prefix", sessionID[:10])
+		slog.Debug("Session has expired", "session_id_prefix", session.IDPrefix(sessionID))
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
@@ -443,8 +448,8 @@ func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID s
 func (s *AuthService) recordFailedAuth(ctx context.Context, user *models.User, email, ip string) error {
 	failedAttempts, err := s.repo.RecordFailedLogin(ctx, email, ip)
 	if err != nil {
-		slog.Debug("Failed to record failed login", "error", err)
-		return nil
+		slog.Warn("Failed to record failed login", "error", err)
+		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
 	if !config.GetBool("DISABLE_IP_BLACKLISTING") && failedAttempts >= session.FailedLoginThreshold {
@@ -559,8 +564,10 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 }
 
 func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.CreateUserResponse, error) {
+	req.Email = validation.NormalizeEmail(req.Email)
+
 	// Block public creation of the configured superuser; it is bootstrapped at startup
-	if req.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(req.Email) {
 		return nil, fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -631,8 +638,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Only superuser can modify superuser
-	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	if targetUser.Email == superUserEmail && !isSuperUser {
+	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -940,7 +946,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 func isAdminEmail(email string) bool {
 	if adminMap := config.GetAdminUsersMap(); len(adminMap) > 0 {
-		if _, ok := adminMap[email]; ok {
+		if _, ok := adminMap[validation.NormalizeEmail(email)]; ok {
 			return true
 		}
 	}
@@ -971,7 +977,7 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 	}
 
 	// Only superuser can revoke superuser's sessions
-	if targetUser.Email == config.Get("SUPERUSER_EMAIL") && !isSuperUser {
+	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1029,8 +1035,7 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Only superuser can delete superuser
-	superUserEmail := config.Get("SUPERUSER_EMAIL")
-	if targetUser.Email == superUserEmail && !isSuperUser {
+	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1093,12 +1098,14 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 }
 
 func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordResetRequest) error {
+	req.Email = validation.NormalizeEmail(req.Email)
+
 	// Get user — unknown emails and superuser use the same InvalidOTP path to avoid enumeration.
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		return fmt.Errorf(errors.ErrInvalidOTP)
 	}
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		return fmt.Errorf(errors.ErrInvalidOTP)
 	}
 
@@ -1212,7 +1219,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	}
 
 	// Don't allow superuser password change through this endpoint
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}
 
@@ -1284,6 +1291,8 @@ func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, 
 }
 
 func (s *AuthService) SendOTP(ctx context.Context, email string) error {
+	email = validation.NormalizeEmail(email)
+
 	// Get user by email
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -1292,7 +1301,7 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 	}
 
 	// Don't allow OTP for superuser
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		return nil
 	}
 
@@ -1322,10 +1331,13 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	// Send OTP via email
+	// Send OTP via email — failures are logged only so the endpoint cannot
+	// distinguish unknown emails from mail outages.
 	msg := fmt.Sprintf("Your one-time password is: %s\nThis code will expire in 5 minutes.", otpStr)
 	if err := mail.SendMail(user.Email, "Password Reset OTP", msg); err != nil {
-		return fmt.Errorf(errors.ErrEmailSendFailed)
+		slog.Error("Failed to send password-reset OTP", "error", err, "user_id", user.ID)
+		_ = s.repo.DeleteOTP(ctx, user.ID)
+		return nil
 	}
 
 	return nil
@@ -1524,7 +1536,7 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 	}
 
 	// Don't allow superuser to request updates
-	if user.Email == config.Get("SUPERUSER_EMAIL") {
+	if isSuperuserEmail(user.Email) {
 		slog.Info("Superuser attempted to request updates", "user_id", userID)
 		return fmt.Errorf(errors.ErrUnauthorized)
 	}

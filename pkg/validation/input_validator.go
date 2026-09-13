@@ -101,6 +101,11 @@ func ValidateEmail(email string) error {
 	return nil
 }
 
+// NormalizeEmail lowercases and trims for stable storage and role comparisons.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 // cleanInput trims whitespace and strips control characters without HTML-escaping,
 // so ban-list checks still see the caller's real brackets.
 func cleanInput(input string) string {

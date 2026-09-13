@@ -75,14 +75,27 @@ POST /login
 }
 ```
 
-Success Response:
+Success Response (browser default — session is only in the HttpOnly cookie):
+```json
+{
+    "data": {}
+}
+```
+
+API clients that need a Bearer session must opt in:
+```http
+POST /login
+X-Return-Session: true
+```
 ```json
 {
     "data": {
-        "session_id": "cd374181-b8..."  // Also set in HTTP-only cookie
+        "session_id": "…"
     }
 }
 ```
+
+Cookie-authenticated mutating requests also enforce Origin against `CORS_ALLOW_ORIGINS` when `Origin`/`Referer` is present; with `COOKIE_SAME_SITE=none`, Origin is required.
 
 Error Response:
 ```json
@@ -389,11 +402,12 @@ Important Notes:
   1. Login succeeds without MFA code
   2. User must complete MFA setup before accessing other endpoints
   3. All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, `/logout` return 403
-- Session tokens are delivered two ways:
-  - As HTTP-only cookie for browser-based apps
-  - In response body for API clients
+- Session delivery:
+  - HttpOnly cookie always (browser apps)
+  - JSON `session_id` only when `X-Return-Session: true` (API/Bearer clients)
+- Do not send both a session cookie and `Authorization` on the same request
 - Rate limited per IP (configurable via `RATE_LIMIT`, default 60 requests per minute for public endpoints)
-- Users with `locked by admin` or `locked by security` status cannot log in
+- Locked / pending / unknown accounts share the same opaque login failure
 
 #### Logout
 ```http
@@ -699,7 +713,7 @@ GET /groups
 Authorization: Bearer bccf1b28-fd...
 ```
 
-**Response Behavior:** Same as permissions—regular users and admins see groups (filtered by visibility where applicable); superusers see all. Response shape matches permissions (array of objects with `key`, `name`, `description`).
+**Response Behavior:** Authenticated callers receive the full group catalog (needed for request-update / admin pickers). Response shape matches permissions (array of objects with `key`, `name`, `description`).
 
 4. Requesting Permission Changes:
 ```http

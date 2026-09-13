@@ -43,7 +43,7 @@ func contextUserID(c *gin.Context) (string, bool) {
 // @Accept json
 // @Produce json
 // @Param request body models.LoginRequest true "Login credentials"
-// @Success 200 {object} models.SuccessResponse{data=models.LoginResponse} "Returns session ID and sets session cookie"
+// @Success 200 {object} models.SuccessResponse{data=models.LoginResponse} "Sets session cookie; session_id in body only with X-Return-Session"
 // @Failure 400 {object} models.ErrorResponse "Invalid request format"
 // @Failure 401 {object} models.ErrorResponse "Authentication failed, invalid credentials, MFA required, or invalid MFA code"
 // @Failure 429 {object} models.ErrorResponse "Too many login attempts"
@@ -74,7 +74,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		SameSite: config.GetCookieSameSite(),
 	})
 
-	c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
+	// Browser clients use the HttpOnly cookie. API clients that need a Bearer
+	// session must opt in so the credential is not exposed to page JS by default.
+	if strings.EqualFold(c.GetHeader("X-Return-Session"), "true") || c.GetHeader("X-Return-Session") == "1" {
+		c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
+		return
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.LoginResponse{}))
 }
 
 // @Summary Logout user
@@ -974,33 +980,14 @@ func (h *AuthHandler) ListPermissions(c *gin.Context) {
 // @Success 200 {object} models.SuccessResponse{data=[]models.GroupResponse} "List of groups"
 // @Router /groups [get]
 func (h *AuthHandler) ListGroups(c *gin.Context) {
-	userID, ok := contextUserID(c)
-	if !ok {
+	if _, ok := contextUserID(c); !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
 		return
 	}
 
-	user, err := h.authService.GetCurrentUser(c.Request.Context(), userID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, models.NewErrorResponse(pkgerrors.ErrUserNotFound))
-		return
-	}
-
-	isSuperuser := c.GetBool("is_superuser")
-	var groups []models.UserGroup
-	if isSuperuser {
-		groups = service.GetAllUserGroups()
-	} else {
-		// Non-superusers only see groups they belong to — not the full catalog.
-		groups = make([]models.UserGroup, 0, len(user.Groups))
-		for g, enabled := range user.Groups {
-			if enabled {
-				groups = append(groups, g)
-			}
-		}
-		sort.Slice(groups, func(i, j int) bool { return string(groups[i]) < string(groups[j]) })
-	}
-
+	// Full catalog for authenticated callers — request-update and admin pickers need
+	// groups the user does not already belong to. Membership is not a visibility gate here.
+	groups := service.GetAllUserGroups()
 	response := make([]models.GroupResponse, 0, len(groups))
 	for _, group := range groups {
 		info := service.GetGroupInfo(group)
@@ -1072,7 +1059,7 @@ func (h *AuthHandler) GetAdminUserManagement(c *gin.Context) {
 	// Get all admins
 	admins := []models.UserResponse{}
 	for _, user := range allUsers {
-		_, isAdminInConfig := adminMap[user.Email]
+		_, isAdminInConfig := adminMap[validation.NormalizeEmail(user.Email)]
 		if user.IsAdmin || isAdminInConfig {
 			admins = append(admins, user)
 		}

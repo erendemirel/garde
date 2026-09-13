@@ -111,8 +111,15 @@ test.describe(
 
 				await waitForSignedOut(userPage, { reload: true, timeout: LOAD_TIMEOUT });
 
+				const unlockResponse = scopedAdmin.waitForResponse(matchUserUpdate, {
+					timeout: LOAD_TIMEOUT
+				});
 				await scopedAdmin.getByTestId('user-detail-lock-btn').click();
 				await scopedAdmin.getByTestId('confirm-modal-confirm').click();
+				await unlockResponse;
+				await expect(scopedAdmin.getByTestId('toast')).toContainText('Account unlocked', {
+					timeout: LOAD_TIMEOUT
+				});
 
 				await startUserSession(userPage, user);
 				await expect(

@@ -111,14 +111,13 @@ func TestCatalogEmptyPaths(t *testing.T) {
 		t.Fatalf("permissions without catalogue: status = %d", rec.Code)
 	}
 
-	// Groups: unauthenticated is 401; with a user and no catalogue, membership list is empty.
+	// Groups: unauthenticated is 401; authenticated returns the catalog (empty when unloaded).
 	rec = serveAuth(t, h, http.MethodGet, "/groups", nil, h.ListGroups, nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("groups without user: status = %d", rec.Code)
 	}
 	rec = serveAuth(t, h, http.MethodGet, "/groups", withUserID("u"), h.ListGroups, nil)
-	if rec.Code != http.StatusNotFound {
-		// user "u" was never seeded — not found is correct.
-		t.Fatalf("groups unknown user: status = %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("groups with user: status = %d", rec.Code)
 	}
 }
