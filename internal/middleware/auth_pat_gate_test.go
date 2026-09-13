@@ -14,6 +14,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// disableAutomatedRequestTimeout keeps back-to-back auth checks from tripping
+// automated_behavior (CI hosts often serve sequential requests < 10ms apart).
+func disableAutomatedRequestTimeout(t *testing.T) {
+	t.Helper()
+	prev := session.AutomatedRequestTimeout
+	session.AutomatedRequestTimeout = 0
+	t.Cleanup(func() { session.AutomatedRequestTimeout = prev })
+}
+
 // authenticatePAT through the real middleware: valid, tampered and revoked
 // tokens. Sessions and PATs share the Bearer scheme; shape decides the path.
 func TestAuthenticatePATTable(t *testing.T) {
@@ -76,6 +85,7 @@ func TestAuthenticatePATTable(t *testing.T) {
 }
 
 func TestEnforceMFASetupGate(t *testing.T) {
+	disableAutomatedRequestTimeout(t)
 	svc, analyzer, repo := authStack(t)
 	ctx := context.Background()
 	hash, err := crypto.HashPassword("DevAdminTest123!")
