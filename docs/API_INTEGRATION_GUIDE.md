@@ -417,7 +417,7 @@ Authorization: Bearer 54492786-1c...
 ```
 
 Notes:
-- All other active sessions are revoked (current session remains valid)
+- All active sessions are revoked (including the current one; same as password reset)
 - Requires current password verification
 - MFA verification if enabled
 - New password must meet complexity requirements

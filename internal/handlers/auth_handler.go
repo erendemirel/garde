@@ -379,7 +379,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 }
 
 // @Summary Change password
-// @Description Changes the user's password. No mTLS required for this endpoint.
+// @Description Changes the user's password and revokes all of their active sessions. No mTLS required for this endpoint.
 // @Tags Protected Routes
 // @Accept json
 // @Produce json

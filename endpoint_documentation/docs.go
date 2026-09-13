@@ -1343,7 +1343,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Changes the user's password. No mTLS required for this endpoint.",
+                "description": "Changes the user's password and revokes all of their active sessions. No mTLS required for this endpoint.",
                 "consumes": [
                     "application/json"
                 ],

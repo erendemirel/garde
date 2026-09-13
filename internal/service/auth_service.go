@@ -19,7 +19,6 @@ import (
 	"garde/pkg/session"
 	"garde/pkg/validation"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -1236,6 +1235,14 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
+	// List sessions before mutating the password so a Redis outage cannot leave
+	// a success response with live sessions after the password already changed.
+	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
+	if err != nil {
+		slog.Error("Failed to get active sessions before password change", "error", err, "user_id", user.ID)
+		return fmt.Errorf(errors.ErrOperationFailed)
+	}
+
 	user.PasswordHash = hashedPassword
 	user.UpdatedAt = time.Now()
 
@@ -1243,48 +1250,17 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	// Extract the current session ID from context if available
-	var currentSessionID string
-	if gc, ok := ctx.(*gin.Context); ok {
-		sessionCookie, err := gc.Cookie("session")
-		if err == nil && sessionCookie != "" {
-			currentSessionID = sessionCookie
-		}
-
-		// Check authorization header if cookie not found
-		if currentSessionID == "" {
-			authHeader := gc.GetHeader("Authorization")
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				currentSessionID = strings.TrimPrefix(authHeader, "Bearer ")
-			}
-		}
-
-		// Also check if stored in context
-		if sessionID, exists := gc.Get("session_id"); exists && currentSessionID == "" {
-			currentSessionID = fmt.Sprintf("%v", sessionID)
-		}
-	} else {
-		// For non-gin contexts (like in tests), try to get session ID from context values
-		if sessionID, ok := ctx.Value("session_id").(string); ok {
-			currentSessionID = sessionID
-		}
-	}
-
-	// Revoke all existing sessions except the current one to prevent connection crash
-	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
-	if err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
-	}
-
+	// Revoke every session, including the caller's — same posture as ResetPassword.
+	// Password change is often a response to suspected compromise; keeping the
+	// current session would leave a stolen cookie usable. The web UI already
+	// logs the user out after a successful change.
 	for _, sessionID := range sessions {
-		// Skip the current session to prevent the connection from being terminated
-		if sessionID == currentSessionID {
-			slog.Debug("Preserving current session", "session_id_prefix", sessionID[:10])
-			continue
-		}
-
 		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration)
+			if blacklistErr := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); blacklistErr != nil {
+				slog.Error("Failed to revoke session after password change",
+					"delete_error", err, "blacklist_error", blacklistErr, "session_id", sessionID)
+				return fmt.Errorf(errors.ErrOperationFailed)
+			}
 		}
 	}
 
