@@ -24,6 +24,9 @@ There are two main ways to contribute to this project:
 
 ### Backend unit tests
 
+GitHub Actions runs `go vet` and `go test ./...` on every push and pull request
+(see `.github/workflows/unit.yml`), in parallel with e2e. Locally:
+
 ```bash
 go vet ./...
 go test ./...
@@ -36,7 +39,8 @@ optimistic-locking re-fetch, no permission singleton), and coverage policy.
 
 ### Playwright E2E (web UI)
 
-GitHub Actions runs focused e2e tests on every push and pull request (see `.github/workflows/e2e.yml`). Locally:
+GitHub Actions runs the full Playwright suite on every push and pull request
+(see `.github/workflows/e2e.yml`). Locally:
 
 ```bash
 docker compose --profile dev up --build -d   # API on :8443

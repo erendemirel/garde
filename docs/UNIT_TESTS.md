@@ -12,6 +12,9 @@ go test -cover ./...            # per-package statement coverage
 go test -coverprofile cover.out ./internal/service/ && go tool cover -func cover.out
 ```
 
+CI: `.github/workflows/unit.yml` runs `go vet ./...` and `go test ./...` on
+every push/PR, parallel to the e2e workflow (no Docker; miniredis only).
+
 ## Layout
 
 ```
