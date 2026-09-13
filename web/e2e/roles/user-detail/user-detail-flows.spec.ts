@@ -1,7 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
-import { waitForPageShell, waitForUserDetail, waitForToastGone } from '../../helpers/waits';
+import { waitForPageShell, waitForUserDetail, dismissToast } from '../../helpers/waits';
 
 test.describe('User detail edit flows', describeTags(TAG.userDetail, TAG.focused), () => {
 	test('blocks navigation with unsaved changes until confirmed', async ({
@@ -139,7 +139,7 @@ test.describe('User detail edit flows', describeTags(TAG.userDetail, TAG.focused
 			await page.getByTestId('user-detail-save').click();
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText('Updated');
-			await waitForToastGone(page);
+			await dismissToast(page);
 			await waitForUserDetail(page);
 			await expect(page.getByTestId('user-detail-save')).toBeDisabled();
 			await expect(

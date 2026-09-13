@@ -77,19 +77,23 @@ func TestMTLSMiddlewareTable(t *testing.T) {
 	if code := serveMTLS(t, nil); code != http.StatusUnauthorized {
 		t.Fatalf("no cert: status = %d", code)
 	}
-	if code := serveMTLS(t, mtlsCert(t, "example.com", nil)); code != http.StatusOK {
-		t.Fatalf("exact CN: status = %d", code)
+	// CN alone is not enough — identity must be in a DNS SAN.
+	if code := serveMTLS(t, mtlsCert(t, "example.com", nil)); code != http.StatusUnauthorized {
+		t.Fatalf("CN-only cert: status = %d, want 401", code)
 	}
 	if code := serveMTLS(t, mtlsCert(t, "other.com", []string{"example.com"})); code != http.StatusOK {
 		t.Fatalf("exact SAN: status = %d", code)
 	}
+	if code := serveMTLS(t, mtlsCert(t, "example.com", []string{"example.com"})); code != http.StatusOK {
+		t.Fatalf("CN+SAN match: status = %d", code)
+	}
 	if code := serveMTLS(t, mtlsCert(t, "unrelated.com", nil)); code != http.StatusUnauthorized {
 		t.Fatalf("mismatch: status = %d", code)
 	}
-	// Pinned audit finding: the CN fallback reduces to the last two labels,
-	// so a sibling subdomain currently passes. If this ever fails, the
-	// finding was fixed — update the audit note and this test together.
-	if code := serveMTLS(t, mtlsCert(t, "attacker.example.com", nil)); code != http.StatusOK {
-		t.Fatalf("sibling subdomain: status = %d, want 200 (known over-permissive)", code)
+	if code := serveMTLS(t, mtlsCert(t, "attacker.example.com", nil)); code != http.StatusUnauthorized {
+		t.Fatalf("sibling subdomain must not inherit parent DOMAIN_NAME: status = %d", code)
+	}
+	if code := serveMTLS(t, mtlsCert(t, "api.example.com", nil)); code != http.StatusUnauthorized {
+		t.Fatalf("service subdomain without SAN match: status = %d", code)
 	}
 }

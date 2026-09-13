@@ -69,8 +69,8 @@ func TestGetAdminUsersMapShapes(t *testing.T) {
 	}
 
 	initDir(t, map[string]string{"admin_users_json": "a@example.com:Pw1!,b@example.com=Pw2!"})
-	if m := GetAdminUsersMap(); len(m) != 2 {
-		t.Fatalf("fallback shape = %v", m)
+	if m := GetAdminUsersMap(); m != nil {
+		t.Fatalf("non-JSON = %v, want nil", m)
 	}
 
 	initDir(t, map[string]string{})

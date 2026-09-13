@@ -25,11 +25,6 @@ export async function assertToast(
 	await dismissToast(page);
 }
 
-/** @deprecated Prefer {@link dismissToast} or {@link assertToast}. */
-export async function waitForToastGone(page: Page, timeout = REDIRECT_TIMEOUT) {
-	await dismissToast(page, timeout);
-}
-
 type UsersListRequestParams = {
 	page?: number;
 	limit?: number;

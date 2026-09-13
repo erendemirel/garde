@@ -113,8 +113,15 @@ func TestValidationPutUserAndPassthrough(t *testing.T) {
 		t.Fatalf("passthrough: status = %d, want 200", rec.Code)
 	}
 
-	// Brackets are escaped by Sanitize (not rejected), but overlong values
-	// exceed ValidateGenericInput's 1024 cap and are refused.
+	// Bracket characters are rejected by Sanitize (validate-then-escape).
+	req = httptest.NewRequest(http.MethodGet, "/health?q=hello<script>", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bracket query: status = %d, want 400", rec.Code)
+	}
+
+	// Overlong values exceed ValidateGenericInput's 1024 cap and are refused.
 	req = httptest.NewRequest(http.MethodGet, "/health?q="+strings.Repeat("a", 2000), nil)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -88,25 +87,4 @@ type UserUpdateFields struct {
 	PermissionsRemove []Permission `json:"permissions_remove,omitempty"`
 	GroupsAdd         []UserGroup  `json:"groups_add,omitempty"`
 	GroupsRemove      []UserGroup  `json:"groups_remove,omitempty"`
-}
-
-// TODO(bugfix): remove the legacy inline-credential migration (password_hash
-// / mfa_secret inside the user JSON blob) along with the migration branches
-// in attachUserCredentials (internal/repository/redis_repository.go). No
-// deployment still runs the old layout, so the JSON fallback, the re-encrypt
-// path and the backfill writes are dead weight and extra audit surface.
-// legacyUserCredentials extracts sensitive fields that may still exist in older
-// Redis user JSON blobs (pre separate-key storage). Used only for one-time migration.
-type legacyUserCredentials struct {
-	PasswordHash string `json:"password_hash"`
-	MFASecret    string `json:"mfa_secret"`
-}
-
-// ParseLegacyCredentials reads password_hash / mfa_secret from raw user JSON if present.
-func ParseLegacyCredentials(data []byte) (passwordHash, mfaSecret string) {
-	var legacy legacyUserCredentials
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return "", ""
-	}
-	return legacy.PasswordHash, legacy.MFASecret
 }

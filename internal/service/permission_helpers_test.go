@@ -6,12 +6,13 @@ import (
 	"garde/internal/models"
 )
 
-// Pure catalogue helpers with permRepo nil (unit-test default): everything
-// resolves to the documented fallbacks rather than touching SQLite.
+// Pure catalogue helpers with permRepo forced nil: everything resolves to the
+// documented fallbacks rather than touching SQLite.
 func TestNilRepoHelpers(t *testing.T) {
-	if permRepo != nil {
-		t.Skip("catalogue initialised by another test in this binary")
-	}
+	prev := permRepo
+	permRepo = nil
+	t.Cleanup(func() { permRepo = prev })
+
 	groups := models.UserGroups{"eng": true, "ops": false}
 	names := GetUserGroupNames(groups)
 	if len(names) != 1 || names[0] != "eng" {

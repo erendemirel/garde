@@ -1,6 +1,6 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
-import { waitForSuperuserCatalog, waitForToastGone } from '../../helpers/waits';
+import { waitForSuperuserCatalog, dismissToast } from '../../helpers/waits';
 
 test.describe('Superuser permission CRUD', describeTags(TAG.superuser, TAG.catalog, TAG.focused), () => {
 	test('creates a permission then deletes it', async ({ superuserPage: page, uniqueSuffix }) => {
@@ -16,7 +16,7 @@ test.describe('Superuser permission CRUD', describeTags(TAG.superuser, TAG.catal
 		await page.getByTestId('superuser-catalog-item-definition').fill('E2E temporary permission');
 		await page.getByTestId('superuser-catalog-item-save').click();
 		await expect(page.getByTestId('toast')).toContainText(permissionName);
-		await waitForToastGone(page);
+		await dismissToast(page);
 
 		await page.getByTestId('superuser-catalog-search').fill(permissionName);
 		const row = page.locator(
@@ -43,7 +43,7 @@ test.describe('Superuser permission CRUD', describeTags(TAG.superuser, TAG.catal
 		await page.getByTestId('superuser-catalog-item-definition').fill('Initial permission definition');
 		await page.getByTestId('superuser-catalog-item-save').click();
 		await expect(page.getByTestId('toast')).toContainText(permissionName);
-		await waitForToastGone(page);
+		await dismissToast(page);
 
 		try {
 			await page.getByTestId('superuser-catalog-search').fill(permissionName);
@@ -62,7 +62,7 @@ test.describe('Superuser permission CRUD', describeTags(TAG.superuser, TAG.catal
 			await expect(page.getByTestId('superuser-catalog-item-save')).toBeEnabled();
 			await page.getByTestId('superuser-catalog-item-save').click();
 			await expect(page.getByTestId('toast')).toContainText(`Updated permission "${permissionName}"`);
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await row.getByTestId('superuser-catalog-edit').click();
 			await expect(page.getByTestId('superuser-catalog-item-definition')).toHaveValue(
@@ -77,7 +77,7 @@ test.describe('Superuser permission CRUD', describeTags(TAG.superuser, TAG.catal
 			if ((await row.count()) > 0) {
 				await row.getByTestId('superuser-catalog-delete').click();
 				await page.getByTestId('confirm-modal-confirm').click();
-				await waitForToastGone(page).catch(() => undefined);
+				await dismissToast(page).catch(() => undefined);
 			}
 		}
 	});

@@ -70,8 +70,8 @@ func TestVerifyAndDisableMFAHandlerCycle(t *testing.T) {
 		t.Fatalf("missing user: status = %d", rec.Code)
 	}
 	rec = serveAuth(t, h, http.MethodPost, "/verify", withCode("", true), h.VerifyAndEnableMFA, nil)
-	if rec.Code == http.StatusUnauthorized {
-		t.Fatal("empty code must not look like missing auth")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty code: status = %d, want 400", rec.Code)
 	}
 	rec = serveAuth(t, h, http.MethodPost, "/verify", func(c *gin.Context) {
 		c.Set("user_id", "u-cycle")

@@ -33,11 +33,3 @@ func TestUserJSONOmitsSensitiveFields(t *testing.T) {
 		t.Fatalf("pending_updates should be present even when nil: %s", raw)
 	}
 }
-
-func TestParseLegacyCredentials(t *testing.T) {
-	raw := []byte(`{"id":"1","password_hash":"ph","mfa_secret":"ms"}`)
-	ph, ms := models.ParseLegacyCredentials(raw)
-	if ph != "ph" || ms != "ms" {
-		t.Fatalf("got %q %q", ph, ms)
-	}
-}

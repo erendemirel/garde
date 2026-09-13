@@ -1,7 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import type { Page } from '@playwright/test';
-import { waitForAdminCatalog, waitForToastGone } from '../../helpers/waits';
+import { waitForAdminCatalog, dismissToast } from '../../helpers/waits';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from '../../helpers/catalog';
 
 /** Seed group the admin already belongs to; ephemeral users start in group_a only. */
@@ -60,7 +60,7 @@ test.describe('Admin catalog members', describeTags(TAG.admin, TAG.catalog, TAG.
 		await expect(page.getByTestId('toast')).toContainText(
 			`Updated group "${SCOPE_GROUP}" members`
 		);
-		await waitForToastGone(page);
+		await dismissToast(page);
 		await expect(page.getByTestId('admin-catalog-manage-modal')).toHaveCount(0);
 
 		await row.getByTestId('admin-catalog-manage').click();
@@ -75,7 +75,7 @@ test.describe('Admin catalog members', describeTags(TAG.admin, TAG.catalog, TAG.
 		await expect(page.getByTestId('toast')).toContainText(
 			`Updated group "${SCOPE_GROUP}" members`
 		);
-		await waitForToastGone(page);
+		await dismissToast(page);
 	});
 
 	test('grants then revokes a visibility-scoped permission on a manageable user', async ({
@@ -121,7 +121,7 @@ test.describe('Admin catalog members', describeTags(TAG.admin, TAG.catalog, TAG.
 			await expect(page.getByTestId('toast')).toContainText(
 				`Updated permission "${permissionName}" members`
 			);
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await row.getByTestId('admin-catalog-manage').click();
 			await expect(
@@ -135,7 +135,7 @@ test.describe('Admin catalog members', describeTags(TAG.admin, TAG.catalog, TAG.
 			await expect(page.getByTestId('toast')).toContainText(
 				`Updated permission "${permissionName}" members`
 			);
-			await waitForToastGone(page);
+			await dismissToast(page);
 		} finally {
 			await suRequest
 				.delete('/api/admin/permissions/visibility', {

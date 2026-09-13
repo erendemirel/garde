@@ -68,11 +68,14 @@ func TestValidateCodeRejects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Flip the last digit so the code is (almost surely) wrong.
-	wrong := code[:5] + map[byte]string{'0': "1"}[code[5]]
-	if wrong == code {
-		wrong = code[:5] + "0"
+	// Flip one digit so the code stays 6 chars but is wrong.
+	digits := []byte(code)
+	if digits[5] == '0' {
+		digits[5] = '1'
+	} else {
+		digits[5] = '0'
 	}
+	wrong := string(digits)
 	if ValidateCode(key.Secret, wrong) {
 		t.Fatal("tampered code validates")
 	}

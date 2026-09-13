@@ -42,18 +42,11 @@ func TestValidateSessionHandlerTable(t *testing.T) {
 	cookie := loginRec.Header().Get("Set-Cookie")
 	sessionID := strings.Split(strings.Split(cookie, "session=")[1], ";")[0]
 
-	withSession := func(id string, viaHeader bool) func(c *gin.Context) {
+	withSession := func(id string) func(c *gin.Context) {
 		return func(c *gin.Context) {
-			if viaHeader {
-				c.Request.Header.Set("X-Session-ID", id)
-			} else {
-				q := c.Request.URL.Query()
-				q.Set("session_id", id)
-				c.Request.URL.RawQuery = q.Encode()
-			}
+			c.Request.Header.Set("X-Session-ID", id)
 		}
 	}
-	_ = withSession
 
 	serveValidate := func(setup func(c *gin.Context)) *httptest.ResponseRecorder {
 		gin.SetMode(gin.TestMode)
@@ -73,17 +66,13 @@ func TestValidateSessionHandlerTable(t *testing.T) {
 	if rec := serveValidate(nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing id: status = %d", rec.Code)
 	}
-	badSetup := func(c *gin.Context) { c.Request.Header.Set("X-Session-ID", "short") }
-	if rec := serveValidate(badSetup); rec.Code != http.StatusBadRequest {
+	if rec := serveValidate(withSession("short")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("malformed id: status = %d", rec.Code)
 	}
-	unknown := strings.Repeat("A", 86)
-	unknownSetup := func(c *gin.Context) { c.Request.Header.Set("X-Session-ID", unknown) }
-	if rec := serveValidate(unknownSetup); rec.Code != http.StatusUnauthorized {
+	if rec := serveValidate(withSession(strings.Repeat("A", 86))); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unknown session: status = %d", rec.Code)
 	}
-	headerSetup := func(c *gin.Context) { c.Request.Header.Set("X-Session-ID", sessionID) }
-	if rec := serveValidate(headerSetup); rec.Code != http.StatusOK {
+	if rec := serveValidate(withSession(sessionID)); rec.Code != http.StatusOK {
 		t.Fatalf("header validate: status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }

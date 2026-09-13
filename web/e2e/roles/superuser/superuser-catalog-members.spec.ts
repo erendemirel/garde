@@ -1,7 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import type { Page } from '@playwright/test';
-import { waitForSuperuserCatalog, waitForToastGone } from '../../helpers/waits';
+import { waitForSuperuserCatalog, dismissToast } from '../../helpers/waits';
 
 async function addUserInManagePicker(page: Page, userId: string, email: string) {
 	const ms = page.locator('[data-testid="multiselect"][data-label="Users"]');
@@ -32,7 +32,7 @@ async function saveMembership(page: Page, saveTestId: string, toastMatch: string
 	await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
 	await page.getByTestId('confirm-modal-confirm').click();
 	await expect(page.getByTestId('toast')).toContainText(toastMatch);
-	await waitForToastGone(page);
+	await dismissToast(page);
 }
 
 /**
@@ -56,7 +56,7 @@ test.describe('Superuser catalog members', describeTags(TAG.superuser, TAG.catal
 			await page.getByTestId('superuser-catalog-item-definition').fill('E2E catalog members');
 			await page.getByTestId('superuser-catalog-item-save').click();
 			await expect(page.getByTestId('toast')).toContainText(groupName);
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await page.getByTestId('superuser-catalog-search').fill(groupName);
 			const row = page.locator(
@@ -124,7 +124,7 @@ test.describe('Superuser catalog members', describeTags(TAG.superuser, TAG.catal
 			await page.getByTestId('superuser-catalog-item-definition').fill('E2E permission members');
 			await page.getByTestId('superuser-catalog-item-save').click();
 			await expect(page.getByTestId('toast')).toContainText(permissionName);
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await page.getByTestId('superuser-catalog-search').fill(permissionName);
 			const row = page.locator(

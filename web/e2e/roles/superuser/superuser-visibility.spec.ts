@@ -1,7 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel, waitForToastGone } from '../../helpers/waits';
+import { waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel, dismissToast } from '../../helpers/waits';
 
 async function createCatalogItem(
 	page: Page,
@@ -16,7 +16,7 @@ async function createCatalogItem(
 	await page.getByTestId('superuser-catalog-item-definition').fill(definition);
 	await page.getByTestId('superuser-catalog-item-save').click();
 	await expect(page.getByTestId('toast')).toContainText(name);
-	await waitForToastGone(page);
+	await dismissToast(page);
 	await expect(page.getByTestId('superuser-catalog-item-modal')).toHaveCount(0);
 }
 
@@ -67,14 +67,14 @@ test.describe('Superuser permission visibility', describeTags(TAG.superuser, TAG
 
 			await cell.click();
 			await expect(page.getByTestId('toast')).toContainText(/Visibility/i);
-			await waitForToastGone(page);
+			await dismissToast(page);
 			await expect(cell).toHaveAttribute('aria-pressed', 'true');
 
 			await cell.click();
 			await expect(page.getByTestId('confirm-modal-message')).toContainText(permissionName);
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText(/removed/i);
-			await waitForToastGone(page);
+			await dismissToast(page);
 			await expect(cell).toHaveAttribute('aria-pressed', 'false');
 		} finally {
 			await cleanupCatalog(suRequest, permissionName, groupName);
@@ -124,7 +124,7 @@ test.describe('Superuser permission visibility', describeTags(TAG.superuser, TAG
 			await expect(page.getByTestId('toast')).toContainText(
 				`Updated visibility of permission "${permissionName}"`
 			);
-			await waitForToastGone(page);
+			await dismissToast(page);
 			await expect(page.getByTestId('superuser-visibility-manage-modal')).toHaveCount(0);
 			await expect(row.getByTestId('superuser-visibility-count')).toHaveText('1');
 
@@ -141,7 +141,7 @@ test.describe('Superuser permission visibility', describeTags(TAG.superuser, TAG
 			await expect(page.getByTestId('toast')).toContainText(
 				`Updated visibility of permission "${permissionName}"`
 			);
-			await waitForToastGone(page);
+			await dismissToast(page);
 			await expect(row.getByTestId('superuser-visibility-count')).toHaveText('0');
 
 			// Matrix reflects the same mapping state after list edits.

@@ -6,7 +6,7 @@ import {
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser
 } from '../helpers/userApi';
-import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone } from '../helpers/waits';
+import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast } from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe.configure({ timeout: 120_000 });
@@ -35,7 +35,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 			await expect(adminPage.getByTestId('toast')).toContainText('Account locked by admin', {
 				timeout: LOAD_TIMEOUT
 			});
-			await waitForToastGone(adminPage);
+			await dismissToast(adminPage);
 
 			await waitForSignedOut(userPage, { reload: true });
 
@@ -44,7 +44,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 			await adminPage.getByTestId('user-detail-lock-btn').click();
 			await adminPage.getByTestId('confirm-modal-confirm').click();
 			await expect(adminPage.getByTestId('toast')).toContainText('Account unlocked');
-			await waitForToastGone(adminPage);
+			await dismissToast(adminPage);
 		});
 	});
 
@@ -67,7 +67,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await suPage.getByTestId('user-detail-delete-btn').click();
 				await suPage.getByTestId('confirm-modal-confirm').click();
 				await expect(suPage.getByTestId('toast')).toContainText('User deleted');
-				await waitForToastGone(suPage);
+				await dismissToast(suPage);
 
 				await userPage.goto('/dashboard');
 				await expect(userPage.getByTestId('login-page')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
@@ -94,7 +94,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 			await expect(adminPage.getByTestId('toast')).toContainText('MFA enforcement enabled', {
 				timeout: LOAD_TIMEOUT
 			});
-			await waitForToastGone(adminPage);
+			await dismissToast(adminPage);
 
 			const context = await browser.newContext();
 			const page = await context.newPage();
@@ -128,7 +128,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await adminPage.getByTestId('user-detail-mfa-enforce-btn').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('MFA enforcement enabled');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await userPage.reload();
 				await expect(userPage).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });
@@ -161,7 +161,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await adminPage.getByTestId('user-detail-mfa-enforce-btn').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('MFA enforcement enabled');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await userPage.reload();
 				await expect(userPage).toHaveURL(/\/mfa/, { timeout: REDIRECT_TIMEOUT });

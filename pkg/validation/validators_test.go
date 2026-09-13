@@ -53,25 +53,20 @@ func TestValidateEmailTable(t *testing.T) {
 }
 
 func TestValidateSessionIDLengths(t *testing.T) {
-	// 86-char current format and 88-char legacy padded format both pass.
 	if err := ValidateSessionID(strings.Repeat("A", 86)); err != nil {
 		t.Fatalf("86-char id: %v", err)
 	}
-	if err := ValidateSessionID(strings.Repeat("A", 88)); err != nil {
-		t.Fatalf("88-char legacy id: %v", err)
-	}
-	// Legacy padding with '=' is accepted.
-	if err := ValidateSessionID(strings.Repeat("A", 87) + "="); err != nil {
-		t.Fatalf("padded id: %v", err)
-	}
 	for name, id := range map[string]string{
-		"empty":  "",
-		"short":  strings.Repeat("A", 85),
-		"long":   strings.Repeat("A", 89),
-		"spaces": strings.Repeat("A", 85) + " ",
-		"plus":   strings.Repeat("A", 85) + "+",
-		"slash":  strings.Repeat("A", 85) + "/",
-		"angled": strings.Repeat("A", 85) + "<",
+		"empty":   "",
+		"short":   strings.Repeat("A", 85),
+		"long":    strings.Repeat("A", 87),
+		"padded":  strings.Repeat("A", 86) + "==",
+		"legacy88": strings.Repeat("A", 88),
+		"spaces":  strings.Repeat("A", 85) + " ",
+		"plus":    strings.Repeat("A", 85) + "+",
+		"slash":   strings.Repeat("A", 85) + "/",
+		"angled":  strings.Repeat("A", 85) + "<",
+		"equals":  strings.Repeat("A", 85) + "=",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := ValidateSessionID(id); err == nil {
@@ -138,19 +133,20 @@ func TestSanitizeStripsControlAndEscapesBrackets(t *testing.T) {
 	if got != "helloworld" {
 		t.Fatalf("got %q want %q", got, "helloworld")
 	}
-	// NOTE: Sanitize escapes before validating, so brackets come back as
-	// entities instead of an error (html.EscapeString runs first in
-	// SanitizeInput). Raw input with brackets is still rejected by
-	// ValidateGenericInput — pin both so a reorder is caught.
 	if err := ValidateGenericInput("hello <world>"); err == nil {
 		t.Fatal("raw angle brackets pass ValidateGenericInput, want rejection")
 	}
-	escaped, err := Sanitize("hello <world>")
-	if err != nil {
-		t.Fatalf("Sanitize escapes brackets, got error: %v", err)
+	// Validate-then-escape: brackets are refused, not turned into entities.
+	if _, err := Sanitize("hello <world>"); err == nil {
+		t.Fatal("Sanitize accepted angle brackets; ban list must run before HTML escape")
 	}
-	if escaped != "hello &lt;world&gt;" {
-		t.Fatalf("got %q want escaped entities", escaped)
+	// Allowed text is still HTML-escaped after validation.
+	escaped, err := Sanitize("hello & world")
+	if err != nil {
+		t.Fatalf("Sanitize amp: %v", err)
+	}
+	if escaped != "hello &amp; world" {
+		t.Fatalf("got %q want HTML-escaped amp", escaped)
 	}
 }
 

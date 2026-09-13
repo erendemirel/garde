@@ -107,9 +107,8 @@ func TestParseAdminUsersShapes(t *testing.T) {
 	if err != nil || len(m) != 1 {
 		t.Fatalf("json = %v, %v", m, err)
 	}
-	m, err = parseAdminUsers("a@example.com:Pw1!")
-	if err != nil || len(m) != 1 {
-		t.Fatalf("fallback = %v, %v", m, err)
+	if _, err := parseAdminUsers("a@example.com:Pw1!"); err == nil {
+		t.Fatal("non-JSON accepted")
 	}
 	if _, err := parseAdminUsers(";;;"); err == nil {
 		t.Fatal("garbage accepted")

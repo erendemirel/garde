@@ -9,31 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// extractDomain reduces a CN to its last two DNS labels. Pin the behaviour
-// here because MTLSMiddleware leans on it for the CN fallback path — see the
-// audit note on sibling-subdomain acceptance.
-func TestExtractDomainTable(t *testing.T) {
-	cases := []struct {
-		name string
-		cn   string
-		want string
-	}{
-		{"bare domain", "example.com", "example.com"},
-		{"subdomain collapses", "api.example.com", "example.com"},
-		{"deep subdomain collapses", "a.b.example.com", "example.com"},
-		{"single label", "localhost", "localhost"},
-		{"empty", "", ""},
-		{"trailing dot keeps empty tail", "example.com.", "com."},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := extractDomain(tc.cn); got != tc.want {
-				t.Fatalf("extractDomain(%q) = %q, want %q", tc.cn, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestLimitBodySizeRejectsOversize(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

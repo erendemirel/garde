@@ -77,16 +77,3 @@ func TestUserJSONOmitsSecrets(t *testing.T) {
 		t.Fatalf("secret keys present in JSON: %s", raw)
 	}
 }
-
-func TestParseLegacyCredentials(t *testing.T) {
-	hash, secret := ParseLegacyCredentials([]byte(`{"password_hash":"H","mfa_secret":"S"}`))
-	if hash != "H" || secret != "S" {
-		t.Fatalf("got %q/%q want H/S", hash, secret)
-	}
-	if h, s := ParseLegacyCredentials([]byte(`{}`)); h != "" || s != "" {
-		t.Fatalf("empty object gives %q/%q, want empty", h, s)
-	}
-	if h, s := ParseLegacyCredentials([]byte(`not json`)); h != "" || s != "" {
-		t.Fatalf("bad JSON gives %q/%q, want empty", h, s)
-	}
-}
