@@ -81,10 +81,10 @@ func TestUpdateUserHandlerTable(t *testing.T) {
 		}
 	})
 
-	t.Run("plain caller is 403", func(t *testing.T) {
+	t.Run("plain caller is 404", func(t *testing.T) {
 		router := updateRouter(t, h, "admin-uu", false, false)
 		rec := putUser(t, router, "target-uu", `{"approve_update":true}`)
-		if rec.Code != http.StatusForbidden {
+		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d", rec.Code)
 		}
 	})
@@ -111,12 +111,14 @@ func TestCatalogEmptyPaths(t *testing.T) {
 		t.Fatalf("permissions without catalogue: status = %d", rec.Code)
 	}
 
-	// Groups degrade to an empty list instead.
+	// Groups: unauthenticated is 401; with a user and no catalogue, membership list is empty.
 	rec = serveAuth(t, h, http.MethodGet, "/groups", nil, h.ListGroups, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("groups: status = %d", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("groups without user: status = %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"data":[]`) {
-		t.Fatalf("groups body = %s, want empty data slice", rec.Body.String())
+	rec = serveAuth(t, h, http.MethodGet, "/groups", withUserID("u"), h.ListGroups, nil)
+	if rec.Code != http.StatusNotFound {
+		// user "u" was never seeded — not found is correct.
+		t.Fatalf("groups unknown user: status = %d", rec.Code)
 	}
 }

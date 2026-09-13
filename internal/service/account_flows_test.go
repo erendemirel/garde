@@ -324,6 +324,88 @@ func TestChangePasswordRevokesAllSessions(t *testing.T) {
 		if _, err := s.repo.GetSessionData(ctx, id); err == nil {
 			t.Fatalf("session %s still readable after password change", id)
 		}
+		banned, err := s.repo.IsSessionBlacklisted(ctx, id)
+		if err != nil || !banned {
+			t.Fatalf("session %s blacklist = %v, %v", id, banned, err)
+		}
+	}
+}
+
+func TestChangePasswordRevokesPATs(t *testing.T) {
+	s := newFlowService(t, baseSecrets())
+	ctx := context.Background()
+	hash, err := crypto.HashPassword("OldPassword1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := &models.User{ID: "cp-pat", Email: "cppat@example.com", PasswordHash: hash, Status: models.UserStatusOk}
+	if err := s.repo.StoreUser(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	pat := &models.PersonalAccessToken{
+		ID: "patdeadbeef01", UserID: user.ID, Name: "ci",
+		SecretHash: "hash", CreatedAt: now, ExpiresAt: nil,
+	}
+	if err := s.repo.StorePAT(ctx, pat); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ChangePassword(ctx, user.ID, &models.ChangePasswordRequest{
+		OldPassword: "OldPassword1!", NewPassword: "NewPassword1!",
+	}); err != nil {
+		t.Fatalf("change: %v", err)
+	}
+	got, err := s.repo.GetPAT(ctx, pat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Revoked() {
+		t.Fatal("PAT still usable after password change")
+	}
+}
+
+func TestGetCurrentUserZeroGroupsHidesPermissions(t *testing.T) {
+	s := newFlowService(t, baseSecrets())
+	ctx := context.Background()
+	user := &models.User{
+		ID: "zg-1", Email: "zg@example.com", Status: models.UserStatusOk,
+		Permissions: models.UserPermissions{"read": true, "write": true},
+		Groups:      models.UserGroups{},
+	}
+	if err := s.repo.StoreUser(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetCurrentUser(ctx, "zg-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Permissions) != 0 {
+		t.Fatalf("zero-group permissions = %v, want empty", got.Permissions)
+	}
+}
+
+func TestLoginClearsFailedLoginCounters(t *testing.T) {
+	s := newFlowService(t, baseSecrets())
+	ctx := context.Background()
+	hash, err := crypto.HashPassword("OldPassword1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := &models.User{ID: "fl-1", Email: "fl@example.com", PasswordHash: hash, Status: models.UserStatusOk}
+	if err := s.repo.StoreUser(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.repo.RecordFailedLogin(ctx, user.Email, "10.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Login(ctx, &models.LoginRequest{Email: user.Email, Password: "OldPassword1!"}, "10.0.0.1", "ua"); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	// A fresh failure after success should start at 1 again.
+	n, err := s.repo.RecordFailedLogin(ctx, user.Email, "10.0.0.1")
+	if err != nil || n != 1 {
+		t.Fatalf("after clear, next failure n=%d err=%v, want 1", n, err)
 	}
 }
 

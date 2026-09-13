@@ -352,9 +352,10 @@ func (r *RedisRepository) DeleteSession(ctx context.Context, sessionID string) e
 		userID = data.UserID
 	}
 
+	// Do not delete blacklist:{id} here. Callers that Blacklist then Delete rely on
+	// the 24h ban surviving session removal; wiping it nullified revocation.
 	pipe := client.Pipeline()
 	pipe.Del(ctx, "session:"+sessionID)
-	pipe.Del(ctx, session.BlacklistPrefix+sessionID)
 	if userID != "" {
 		pipe.SRem(ctx, userSessionsKey(userID), sessionID)
 	}

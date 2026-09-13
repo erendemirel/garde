@@ -140,11 +140,11 @@ For scripts and CI that need to call garde **as a user**, without keeping a
 browser session. A PAT carries the same live permissions, groups, and admin
 flags as the issuing account. It is **not** a tenant `/validate` key.
 
-**Issue / manage** (browser session required — another PAT cannot create PATs):
+**Issue / manage** (browser **cookie** session required — Bearer sessions and PATs cannot create PATs):
 
 ```http
 POST /users/me/tokens
-Authorization: Bearer <session_id>
+Cookie: session=<session_id>
 Content-Type: application/json
 
 {
@@ -152,6 +152,9 @@ Content-Type: application/json
   "expires_in": "720h"
 }
 ```
+
+`Authorization: Bearer <session_id>` is refused for PAT management so a stolen
+API session cannot be upgraded into a long-lived PAT.
 
 The plaintext (`garde_pat_<id>_<secret>`) is returned once in `data.token`.
 List with `GET /users/me/tokens`; revoke with `DELETE /users/me/tokens/{token_id}`.
@@ -417,7 +420,7 @@ Authorization: Bearer 54492786-1c...
 ```
 
 Notes:
-- All active sessions are revoked (including the current one; same as password reset)
+- All active sessions and personal access tokens are revoked (including the current session; same as password reset)
 - Requires current password verification
 - MFA verification if enabled
 - New password must meet complexity requirements
@@ -466,6 +469,7 @@ Important Notes:
 - MFA code required if enabled
 - Account gets locked after 5 failed attempts
 - Password reset does not change account status (pending users still need admin approval before login)
+- All active sessions and personal access tokens are revoked
 - IP-based rate limiting applies (same as other public endpoints). After 5 failed OTP verification attempts, the account is locked.
 - Cannot reset superuser password through this flow
 

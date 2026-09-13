@@ -267,6 +267,11 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf(errors.ErrAuthFailed)
 	}
 
+	// Successful auth resets lockout counters for this email/IP.
+	if err := s.repo.ClearFailedLogins(ctx, user.Email, ip); err != nil {
+		slog.Debug("Failed to clear failed-login counters", "error", err, "user_id", user.ID)
+	}
+
 	// Update last login time
 	user.LastLogin = time.Now()
 	if err := s.repo.StoreUser(ctx, user); err != nil {
@@ -1160,14 +1165,12 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
-	for _, sessionID := range sessions {
-		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			if blacklistErr := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); blacklistErr != nil {
-				slog.Error("Failed to revoke session after password reset",
-					"delete_error", err, "blacklist_error", blacklistErr, "session_id", sessionID)
-				return fmt.Errorf(errors.ErrOperationFailed)
-			}
-		}
+	if err := s.revokeAllUserSessions(ctx, user.ID, sessions); err != nil {
+		return err
+	}
+	if err := s.repo.RevokeAllPATsByUser(ctx, user.ID); err != nil {
+		slog.Error("Failed to revoke PATs after password reset", "error", err, "user_id", user.ID)
+		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
 	return nil
@@ -1254,16 +1257,29 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	// Password change is often a response to suspected compromise; keeping the
 	// current session would leave a stolen cookie usable. The web UI already
 	// logs the user out after a successful change.
-	for _, sessionID := range sessions {
-		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			if blacklistErr := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); blacklistErr != nil {
-				slog.Error("Failed to revoke session after password change",
-					"delete_error", err, "blacklist_error", blacklistErr, "session_id", sessionID)
-				return fmt.Errorf(errors.ErrOperationFailed)
-			}
-		}
+	if err := s.revokeAllUserSessions(ctx, user.ID, sessions); err != nil {
+		return err
+	}
+	if err := s.repo.RevokeAllPATsByUser(ctx, user.ID); err != nil {
+		slog.Error("Failed to revoke PATs after password change", "error", err, "user_id", user.ID)
+		return fmt.Errorf(errors.ErrOperationFailed)
 	}
 
+	return nil
+}
+
+// revokeAllUserSessions blacklists then deletes each session so the 24h ban
+// survives DeleteSession (which no longer clears blacklist entries).
+func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, sessions []string) error {
+	for _, sessionID := range sessions {
+		if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
+			slog.Warn("Failed to blacklist session during credential revoke", "error", err, "session_id", sessionID, "user_id", userID)
+		}
+		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
+			slog.Error("Failed to delete session during credential revoke", "error", err, "session_id", sessionID, "user_id", userID)
+			return fmt.Errorf(errors.ErrOperationFailed)
+		}
+	}
 	return nil
 }
 
@@ -1325,23 +1341,10 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*model
 		return nil, fmt.Errorf(errors.ErrUserNotFound)
 	}
 
-	// Filter permissions by visibility - regular users only see permissions visible to their groups
+	// Filter permissions by group visibility. Users with no groups must not
+	// see the full catalog — match GetVisiblePermissions([]), which returns empty.
 	userGroupNames := GetUserGroupNames(user.Groups)
-	filteredPermissions := user.Permissions
-	if len(userGroupNames) > 0 {
-		visiblePerms := GetVisiblePermissions(userGroupNames)
-		visiblePermSet := make(map[models.Permission]bool)
-		for _, p := range visiblePerms {
-			visiblePermSet[p] = true
-		}
-		// Only include permissions that are visible to user
-		filteredPermissions = models.UserPermissions{}
-		for perm, enabled := range user.Permissions {
-			if enabled && visiblePermSet[perm] {
-				filteredPermissions[perm] = true
-			}
-		}
-	}
+	filteredPermissions := filterPermissionsByGroups(user.Permissions, userGroupNames)
 
 	return &models.UserResponse{
 		ID:             user.ID,
@@ -1407,23 +1410,8 @@ func (s *AuthService) ListUsers(ctx context.Context, adminID string, isSuperUser
 			// Filter pending updates to only show groups admin can approve
 			filteredPendingUpdates := filterPendingUpdatesForAdmin(user.PendingUpdates, admin.Groups)
 
-			// Filter permissions by visibility for admins
 			adminGroupNames := GetUserGroupNames(admin.Groups)
-			filteredPermissions := user.Permissions
-			if len(adminGroupNames) > 0 {
-				visiblePerms := GetVisiblePermissions(adminGroupNames)
-				visiblePermSet := make(map[models.Permission]bool)
-				for _, p := range visiblePerms {
-					visiblePermSet[p] = true
-				}
-				// Only include permissions that are visible to admin
-				filteredPermissions = models.UserPermissions{}
-				for perm, enabled := range user.Permissions {
-					if enabled && visiblePermSet[perm] {
-						filteredPermissions[perm] = true
-					}
-				}
-			}
+			filteredPermissions := filterPermissionsByGroups(user.Permissions, adminGroupNames)
 
 			response = append(response, models.UserResponse{
 				ID:             user.ID,
@@ -1501,20 +1489,7 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 	filteredPermissions := targetUser.Permissions
 	if isAdmin && !isSuperUser {
 		adminGroupNames := GetUserGroupNames(admin.Groups)
-		if len(adminGroupNames) > 0 {
-			visiblePerms := GetVisiblePermissions(adminGroupNames)
-			visiblePermSet := make(map[models.Permission]bool)
-			for _, p := range visiblePerms {
-				visiblePermSet[p] = true
-			}
-			// Only include permissions that are visible to admin
-			filteredPermissions = models.UserPermissions{}
-			for perm, enabled := range targetUser.Permissions {
-				if enabled && visiblePermSet[perm] {
-					filteredPermissions[perm] = true
-				}
-			}
-		}
+		filteredPermissions = filterPermissionsByGroups(targetUser.Permissions, adminGroupNames)
 	}
 
 	response := &models.UserResponse{
@@ -1673,6 +1648,26 @@ func (s *AuthService) AcquireUserLock(ctx context.Context, userID string, ttl ti
 
 func (s *AuthService) ReleaseUserLock(ctx context.Context, userID string) error {
 	return s.repo.ReleaseUserLock(ctx, userID)
+}
+
+// filterPermissionsByGroups keeps only enabled permissions that are visible to
+// the given groups. Empty groups yield an empty map (no catalog leak).
+func filterPermissionsByGroups(perms models.UserPermissions, groupNames []string) models.UserPermissions {
+	if len(groupNames) == 0 {
+		return models.UserPermissions{}
+	}
+	visiblePerms := GetVisiblePermissions(groupNames)
+	visiblePermSet := make(map[models.Permission]bool, len(visiblePerms))
+	for _, p := range visiblePerms {
+		visiblePermSet[p] = true
+	}
+	filtered := models.UserPermissions{}
+	for perm, enabled := range perms {
+		if enabled && visiblePermSet[perm] {
+			filtered[perm] = true
+		}
+	}
+	return filtered
 }
 
 func filterPendingUpdatesForAdmin(pending *models.UserUpdateRequest, adminGroups models.UserGroups) *models.UserUpdateRequest {

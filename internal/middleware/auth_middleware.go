@@ -22,6 +22,11 @@ const (
 	// ContextPATID is set when the request authenticated with a personal
 	// access token rather than a browser session.
 	ContextPATID = "pat_id"
+	// ContextAuthMethod records how the caller authenticated.
+	ContextAuthMethod = "auth_method"
+	AuthMethodCookie  = "session_cookie"
+	AuthMethodBearer  = "session_bearer"
+	AuthMethodPAT     = "pat"
 )
 
 func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.SecurityAnalyzer, repo *repository.RedisRepository) gin.HandlerFunc {
@@ -31,7 +36,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 
 		// Cookie always means session — never treat a cookie value as a PAT.
 		if cookie, err := c.Cookie("session"); err == nil && cookie != "" {
-			authenticateSession(c, authService, securityAnalyzer, cookie, ip, userAgent)
+			authenticateSession(c, authService, securityAnalyzer, cookie, ip, userAgent, AuthMethodCookie)
 			return
 		}
 
@@ -63,7 +68,7 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			return
 		}
 
-		authenticateSession(c, authService, securityAnalyzer, presented, ip, userAgent)
+		authenticateSession(c, authService, securityAnalyzer, presented, ip, userAgent, AuthMethodBearer)
 	}
 }
 
@@ -71,19 +76,11 @@ func authenticateSession(
 	c *gin.Context,
 	authService *service.AuthService,
 	securityAnalyzer *service.SecurityAnalyzer,
-	sessionID, ip, userAgent string,
+	sessionID, ip, userAgent, authMethod string,
 ) {
 	validationResult, err := authService.ValidateSession(c.Request.Context(), sessionID, ip, userAgent)
 	if err != nil || validationResult == nil || !validationResult.Response.Valid {
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "session",
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			Secure:   config.GetCookieSecure(),
-			HttpOnly: true,
-			SameSite: config.GetCookieSameSite(),
-		})
+		clearSessionCookie(c)
 		c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrSessionInvalid))
 		return
 	}
@@ -97,6 +94,7 @@ func authenticateSession(
 	}
 
 	c.Set("session_id", sessionID)
+	c.Set(ContextAuthMethod, authMethod)
 	c.Next()
 }
 
@@ -132,7 +130,27 @@ func authenticatePAT(
 	}
 
 	c.Set(ContextPATID, id)
+	c.Set(ContextAuthMethod, AuthMethodPAT)
 	c.Next()
+}
+
+// ClearSessionCookie clears the session cookie with the same Domain/Path/Secure/
+// SameSite attributes used when the cookie was issued, so browsers actually drop it.
+func ClearSessionCookie(c *gin.Context) {
+	clearSessionCookie(c)
+}
+
+func clearSessionCookie(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    "",
+		Path:     "/",
+		Domain:   config.Get("DOMAIN_NAME"),
+		MaxAge:   -1,
+		Secure:   config.GetCookieSecure(),
+		HttpOnly: true,
+		SameSite: config.GetCookieSameSite(),
+	})
 }
 
 func enforceMFASetupGate(c *gin.Context, authService *service.AuthService, userID string) bool {

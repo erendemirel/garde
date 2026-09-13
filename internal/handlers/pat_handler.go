@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"garde/internal/middleware"
 	"garde/internal/models"
 	"garde/internal/repository"
 	"garde/pkg/crypto"
@@ -26,6 +27,12 @@ func NewPATHandler(repo *repository.RedisRepository) *PATHandler {
 }
 
 func requireInteractiveSession(c *gin.Context) bool {
+	// Cookie-authenticated browser sessions only. Bearer sessions and PATs
+	// must not mint or manage long-lived PATs.
+	if method, ok := c.Get(middleware.ContextAuthMethod); !ok || method != middleware.AuthMethodCookie {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionRequired))
+		return false
+	}
 	if _, ok := c.Get("session_id"); !ok {
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrSessionRequired))
 		return false
@@ -34,7 +41,7 @@ func requireInteractiveSession(c *gin.Context) bool {
 }
 
 // @Summary Issue a personal access token
-// @Description Creates a PAT that authenticates as the current user on garde APIs. Requires a browser session (not another PAT). The plaintext is returned once. Lifetime defaults to 90 days unless never_expires is set.
+// @Description Creates a PAT that authenticates as the current user on garde APIs. Requires a browser cookie session (not a Bearer session or another PAT). The plaintext is returned once. Lifetime defaults to 90 days unless never_expires is set.
 // @Tags User Routes
 // @Accept json
 // @Produce json

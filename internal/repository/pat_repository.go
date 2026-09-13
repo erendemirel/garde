@@ -170,3 +170,17 @@ func (r *RedisRepository) TouchPAT(ctx context.Context, id string) error {
 	}
 	return client.Set(ctx, userPATUsedKey(id), time.Now().UTC().Format(time.RFC3339), 0).Err()
 }
+
+// RevokeAllPATsByUser marks every active PAT for the user as revoked.
+func (r *RedisRepository) RevokeAllPATsByUser(ctx context.Context, userID string) error {
+	tokens, err := r.ListPATsByUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, token := range tokens {
+		if _, err := r.RevokePAT(ctx, token.ID, userID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
