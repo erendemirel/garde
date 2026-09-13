@@ -1,0 +1,36 @@
+name: Unit
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+concurrency:
+  group: unit-${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        # CGO required by github.com/mattn/go-sqlite3
+        run: go vet ./...
+        env:
+          CGO_ENABLED: "1"
+
+      - name: Test
+        run: go test ./...
+        env:
+          CGO_ENABLED: "1"
