@@ -6,7 +6,7 @@ import {
 	deleteUserById,
 	openUserDetailFromAdmin
 } from '../../helpers/userApi';
-import { waitForToastGone } from '../../helpers/waits';
+import { dismissToast } from '../../helpers/waits';
 
 async function confirmSecurityAction(
 	page: import('@playwright/test').Page,
@@ -15,7 +15,7 @@ async function confirmSecurityAction(
 	await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
 	await page.getByTestId('confirm-modal-confirm').click();
 	await expect(page.getByTestId('toast')).toContainText(toastText);
-	await waitForToastGone(page);
+	await dismissToast(page);
 }
 
 test.describe('Admin user security actions', describeTags(TAG.admin, TAG.userDetail, TAG.security, TAG.focused), () => {

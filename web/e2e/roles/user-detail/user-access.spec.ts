@@ -1,7 +1,7 @@
 import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { openUserDetailFromSuperuser } from '../../helpers/userApi';
-import { waitForSuperuserCatalog, waitForToastGone } from '../../helpers/waits';
+import { waitForSuperuserCatalog, dismissToast } from '../../helpers/waits';
 
 /**
  * Grant/revoke access on an ephemeral user (never mutates seed admin).
@@ -24,7 +24,7 @@ test.describe('User access mutate and revert', describeTags(TAG.userDetail, TAG.
 			await page.getByTestId('superuser-catalog-item-definition').fill('E2E access grant fixture');
 			await page.getByTestId('superuser-catalog-item-save').click();
 			await expect(page.getByTestId('toast')).toContainText(permissionName);
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await openUserDetailFromSuperuser(page, ephemeralUser.email);
 
@@ -41,7 +41,7 @@ test.describe('User access mutate and revert', describeTags(TAG.userDetail, TAG.
 			await page.getByTestId('user-detail-save').click();
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText('Updated');
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await ms
 				.locator(
@@ -52,7 +52,7 @@ test.describe('User access mutate and revert', describeTags(TAG.userDetail, TAG.
 			await page.getByTestId('user-detail-save').click();
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText('Updated');
-			await waitForToastGone(page);
+			await dismissToast(page);
 		} finally {
 			await page.goto('/superuser?tab=permissions').catch(() => undefined);
 			try {
@@ -91,7 +91,7 @@ test.describe('User access mutate and revert', describeTags(TAG.userDetail, TAG.
 			await page.getByTestId('superuser-catalog-item-definition').fill('E2E group grant fixture');
 			await page.getByTestId('superuser-catalog-item-save').click();
 			await expect(page.getByTestId('toast')).toContainText(groupName);
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await openUserDetailFromSuperuser(page, ephemeralUser.email);
 
@@ -106,7 +106,7 @@ test.describe('User access mutate and revert', describeTags(TAG.userDetail, TAG.
 			await page.getByTestId('user-detail-save').click();
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText('Updated');
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await ms
 				.locator(
@@ -117,7 +117,7 @@ test.describe('User access mutate and revert', describeTags(TAG.userDetail, TAG.
 			await page.getByTestId('user-detail-save').click();
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText('Updated');
-			await waitForToastGone(page);
+			await dismissToast(page);
 		} finally {
 			await page.goto('/superuser?tab=groups').catch(() => undefined);
 			try {

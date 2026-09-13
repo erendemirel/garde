@@ -13,7 +13,7 @@ import {
 	LOAD_TIMEOUT,
 	matchRevokeSessions,
 	REDIRECT_TIMEOUT,
-	waitForToastGone
+	dismissToast
 } from '../../helpers/waits';
 
 /**
@@ -48,7 +48,7 @@ test.describe('Revoke user sessions', describeTags(TAG.userDetail, TAG.activeSes
 		await expect(suPage.getByTestId('confirm-modal-message')).toBeVisible();
 		await suPage.getByTestId('confirm-modal-confirm').click();
 		await expect(suPage.getByTestId('toast')).toContainText('Sessions revoked');
-		await waitForToastGone(suPage);
+		await dismissToast(suPage);
 
 		await expect(suPage.getByTestId('user-detail-page')).toBeVisible();
 
@@ -137,7 +137,7 @@ test.describe('Revoke user sessions', describeTags(TAG.userDetail, TAG.activeSes
 				const res = await revokeResponse;
 				expect(res.ok()).toBeTruthy();
 				await expect(adminPage.getByTestId('toast')).toContainText('Sessions revoked');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await targetPage.goto('/dashboard');
 				await expect(targetPage.getByTestId('login-page')).toBeVisible({

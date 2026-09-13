@@ -38,15 +38,16 @@ echo "Seeding secrets from dev.secrets..."
 # We'll store all secrets under secret/garde/
 
 # Parse the dev.secrets file and create individual secret files for Vault Agent
+# Trim with sed — do not use xargs; it strips quotes and corrupts JSON secrets
+# such as ADMIN_USERS_JSON.
 while IFS='=' read -r key value || [ -n "$key" ]; do
   # Skip empty lines and comments
   case "$key" in
     ''|\#*) continue ;;
   esac
   
-  # Remove any leading/trailing whitespace
-  key=$(echo "$key" | xargs)
-  value=$(echo "$value" | xargs)
+  key=$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
   # Allow empty values so optional keys (e.g. TRUSTED_PROXIES=) still exist for Vault Agent templates
   if [ -n "$key" ]; then

@@ -95,9 +95,9 @@ const (
 	ErrAPIKeyExpiryConflict   = "expires_in and never_expires cannot both be set"
 	ErrInvalidAPIKeyRateLimit = "rate_limit cannot be negative"
 	ErrInvalidPATName         = "token name must be 1-64 characters, alphanumeric with underscore, hyphen or dot"
-	ErrInvalidPATExpiry       = "expires_in must be a positive duration such as 2160h"
+	ErrInvalidPATExpiry       = "token expires_in must be a positive duration such as 2160h"
 	ErrPATExpiryTooLong       = "expires_in cannot exceed 8760h; pass never_expires to issue a token that does not expire"
-	ErrPATExpiryConflict      = "expires_in and never_expires cannot both be set"
+	ErrPATExpiryConflict      = "token expires_in and never_expires cannot both be set"
 )
 
 // Mail errors

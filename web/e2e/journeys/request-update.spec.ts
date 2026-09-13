@@ -9,7 +9,7 @@ import {
 	openUserDetailFromSuperuser,
 	patchUserMaps
 } from '../helpers/userApi';
-import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone, waitForRequestUpdateGroups } from '../helpers/waits';
+import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast, waitForRequestUpdateGroups } from '../helpers/waits';
 import { gotoDashboardFresh } from '../helpers/journeys';
 import { describeTags, TAG } from '../helpers/tags';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from '../helpers/catalog';
@@ -163,7 +163,7 @@ async function adminRejectUpdate(adminPage: Page, email: string, userId?: string
 	await expect(adminPage.getByTestId('toast')).toContainText('Update rejected', {
 		timeout: LOAD_TIMEOUT
 	});
-	await waitForToastGone(adminPage);
+	await dismissToast(adminPage);
 }
 
 async function superuserApproveUpdate(suPage: Page, email: string, userId?: string) {
@@ -182,7 +182,7 @@ async function superuserApproveUpdate(suPage: Page, email: string, userId?: stri
 	await expect(suPage.getByTestId('toast')).toContainText('Update approved', {
 		timeout: LOAD_TIMEOUT
 	});
-	await waitForToastGone(suPage);
+	await dismissToast(suPage);
 }
 
 /**
@@ -258,7 +258,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			await suPage.getByTestId('user-detail-reject-update').click();
 			await suPage.getByTestId('confirm-modal-confirm').click();
 			await expect(suPage.getByTestId('toast')).toContainText('Update rejected');
-			await waitForToastGone(suPage);
+			await dismissToast(suPage);
 			await expect(suPage.getByTestId('user-detail-pending-update')).toHaveCount(0);
 		});
 
@@ -295,7 +295,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			await suPage.getByTestId('user-detail-approve-update').click();
 			await suPage.getByTestId('confirm-modal-confirm').click();
 			await expect(suPage.getByTestId('toast')).toContainText('Update approved');
-			await waitForToastGone(suPage);
+			await dismissToast(suPage);
 			await expect(suPage.getByTestId('user-detail-pending-update')).toHaveCount(0);
 
 			await patchUserMaps(suRequest, ephemeralUser.id, { groups: { [addedGroup]: false } }).catch(
@@ -353,7 +353,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await adminPage.getByTestId('user-detail-approve-update').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('Update approved');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 				await expect(adminPage.getByTestId('user-detail-pending-update')).toHaveCount(0);
 			} finally {
 				await suRequest
@@ -939,7 +939,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await adminPage.getByTestId('user-detail-approve-account').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('Account approved');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await startUserSession(userPage, user);
 				await submitGroupRequest(userPage, SCOPE_GROUP);
@@ -951,7 +951,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await adminPage.getByTestId('user-detail-approve-update').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('Update approved');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await gotoDashboardFresh(userPage);
 				await expect(userPage.getByTestId('dashboard-pending-update')).toHaveCount(0);

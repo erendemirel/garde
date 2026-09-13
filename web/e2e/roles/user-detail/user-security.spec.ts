@@ -2,7 +2,7 @@ import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import { expectLoginRejected } from '../../helpers/auth';
 import { openUserDetailFromSuperuser, patchUserMaps } from '../../helpers/userApi';
-import { waitForToastGone } from '../../helpers/waits';
+import { dismissToast } from '../../helpers/waits';
 
 async function confirmSecurityAction(
 	page: import('@playwright/test').Page,
@@ -11,7 +11,7 @@ async function confirmSecurityAction(
 	await expect(page.getByTestId('confirm-modal-message')).toBeVisible();
 	await page.getByTestId('confirm-modal-confirm').click();
 	await expect(page.getByTestId('toast')).toContainText(toastText);
-	await waitForToastGone(page);
+	await dismissToast(page);
 }
 
 /**

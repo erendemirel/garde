@@ -195,8 +195,7 @@ see [External callers](#4-external-callers-per-tenant-api-keys).
 
 **Topology:** Call `/validate` only from trusted services over a private
 network. Pass the end-user session ID with the **`X-Session-ID`** header
-(preferred; avoids access-log leakage). The `session_id` query parameter
-remains accepted for compatibility.
+(query-string session IDs are not accepted — they leak into access logs).
 
 Example request:
 ```http
@@ -1124,8 +1123,9 @@ Notes:
 For internal services to validate sessions of other applications.
 
 ```http
-GET /validate?session_id=2e8aa13e-3c...
+GET /validate
 X-API-Key: your_api_key
+X-Session-ID: 2e8aa13e-3c...
 // plus a client certificate, on any listener configured to verify one
 ```
 

@@ -7,7 +7,7 @@ import {
 	openUserDetailFromAdmin,
 	openUserDetailFromSuperuser
 } from '../helpers/userApi';
-import { matchUserUpdate, waitForPageShell, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone } from '../helpers/waits';
+import { matchUserUpdate, waitForPageShell, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast } from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe.configure({ timeout: 120_000 });
@@ -80,7 +80,7 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await suPage.getByTestId('user-detail-approve-account').click();
 				await suPage.getByTestId('confirm-modal-confirm').click();
 				await expect(suPage.getByTestId('toast')).toContainText('Account approved');
-				await waitForToastGone(suPage);
+				await dismissToast(suPage);
 
 				await signInApprovedUser(page, user);
 				await expect(page.getByTestId('dashboard-email')).toHaveText(user.email);
@@ -105,7 +105,7 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await suPage.getByTestId('user-detail-reject-account').click();
 				await suPage.getByTestId('confirm-modal-confirm').click();
 				await expect(suPage.getByTestId('toast')).toContainText('rejected');
-				await waitForToastGone(suPage);
+				await dismissToast(suPage);
 				await expect(suPage.getByTestId('user-detail-account-approval')).toHaveAttribute(
 					'data-approval-state',
 					'rejected'
@@ -133,13 +133,13 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await suPage.getByTestId('user-detail-reject-account').click();
 				await suPage.getByTestId('confirm-modal-confirm').click();
 				await expect(suPage.getByTestId('toast')).toContainText('rejected');
-				await waitForToastGone(suPage);
+				await dismissToast(suPage);
 
 				await suPage.getByTestId('user-detail-approve-account').click();
 				await expect(suPage.getByTestId('confirm-modal-message')).toContainText(/anyway|Approve/i);
 				await suPage.getByTestId('confirm-modal-confirm').click();
 				await expect(suPage.getByTestId('toast')).toContainText('Account approved');
-				await waitForToastGone(suPage);
+				await dismissToast(suPage);
 
 				await signInApprovedUser(page, user);
 				await expect(page.getByTestId('dashboard-email')).toHaveText(user.email);
@@ -198,7 +198,7 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await adminPage.getByTestId('user-detail-approve-account').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('Account approved');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await signInApprovedUser(page, user);
 				await expect(page.getByTestId('dashboard-email')).toHaveText(user.email);
@@ -223,7 +223,7 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await adminPage.getByTestId('user-detail-reject-account').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('rejected');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 				await expect(adminPage.getByTestId('user-detail-account-approval')).toHaveAttribute(
 					'data-approval-state',
 					'rejected'
@@ -251,13 +251,13 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await adminPage.getByTestId('user-detail-reject-account').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('rejected');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await adminPage.getByTestId('user-detail-approve-account').click();
 				await expect(adminPage.getByTestId('confirm-modal-message')).toContainText(/anyway|Approve/i);
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('Account approved');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await signInApprovedUser(page, user);
 				await expect(page.getByTestId('dashboard-email')).toHaveText(user.email);
@@ -313,7 +313,7 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await adminPage.getByTestId('user-detail-reject-account').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('rejected');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 				await expect(adminPage.getByTestId('user-detail-account-approval')).toHaveAttribute(
 					'data-approval-state',
 					'rejected'
@@ -325,7 +325,7 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await expect(suPage.getByTestId('confirm-modal-message')).toContainText(/anyway|Approve/i);
 				await suPage.getByTestId('confirm-modal-confirm').click();
 				await expect(suPage.getByTestId('toast')).toContainText('Account approved');
-				await waitForToastGone(suPage);
+				await dismissToast(suPage);
 
 				await signInApprovedUser(page, user);
 				await expect(page.getByTestId('dashboard-email')).toHaveText(user.email);
@@ -368,7 +368,7 @@ test.describe('Registration approval', describeTags(TAG.journey, TAG.registratio
 				await adminPage.getByTestId('user-detail-approve-account').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('Account approved');
-				await waitForToastGone(adminPage);
+				await dismissToast(adminPage);
 
 				await signInApprovedUser(page, { email, password });
 				await expect(page.getByTestId('dashboard-email')).toHaveText(email);

@@ -150,8 +150,7 @@ type ValidateResponse struct {
 // @Security SessionCookie
 // @Security ApiKey
 // @Security Bearer
-// @Param session_id query string false "Session ID (legacy; prefer X-Session-ID header)"
-// @Param X-Session-ID header string false "Session ID (preferred over query to avoid access-log leakage)"
+// @Param X-Session-ID header string true "Session ID"
 // @Success 200 {object} models.SuccessResponse "Session validation result with Response.valid and UserID fields"
 // @Failure 400 {object} models.ErrorResponse "Invalid session ID format or missing session ID for API request"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized - invalid session, missing mTLS certificate for API requests, or invalid API key"
@@ -159,11 +158,7 @@ type ValidateResponse struct {
 // @Failure 500 {object} models.ErrorResponse "Internal server error or permissions system not loaded"
 // @Router /validate [get]
 func (h *AuthHandler) ValidateSession(c *gin.Context) {
-	// Prefer header so session IDs are not written into access logs via the query string.
 	sessionID := c.GetHeader("X-Session-ID")
-	if sessionID == "" {
-		sessionID = c.Query("session_id")
-	}
 	sessionID, err := validation.Sanitize(sessionID)
 	if err != nil || sessionID == "" {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))

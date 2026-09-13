@@ -22,6 +22,18 @@ There are two main ways to contribute to this project:
 
 ## Testing
 
+### Backend unit tests
+
+```bash
+go vet ./...
+go test ./...
+go test -cover ./...
+```
+
+No external services: miniredis, temp `DATA_DIR`, temp secret dirs.
+See [UNIT_TESTS.md](UNIT_TESTS.md) for layout, conventions (global config,
+optimistic-locking re-fetch, no permission singleton), and coverage policy.
+
 ### Playwright E2E (web UI)
 
 GitHub Actions runs focused e2e tests on every push and pull request (see `.github/workflows/e2e.yml`). Locally:

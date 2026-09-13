@@ -409,10 +409,9 @@ type validateRouteOptions struct {
 
 // mountValidateRoute registers the service session-validation endpoint.
 //
-// No cookie/Bearer AuthMiddleware — callers pass the session via X-Session-ID
-// (preferred) or the session_id query parameter. An API key is always
-// required; the client certificate is required whenever the listener carrying
-// this route was built to verify one.
+// No cookie/Bearer AuthMiddleware — callers pass the session via X-Session-ID.
+// An API key is always required; the client certificate is required whenever
+// the listener carrying this route was built to verify one.
 func mountValidateRoute(router *gin.Engine, deps *routerDeps, opts validateRouteOptions) {
 	validateEndpoint := router.Group("/validate")
 

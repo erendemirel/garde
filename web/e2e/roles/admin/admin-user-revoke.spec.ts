@@ -5,7 +5,7 @@ import {
 	createEphemeralUser,
 	openUserDetailFromAdmin
 } from '../../helpers/userApi';
-import { waitForSignedOut, matchUserUpdate, matchRevokeSessions, LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForToastGone } from '../../helpers/waits';
+import { waitForSignedOut, matchUserUpdate, matchRevokeSessions, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast } from '../../helpers/waits';
 
 test.describe('Admin revoke and delete', describeTags(TAG.admin, TAG.userDetail, TAG.activeSession, TAG.focused), () => {
 	test('revoking sessions signs the target user out', async ({
@@ -27,7 +27,7 @@ test.describe('Admin revoke and delete', describeTags(TAG.admin, TAG.userDetail,
 		await expect(adminPage.getByTestId('toast')).toContainText('Sessions revoked', {
 			timeout: LOAD_TIMEOUT
 		});
-		await waitForToastGone(adminPage);
+		await dismissToast(adminPage);
 
 		await waitForSignedOut(targetPage);
 
@@ -59,7 +59,7 @@ test.describe('Admin revoke and delete', describeTags(TAG.admin, TAG.userDetail,
 			await expect(adminPage.getByTestId('toast')).toContainText('User deleted', {
 				timeout: LOAD_TIMEOUT
 			});
-			await waitForToastGone(adminPage);
+			await dismissToast(adminPage);
 
 			await waitForSignedOut(targetPage);
 		} finally {

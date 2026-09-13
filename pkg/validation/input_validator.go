@@ -101,25 +101,23 @@ func ValidateEmail(email string) error {
 	return nil
 }
 
-func SanitizeInput(input string) string {
-
+// cleanInput trims whitespace and strips control characters without HTML-escaping,
+// so ban-list checks still see the caller's real brackets.
+func cleanInput(input string) string {
 	input = strings.TrimSpace(input)
-
-	// Remove control characters
-	input = strings.Map(func(r rune) rune {
+	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
 			return -1
 		}
 		return r
 	}, input)
-
-	// Escape HTML special characters
-	input = html.EscapeString(input)
-
-	return input
 }
 
-// Check for common malicious patterns
+func SanitizeInput(input string) string {
+	return html.EscapeString(cleanInput(input))
+}
+
+// Check for common malicious patterns (on unescaped text).
 func ValidateGenericInput(input string) error {
 	if len(input) > maxInputLength {
 		return fmt.Errorf("input exceeds maximum length of %d characters", maxInputLength)
@@ -132,14 +130,17 @@ func ValidateGenericInput(input string) error {
 	return nil
 }
 
+// Sanitize cleans, validates banned characters, then HTML-escapes.
+// Validate-then-escape keeps the <>{}[] ban meaningful; escaping first
+// turned every bracket into an entity and made ValidateGenericInput dead.
 func Sanitize(input string) (string, error) {
-	sanitized := SanitizeInput(input)
+	cleaned := cleanInput(input)
 
-	if err := ValidateGenericInput(sanitized); err != nil {
+	if err := ValidateGenericInput(cleaned); err != nil {
 		return "", err
 	}
 
-	return sanitized, nil
+	return html.EscapeString(cleaned), nil
 }
 
 func ValidateSessionID(sessionID string) error {
@@ -148,14 +149,13 @@ func ValidateSessionID(sessionID string) error {
 		return fmt.Errorf(errors.ErrInvalidSessionID)
 	}
 
-	// RawURLEncoding of 64 bytes = 86 chars; legacy padded URLEncoding = 88.
-	if len(sanitized) != 86 && len(sanitized) != 88 {
+	// RawURLEncoding of 64 bytes = 86 chars, no padding.
+	if len(sanitized) != 86 {
 		return fmt.Errorf(errors.ErrInvalidSessionID)
 	}
 
-	// Check if it's a valid base64url string (padding '=' allowed for legacy IDs)
 	for _, r := range sanitized {
-		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '-' && r != '_' && r != '=' {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '-' && r != '_' {
 			return fmt.Errorf(errors.ErrInvalidSessionID)
 		}
 	}

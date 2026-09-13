@@ -48,21 +48,10 @@ var (
 func NewRedisRepository() (*RedisRepository, error) {
 	dbNum, _ := strconv.Atoi(config.Get("REDIS_DB"))
 
-	var host, port string
-	// Prioritize environment variables if set
-	if config.Get("REDIS_HOST") != "" {
-		host = config.Get("REDIS_HOST")
-		port = config.Get("REDIS_PORT")
-		if port == "" {
-			port = "6379"
-		}
-	} else if config.Get("DOCKER_PROFILE") == "with-redis" {
-		// Fallback to Docker Compose service name for local dev
-		host = "dev-redis"
+	host := config.Get("REDIS_HOST")
+	port := config.Get("REDIS_PORT")
+	if port == "" {
 		port = "6379"
-	} else {
-		host = config.Get("REDIS_HOST")
-		port = config.Get("REDIS_PORT")
 	}
 
 	repo := &RedisRepository{
@@ -163,7 +152,7 @@ func (r *RedisRepository) getUserByIDWithClient(ctx context.Context, client *red
 		return nil, err
 	}
 
-	if err := r.attachUserCredentials(ctx, client, &user, userData); err != nil {
+	if err := r.attachUserCredentials(ctx, client, &user); err != nil {
 		return nil, err
 	}
 
@@ -171,8 +160,7 @@ func (r *RedisRepository) getUserByIDWithClient(ctx context.Context, client *red
 }
 
 // attachUserCredentials loads password hash and MFA secret from dedicated Redis keys.
-// Legacy fields embedded in user JSON are migrated once into those keys.
-func (r *RedisRepository) attachUserCredentials(ctx context.Context, client *redis.Client, user *models.User, rawUserJSON []byte) error {
+func (r *RedisRepository) attachUserCredentials(ctx context.Context, client *redis.Client, user *models.User) error {
 	password, err := client.Get(ctx, userPasswordKey(user.ID)).Result()
 	if err != nil && err != redis.Nil {
 		return err
@@ -180,53 +168,21 @@ func (r *RedisRepository) attachUserCredentials(ctx context.Context, client *red
 	if err == redis.Nil {
 		password = ""
 	}
+	user.PasswordHash = password
 
 	encMFA, err := client.Get(ctx, userMFAKey(user.ID)).Result()
 	if err != nil && err != redis.Nil {
 		return err
 	}
-	if err == redis.Nil {
-		encMFA = ""
-	}
-
-	legacyPassword, legacyMFA := models.ParseLegacyCredentials(rawUserJSON)
-
-	if password == "" && legacyPassword != "" {
-		password = legacyPassword
-		if setErr := client.Set(ctx, userPasswordKey(user.ID), password, 0).Err(); setErr != nil {
-			slog.Warn("Failed to migrate legacy password hash to separate key", "user_id", user.ID, "error", setErr)
-		} else {
-			slog.Info("Migrated legacy password hash to separate Redis key", "user_id", user.ID)
-		}
-	}
-
-	user.PasswordHash = password
-
-	if encMFA != "" {
-		plain, decErr := crypto.DecryptString(encMFA)
-		if decErr != nil {
-			return fmt.Errorf("decrypt MFA secret: %w", decErr)
-		}
-		user.MFASecret = plain
+	if err == redis.Nil || encMFA == "" {
 		return nil
 	}
 
-	if legacyMFA != "" {
-		// Prefer treating legacy value as already-encrypted; fall back to plaintext migration.
-		if plain, decErr := crypto.DecryptString(legacyMFA); decErr == nil {
-			user.MFASecret = plain
-			return nil
-		}
-		user.MFASecret = legacyMFA
-		if enc, encErr := crypto.EncryptString(legacyMFA); encErr != nil {
-			slog.Warn("Failed to encrypt legacy MFA secret during migration", "user_id", user.ID, "error", encErr)
-		} else if setErr := client.Set(ctx, userMFAKey(user.ID), enc, 0).Err(); setErr != nil {
-			slog.Warn("Failed to migrate legacy MFA secret to separate key", "user_id", user.ID, "error", setErr)
-		} else {
-			slog.Info("Migrated legacy MFA secret to encrypted Redis key", "user_id", user.ID)
-		}
+	plain, decErr := crypto.DecryptString(encMFA)
+	if decErr != nil {
+		return fmt.Errorf("decrypt MFA secret: %w", decErr)
 	}
-
+	user.MFASecret = plain
 	return nil
 }
 
@@ -311,13 +267,15 @@ func (r *RedisRepository) StoreUser(ctx context.Context, user *models.User) erro
 		return err
 	}
 
-	// Retry mechanism for optimistic locking
+	// Retry only WATCH/EXEC conflicts. Business errors (duplicate email,
+	// stale UpdatedAt, etc.) must surface immediately — retrying them masks
+	// sentinels that callers branch on (e.g. CreateUser + ErrEmailAlreadyExists).
 	for i := 0; i < 3; i++ {
 		err := client.Watch(ctx, txf, "user:"+user.ID, "email_to_id:"+user.Email)
 		if err == nil {
 			return nil
 		}
-		if errors.Is(err, ErrConcurrentUpdate) {
+		if !errors.Is(err, redis.TxFailedErr) {
 			return err
 		}
 		time.Sleep(time.Millisecond * 100 * time.Duration(i+1))
@@ -735,7 +693,6 @@ func (r *RedisRepository) DeleteUser(ctx context.Context, userID string) error {
 	pipe.Del(ctx, fmt.Sprintf("otp:%s", userID))
 	pipe.Del(ctx, fmt.Sprintf("reset_attempts:%s", userID))
 	pipe.Del(ctx, fmt.Sprintf("security_code:%s", userID))
-	pipe.Del(ctx, fmt.Sprintf("mfa_secret:%s", userID)) // legacy key name
 	pipe.Del(ctx, userSessionsKey(userID))
 
 	_, err = pipe.Exec(ctx)
@@ -810,7 +767,7 @@ func (r *RedisRepository) GetLockedUsers(ctx context.Context) ([]*models.User, e
 				continue // Skip invalid data
 			}
 
-			if err := r.attachUserCredentials(ctx, client, &user, userData); err != nil {
+			if err := r.attachUserCredentials(ctx, client, &user); err != nil {
 				slog.Warn("Failed to load credentials for locked user", "user_id", user.ID, "error", err)
 				continue
 			}
@@ -1043,7 +1000,7 @@ func (r *RedisRepository) GetAllUsers(ctx context.Context) ([]*models.User, erro
 				continue
 			}
 
-			if err := r.attachUserCredentials(ctx, client, &user, userData); err != nil {
+			if err := r.attachUserCredentials(ctx, client, &user); err != nil {
 				slog.Warn("Failed to load credentials for user", "user_id", user.ID, "error", err)
 				continue
 			}

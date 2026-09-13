@@ -9,7 +9,7 @@ import {
 	VISIBILITY_GROUP,
 	SCOPE_GROUP
 } from '../../helpers/journeys';
-import { waitForToastGone } from '../../helpers/waits';
+import { dismissToast } from '../../helpers/waits';
 
 /** Seed group shared by admin and manageable users — safe for admin approve of group add. */
 
@@ -58,7 +58,7 @@ test.describe('Admin user detail edits', describeTags(TAG.admin, TAG.userDetail,
 			await page.getByTestId('user-detail-save').click();
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText('Updated');
-			await waitForToastGone(page);
+			await dismissToast(page);
 
 			await ms
 				.locator(
@@ -69,7 +69,7 @@ test.describe('Admin user detail edits', describeTags(TAG.admin, TAG.userDetail,
 			await page.getByTestId('user-detail-save').click();
 			await page.getByTestId('confirm-modal-confirm').click();
 			await expect(page.getByTestId('toast')).toContainText('Updated');
-			await waitForToastGone(page);
+			await dismissToast(page);
 		} finally {
 			await suRequest
 				.delete('/api/admin/permissions/visibility', {
@@ -104,7 +104,7 @@ test.describe('Admin user detail edits', describeTags(TAG.admin, TAG.userDetail,
 		await page.getByTestId('user-detail-approve-update').click();
 		await page.getByTestId('confirm-modal-confirm').click();
 		await expect(page.getByTestId('toast')).toContainText('Update approved');
-		await waitForToastGone(page);
+		await dismissToast(page);
 		await expect(page.getByTestId('user-detail-pending-update')).toHaveCount(0);
 	});
 
@@ -125,7 +125,7 @@ test.describe('Admin user detail edits', describeTags(TAG.admin, TAG.userDetail,
 		await page.getByTestId('user-detail-reject-update').click();
 		await page.getByTestId('confirm-modal-confirm').click();
 		await expect(page.getByTestId('toast')).toContainText('Update rejected');
-		await waitForToastGone(page);
+		await dismissToast(page);
 		await expect(page.getByTestId('user-detail-pending-update')).toHaveCount(0);
 	});
 

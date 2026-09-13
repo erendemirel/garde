@@ -11,7 +11,7 @@ import {
 	waitForAdminManagement,
 	waitForAdminManagementRow,
 	waitForPageShell,
-	waitForToastGone,
+	dismissToast,
 	matchUserUpdate,
 	LOAD_TIMEOUT,
 	REDIRECT_TIMEOUT
@@ -45,10 +45,10 @@ async function confirmAdminGroupsSave(
 		await expect(page.getByTestId('toast')).toBeVisible({ timeout: REDIRECT_TIMEOUT });
 		const toastText = await page.getByTestId('toast').innerText();
 		if (res.ok() && toastText.includes(adminEmail) && !/failure/i.test(toastText)) {
-			await waitForToastGone(page);
+			await dismissToast(page);
 			return;
 		}
-		await waitForToastGone(page);
+		await dismissToast(page);
 		if (attempt === 4) {
 			expect(res.ok(), toastText).toBeTruthy();
 		}
