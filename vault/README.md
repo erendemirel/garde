@@ -37,10 +37,19 @@ vault secrets enable -path=secret kv-v2
 
 # Store application secrets: one path per key (agent writes one file per secret to /run/secrets).
 # Key names are lowercase; the agent and app expect the same set as in dev.secrets / agent-config.hcl.
-# Example (for the single-VPS Docker Compose stack below, use redis_host=redis to match the Compose service name):
-vault kv put secret/garde/redis_host value=redis
+# Example (single-VPS Compose may use redis_host=redis; multi-node active-active uses the shared endpoint):
+vault kv put secret/garde/redis_host value=redis.xxxxx.cache.amazonaws.com
 vault kv put secret/garde/redis_port value=6379
 vault kv put secret/garde/redis_password value=your-redis-password
+# Durable store — either a full URL or discrete POSTGRES_* keys (see agent-config.hcl):
+vault kv put secret/garde/database_url value='postgres://garde:SECRET@db.xxxxx.rds.amazonaws.com:5432/garde?sslmode=require'
+# Or:
+# vault kv put secret/garde/postgres_host value=db.xxxxx.rds.amazonaws.com
+# vault kv put secret/garde/postgres_port value=5432
+# vault kv put secret/garde/postgres_db value=garde
+# vault kv put secret/garde/postgres_user value=garde
+# vault kv put secret/garde/postgres_password value=your-db-password
+# vault kv put secret/garde/postgres_sslmode value=require
 vault kv put secret/garde/domain_name value=your-domain.com
 vault kv put secret/garde/superuser_email value=admin@example.com
 vault kv put secret/garde/superuser_password value=YourSecurePassword
@@ -135,7 +144,7 @@ vault write database/roles/garde-redis \
 
 ## Single-VPS Docker Compose stack
 
-`docker-compose.prod.yml` runs a **production-mode** Vault server (persistent `vault_data` volume + `server.hcl`), Vault Agent (AppRole), Redis, garde, and the web UI.
+`docker-compose.prod.yml` runs a **production-mode** Vault server (persistent `vault_data` volume + `server.hcl`), Vault Agent (AppRole), PostgreSQL, Redis, garde, and the web UI.
 
 **Operator flow (summary):**
 
@@ -159,7 +168,7 @@ Full step-by-step: [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-v
 - Vault Agent authenticates with AppRole and auto-renews tokens
 - Templates rerender when secrets rotate
 - Prod Vault listens on `127.0.0.1:8200` only in single-VPS Compose; HA Vault speaks on the WireGuard mesh only. Never publish `:8200` on a public interface.
-- The app reloads the in-memory secret map when files under `/run/secrets` change. Only some keys apply live (API key, CORS, cookies, feature flags, SMTP, Redis reconnect, superuser/admin bootstrap). **TLS binding, trusted proxies, rate-limit / rapid-request thresholds, and log level require a restart.** See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
+- The app reloads the in-memory secret map when files under `/run/secrets` change. Only some keys apply live (API key, CORS, cookies, feature flags, SMTP, Redis reconnect, superuser/admin bootstrap). **TLS binding, trusted proxies, rate-limit / rapid-request thresholds, log level, and PostgreSQL DSN settings require a restart.** See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
 ## Development (dev profile)
 
 - The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`.

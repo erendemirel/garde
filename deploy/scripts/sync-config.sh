@@ -165,11 +165,11 @@ for node in $TARGETS; do
   step "Staging config for $node ($role)"
   rm -rf "${STAGE:?}"/*
   mkdir -p "$STAGE/compose" "$STAGE/config/vault/templates" "$STAGE/config/caddy" \
-           "$STAGE/config/redis" "$STAGE/config/prometheus" "$STAGE/config/grafana"
+           "$STAGE/config/prometheus" "$STAGE/config/grafana"
 
   cp "$DEPLOY_DIR"/compose/*.yml "$STAGE/compose/"
 
-  # Caddyfile is rendered per DNS provider so the standby renews against the
+  # Caddyfile is rendered per DNS provider so every app node renews against the
   # same API the A records live in. The ACME block is spliced in rather than
   # passed through render(): multiline values break @@KEY@@ substitution.
   #
@@ -298,8 +298,8 @@ for node in $TARGETS; do
   chmod 600 "$STAGE/.env"
 
   step "Pushing config to $node"
-  # --delete would remove host-owned state (vault/role-id, data/), so the sync
-  # is additive and scoped to the directories this script owns.
+  # --delete would remove host-owned state (vault/role-id), so the sync is
+  # additive and scoped to the directories this script owns.
   rsh="$(rsync_rsh "$node")"
   rsync -az -e "$rsh" --delete \
     "$STAGE/compose/" "$(ssh_target "$node"):$REMOTE_ROOT/compose/"
@@ -308,35 +308,7 @@ for node in $TARGETS; do
   rsync -az -e "$rsh" \
     "$STAGE/.env" "$(ssh_target "$node"):$REMOTE_ROOT/.env"
 
-  on_node "$node" "chmod 600 '$REMOTE_ROOT/.env' && mkdir -p '$REMOTE_ROOT/vault' '$REMOTE_ROOT/data' '$REMOTE_ROOT/backup' '$REMOTE_ROOT/certs' '$REMOTE_ROOT/configs'"
-  # API runs as UID 65532; bind-mounted data/ must be writable by that user.
-  on_node "$node" "docker run --rm -v '$REMOTE_ROOT/data:/data' alpine:3.19 \
-    sh -c 'chown -R 65532:65532 /data && chmod 755 /data'"
-
-  # --- Redis config: created once, then owned by Redis ---------------------
-  if [ "$role" = "app-primary" ] || [ "$role" = "app-standby" ]; then
-    : "${REDIS_PASSWORD:?REDIS_PASSWORD must be set to render redis.conf}"
-    if on_node "$node" "test -f '$REMOTE_ROOT/config/redis/redis.conf'"; then
-      log "redis.conf already exists on $node, leaving it alone"
-      log "  (it records the current primary/replica state; failover rewrites it)"
-    else
-      replicaof=""
-      if [ "$role" = "app-standby" ]; then
-        primary_ip="$(node_wg_ip "${PRIMARY_NODE:?PRIMARY_NODE missing from inventory}")"
-        replicaof="replicaof $primary_ip 6379"
-      fi
-      render "$DEPLOY_DIR/config/redis/redis.conf.tpl" "$STAGE/redis.conf" \
-        "REDIS_PASSWORD=$REDIS_PASSWORD" "REPLICAOF=$replicaof"
-      rsync -az -e "$(rsync_rsh "$node")" \
-        "$STAGE/redis.conf" "$(ssh_target "$node"):$REMOTE_ROOT/config/redis/redis.conf"
-      # uid 999 is the redis user in the official image, and it must be able to
-      # rewrite this file during failover. The deploy user is not root, so the
-      # ownership change runs in a throwaway container via the docker socket.
-      on_node "$node" "docker run --rm -v '$REMOTE_ROOT/config/redis':/mnt alpine:3.19 \
-        sh -c 'chown 999:999 /mnt/redis.conf && chmod 640 /mnt/redis.conf'"
-      ok "rendered redis.conf on $node ($([ -n "$replicaof" ] && echo replica || echo primary))"
-    fi
-  fi
+  on_node "$node" "chmod 600 '$REMOTE_ROOT/.env' && mkdir -p '$REMOTE_ROOT/vault' '$REMOTE_ROOT/backup' '$REMOTE_ROOT/certs' '$REMOTE_ROOT/configs'"
 
   ok "$node config synced (DNS=$(dns_provider))"
 done

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,24 +11,21 @@ import (
 
 	"garde/internal/models"
 	"garde/internal/middleware"
-	"garde/internal/repository"
+	"garde/internal/testutil"
 	pkgerrors "garde/pkg/errors"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 )
 
 func newPATTestHandler(t *testing.T) *PATHandler {
 	t.Helper()
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatal(err)
+	repo := testutil.NewTestStore(t)
+	if err := repo.StoreUser(context.Background(), &models.User{
+		ID: "user-1", Email: "pat@example.com", Status: models.UserStatusOk,
+	}); err != nil {
+		t.Fatalf("seed PAT owner: %v", err)
 	}
-	t.Cleanup(mr.Close)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
-	return NewPATHandler(repository.NewRedisRepositoryFromClient(client))
+	return NewPATHandler(repo)
 }
 
 func patRouter(h *PATHandler, withSession bool) *gin.Engine {

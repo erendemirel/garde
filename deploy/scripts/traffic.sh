@@ -6,13 +6,12 @@
 #
 # Provider-neutral: the mechanism is whatever the driver named by PROVIDER in
 # the inventory implements, in the mode TRAFFIC_MODE selects. On netcup and
-# Hetzner that is a floating IP; on AWS and GCP it can instead be the target
-# registered behind a managed load balancer.
+# Hetzner that is a floating IP; on AWS and GCP it can instead be targets
+# registered behind a managed load balancer (active-active: every healthy
+# app node may be registered).
 #
-# This moves traffic and nothing else. It does not fence the old primary or
-# promote Redis, so calling it directly on a live cluster will send requests to
-# a node that is not ready for them. Use failover.sh for a real cutover; this
-# is for the initial setup and for inspection.
+# This only moves or reports edge routing. Shared Redis and PostgreSQL mean
+# every app node can serve; use it for initial registration and inspection.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -31,10 +30,7 @@ case "$ACTION" in
     else
       warn "public traffic is not routed to any known node"
     fi
-    log "inventory says the primary is: ${PRIMARY_NODE:-unset}"
-    if [ -n "$location" ] && [ -n "${PRIMARY_NODE:-}" ] && [ "$location" != "$PRIMARY_NODE" ]; then
-      warn "traffic and the inventory disagree - one of them is stale"
-    fi
+    log "app nodes: $(app_nodes)"
 
     remaining="$(traffic_cooldown_remaining)"
     if [ "$remaining" -gt 0 ]; then
@@ -47,6 +43,7 @@ case "$ACTION" in
   route|assign)
     [ -n "$TARGET_NODE" ] || die "usage: traffic.sh route <node>"
     require_node "$TARGET_NODE"
+    is_app_node "$TARGET_NODE" || die "$TARGET_NODE is not an app node (role=$(node_role "$TARGET_NODE"))"
 
     if [ "$PROVIDER_REQUIRES_IP_BINDING" = "true" ] && [ -n "${FAILOVER_IP:-}" ]; then
       on_node "$TARGET_NODE" "ip -4 -oneline address show | grep -qF '$FAILOVER_IP'" \

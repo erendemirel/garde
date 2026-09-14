@@ -16,10 +16,10 @@
 # better design: no Elastic IP remaps, no ACME on the hosts, and health checks
 # rather than an operator deciding a node is gone.
 #
-# Both modes move traffic deliberately. Even in managed_lb the target group
-# holds exactly one instance, because this is a warm-standby cluster: the
-# standby's Redis is a replica and must not serve writes. Health checks remove
-# a broken node; they do not add the standby on their own.
+# Both modes can serve active-active app nodes (shared Redis + Postgres).
+# managed_lb: Terraform attaches every app instance; health checks remove
+# broken targets. `traffic.sh route <node>` ensures that node is registered
+# without removing other healthy app targets.
 #
 # Credentials: an IAM access key whose policy allows ec2:AssociateAddress,
 # ec2:DescribeAddresses, ec2:DescribeInstances, ec2:StartInstances,
@@ -77,8 +77,7 @@ fi
 # EC2 never puts the public address on the guest interface: the VPC translates
 # the Elastic IP to the instance's private address, and `ip addr` inside the
 # instance shows only the private one. There is nothing for the host to bind,
-# and binding it would be wrong. The bootstrap playbook skips the failover_ip
-# role here.
+# and binding it would be wrong. Hosts do not bind FAILOVER_IP here.
 PROVIDER_REQUIRES_IP_BINDING=false
 
 # EC2 Instance Connect Endpoint: an identity-aware TCP proxy, authorised by IAM,
@@ -151,9 +150,7 @@ _aws_target_group_arn() {
   printf '%s' "${AWS_TARGET_GROUP_ARN:?set AWS_TARGET_GROUP_ARN in the inventory (terraform output target_group_arn)}"
 }
 
-# Instance ids currently registered, one per line. Draining targets are still
-# registered and still listed, which is what we want: a second registration
-# while the old one drains would put two writers behind the balancer.
+# Instance ids currently registered, one per line.
 _aws_registered_targets() {
   _aws elbv2 describe-target-health \
     --target-group-arn "$(_aws_target_group_arn)" \
@@ -161,42 +158,28 @@ _aws_registered_targets() {
 }
 
 _aws_route_via_target_group() {
-  local node="$1" instance_id other other_id registered
+  local node="$1" instance_id
   instance_id="$(node_provider_id "$node")"
   [ -n "$instance_id" ] || die "no provider id configured for $node (set NODE*_PROVIDER_ID to the EC2 instance id)"
+  is_app_node "$node" || die "$node is not an app node — refuse to register a witness behind the ALB"
   provider_preflight
 
-  # Register first, deregister second. The reverse order would empty the target
-  # group for as long as the new target takes to pass its first health check,
-  # and an ALB with no healthy targets answers 503.
+  # Active-active: register without deregistering other app targets. Health
+  # checks decide who receives traffic.
   _aws elbv2 register-targets \
     --target-group-arn "$(_aws_target_group_arn)" \
     --targets "Id=$instance_id" >/dev/null
 
-  registered="$(_aws_registered_targets)"
-  for other in $NODES; do
-    [ "$other" = "$node" ] && continue
-    other_id="$(node_provider_id "$other")"
-    [ -n "$other_id" ] || continue
-    printf '%s\n' "$registered" | grep -qx "$other_id" || continue
-    log "deregistering $other ($other_id) from the target group"
-    _aws elbv2 deregister-targets \
-      --target-group-arn "$(_aws_target_group_arn)" \
-      --targets "Id=$other_id" >/dev/null
-  done
-
   printf '%s\n' "$(_aws_registered_targets)" | grep -qx "$instance_id" \
     || die "AWS accepted the registration but $node ($instance_id) is not in the target group"
 
-  ok "AWS registered $node ($instance_id) as the load balancer target"
+  ok "AWS registered $node ($instance_id) in the load balancer target group"
 }
 
 _aws_target_group_location() {
   provider_preflight
   local instance_id
-  # Healthy first: during a cutover both the new and the draining target are
-  # registered, and the healthy one is the honest answer to "where is traffic
-  # arriving".
+  # Prefer a healthy target; fall back to any registered id.
   instance_id="$(_aws elbv2 describe-target-health \
     --target-group-arn "$(_aws_target_group_arn)" \
     --query 'TargetHealthDescriptions[?TargetHealth.State==`healthy`].Target.Id | [0]')"
@@ -299,15 +282,14 @@ provider_set_power() {
 
   case "$state" in
     off)
-      # --force is deliberate. This verb has exactly one caller, fence.sh, and
-      # it only reaches here when the node is already unreachable over the mesh.
-      # A graceful stop asks the OS to cooperate, and an unresponsive node is
-      # precisely the one that will not; AWS then waits minutes before forcing
-      # it anyway, which is minutes of a possible second writer. --force stops
-      # the instance at the hypervisor, the same choice Pacemaker's fence_aws
-      # agent makes with skip_os_shutdown for the same reason.
+      # --force is deliberate. Callers only reach here when the node should leave
+      # the mesh immediately (unreachable or unsafe to keep writing). A graceful
+      # stop asks the OS to cooperate, and an unresponsive node is precisely the
+      # one that will not; AWS then waits minutes before forcing it anyway.
+      # --force stops the instance at the hypervisor, the same choice Pacemaker's
+      # fence_aws agent makes with skip_os_shutdown for the same reason.
       #
-      # The cost is unflushed writes on the fenced host, which is acceptable:
+      # The cost is unflushed writes on the stopped host, which is acceptable:
       # we are about to promote the other node, and a host we cannot reach is
       # one we could not have flushed anyway.
       _aws ec2 stop-instances --instance-ids "$instance_id" --force >/dev/null

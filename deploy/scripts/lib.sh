@@ -55,8 +55,8 @@ load_inventory() {
   : "${REMOTE_ROOT:?REMOTE_ROOT missing from inventory}"
 
   # The driver decides how the control plane reaches a host, so it has to be
-  # loaded before any SSH happens rather than only before a failover. Loading
-  # costs nothing: credentials are checked when a verb is called, not here.
+  # loaded before any SSH happens. Loading costs nothing: credentials are
+  # checked when a verb is called, not here.
   [ -z "${PROVIDER:-}" ] || load_provider
 }
 
@@ -121,13 +121,27 @@ public_validate() {
   esac
 }
 
-# Resolve a role name (app-primary/app-standby/witness) to a node name.
+# Resolve a role name (app / witness) to the first matching node name.
 node_with_role() {
   local want="$1" node
   for node in $NODES; do
     if [ "$(node_role "$node")" = "$want" ]; then printf '%s' "$node"; return 0; fi
   done
   return 1
+}
+
+# True when the node runs the application stack (active-active app role).
+is_app_node() {
+  [ "$(node_role "$1")" = "app" ]
+}
+
+# Space-separated list of app node names.
+app_nodes() {
+  local node out=""
+  for node in $NODES; do
+    is_app_node "$node" && out="$out $node"
+  done
+  printf '%s' "${out# }"
 }
 
 # --- ssh ------------------------------------------------------------------
@@ -168,9 +182,9 @@ ensure_admin_ssh_config() {
 
     # Multiplexing matters far more here than on a mesh provider. Opening a
     # tunnel costs a round trip to the provider's API and a second or two of
-    # setup, and a failover makes a dozen sequential connections to the same
-    # host - so without this the tunnel setup, not the work, would dominate the
-    # time to recover. Later connections reuse the first one's tunnel.
+    # setup, and a deploy makes many sequential connections to the same host —
+    # so without this the tunnel setup, not the work, would dominate. Later
+    # connections reuse the first one's tunnel.
     #
     # %C is a hash of the connection, which keeps the socket path short enough
     # for the length limit on a Unix socket.

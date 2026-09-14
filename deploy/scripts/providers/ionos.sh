@@ -30,8 +30,8 @@
 # That is why this driver declares PROVIDER_REQUIRES_IP_BINDING=false. Binding
 # the address statically on both app nodes - correct and necessary on the routed
 # providers - would put the same IP on two hosts of the same virtual LAN and
-# risk an ARP conflict that breaks the node actually serving. The bootstrap
-# playbook skips the failover_ip role entirely here.
+# risk an ARP conflict that breaks the node actually serving. Hosts do not
+# bind FAILOVER_IP here.
 
 PROVIDER_NAME="IONOS Cloud"
 PROVIDER_CREDENTIALS="IONOS_TOKEN"

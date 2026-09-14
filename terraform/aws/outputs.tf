@@ -1,5 +1,5 @@
 output "failover_ip" {
-  description = "The Elastic IP. app/api A records point here (see Route 53 resources when dns_zone is set)."
+  description = "Elastic IP for floating_ip mode (app/api A records). Prefer managed_lb aliases for active-active."
   value       = aws_eip.failover.public_ip
 }
 
@@ -23,8 +23,13 @@ output "private_ips" {
   value       = aws_instance.nodes[*].private_ip
 }
 
+output "node_roles" {
+  description = "EC2 Role tags in node order (app / witness)."
+  value       = local.roles
+}
+
 output "ci_access_key_id" {
-  description = "Store as the AWS_ACCESS_KEY_ID secret (compute / failover)."
+  description = "Store as the AWS_ACCESS_KEY_ID secret (compute / tunnel)."
   value       = aws_iam_access_key.ci.id
 }
 
@@ -35,7 +40,7 @@ output "ci_secret_access_key" {
 }
 
 output "acme_access_key_id" {
-  description = "Store as AWS_ACME_ACCESS_KEY_ID (Caddy DNS-01 only). Empty when dns_zone is unset."
+  description = "Store as AWS_ACME_ACCESS_KEY_ID (Caddy DNS-01 only). Empty when dns_zone is unset or managed_lb."
   value       = try(aws_iam_access_key.acme[0].id, null)
 }
 
@@ -53,6 +58,26 @@ output "target_group_arn" {
 output "lb_dns_name" {
   description = "The load balancer's own name. app/api alias records point here; useful for checking the edge before DNS propagates."
   value       = try(aws_lb.main[0].dns_name, null)
+}
+
+output "postgres_endpoint" {
+  description = "RDS address:port. Seed into Vault as POSTGRES_HOST / DATABASE_URL. Null if postgres_password was empty."
+  value       = try("${aws_db_instance.main[0].address}:${aws_db_instance.main[0].port}", null)
+}
+
+output "postgres_db_name" {
+  description = "Initial database name (POSTGRES_DB)."
+  value       = try(aws_db_instance.main[0].db_name, null)
+}
+
+output "redis_primary_endpoint" {
+  description = "ElastiCache primary endpoint. Seed into Vault as redis_host. Null if redis_auth_token was empty."
+  value       = try(aws_elasticache_replication_group.main[0].primary_endpoint_address, null)
+}
+
+output "redis_port" {
+  description = "ElastiCache port (redis_port)."
+  value       = try(aws_elasticache_replication_group.main[0].port, null)
 }
 
 output "vault_kms_key_id" {
@@ -82,6 +107,10 @@ output "inventory_fragment" {
     ${local.lb_inventory_lines}
 
     FAILOVER_IP=${aws_eip.failover.public_ip}
+
+    NODE1_ROLE=${local.roles[0]}
+    NODE2_ROLE=${local.roles[1]}
+    NODE3_ROLE=${local.roles[2]}
 
     NODE1_PROVIDER_ID=${try(aws_instance.nodes[0].id, "")}
     NODE2_PROVIDER_ID=${try(aws_instance.nodes[1].id, "")}

@@ -25,6 +25,10 @@ func seedMFAUser(t *testing.T, s *AuthService, id, email string) (string, *model
 	if err := s.repo.StoreUser(ctx, u); err != nil {
 		t.Fatal(err)
 	}
+	u, err = s.repo.GetUserByID(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	const secret = "JBSWY3DPEHPK3PXP"
 	u.MFAEnabled = true
 	u.MFASecret = secret

@@ -1,38 +1,31 @@
-# The managed-load-balancer lane: an ALB in front of the same three hosts.
+# The managed-load-balancer lane: an ALB in front of the app nodes (active-active).
 #
 # Created only when traffic_mode = "managed_lb". The default, "floating_ip",
-# leaves every resource here at zero and the cluster behaves exactly as before.
+# leaves every resource here at zero.
 #
 # What moves off the hosts in this mode:
 #
 #   public TLS      an ACM certificate on the listener, renewed by AWS. No
-#                   Caddy ACME, no DNS-01 credentials, no warm-standby
-#                   certificate problem to solve.
-#   the address     the ALB owns it. Failover no longer remaps an Elastic IP,
-#                   so there is no window where it belongs to nobody.
-#   liveness        health checks pull a broken node out in seconds rather
-#                   than waiting for an operator to notice.
+#                   Caddy ACME, no DNS-01 credentials on the hosts.
+#   the address     the ALB owns it and spreads traffic across healthy targets.
+#   liveness        health checks pull a broken node out in seconds.
 #
-# What does not change: the cluster is still warm-standby, not active-active.
-# The target group holds one instance at a time because the standby's Redis is
-# a replica. Terraform deliberately creates no target attachments — membership
-# is operational state that failover.sh owns through the provider driver, and
-# a Terraform-managed attachment would fight it on every apply.
+# App nodes are identical and share Redis + PostgreSQL, so the target group
+# registers every app instance. Terraform attaches them; the ALB health check
+# decides which ones receive traffic.
 #
 # Caddy stays on the hosts, listening on plain :80, because the Host-header
 # split between the UI and the API is one rule in one file here and two more
 # target groups plus listener rules there.
 #
-# The Elastic IP is still allocated in this mode, deliberately. It costs cents
-# while unassociated and it is what makes the two modes reversible: switching
-# back is a tfvars change and a traffic.sh route, not a new address and a DNS
-# change waiting out a TTL.
+# The Elastic IP is still allocated in floating_ip mode (and kept in managed_lb
+# for reversibility). Prefer managed_lb on AWS for active-active.
 
 variable "traffic_mode" {
   description = <<-EOT
     floating_ip (default) or managed_lb. floating_ip keeps the Elastic IP that
     every VPS provider's design uses. managed_lb builds the ALB below and is
-    what AWS itself would suggest.
+    the primary AWS path for active-active app nodes.
   EOT
   type        = string
   default     = "floating_ip"
@@ -50,15 +43,15 @@ variable "lb_certificate_arn" {
 }
 
 variable "lb_health_check_path" {
-  description = "Served by Caddy in load-balancer mode and proxied to garde's /health, so an API that cannot reach Redis fails the check."
+  description = "Served by Caddy in load-balancer mode and proxied to garde's /ready, so an API that cannot reach Redis or Postgres fails the check."
   type        = string
   default     = "/healthz"
 }
 
 variable "lb_deregistration_delay" {
-  description = "Seconds an outgoing target keeps draining. Short, because a failover has already fenced it."
+  description = "Seconds an outgoing target keeps draining connections."
   type        = number
-  default     = 15
+  default     = 30
 }
 
 locals {
@@ -101,8 +94,6 @@ resource "aws_acm_certificate" "main" {
   subject_alternative_names = [local.api_fqdn]
   validation_method         = "DNS"
 
-  # The listener references this certificate, so it has to exist before the old
-  # one can go.
   lifecycle {
     create_before_destroy = true
   }
@@ -178,8 +169,7 @@ resource "aws_lb" "main" {
   load_balancer_type = "application"
   internal           = false
   security_groups    = [aws_security_group.lb[0].id]
-  # All three subnets: an ALB needs at least two AZs, and the target may be in
-  # any of them after a failover.
+  # All three subnets: an ALB needs at least two AZs, and app targets may be in any.
   subnets = aws_subnet.nodes[*].id
 
   # Malformed headers are dropped rather than forwarded. The client address
@@ -213,6 +203,16 @@ resource "aws_lb_target_group" "app" {
   }
 
   tags = { Name = "${var.name}-app" }
+}
+
+# Active-active: register every app-role instance. Index 2 is the witness and
+# does not run Caddy, so it stays out of the target group.
+resource "aws_lb_target_group_attachment" "app" {
+  count = local.managed_lb ? length(local.app_instance_indexes) : 0
+
+  target_group_arn = aws_lb_target_group.app[0].arn
+  target_id        = aws_instance.nodes[local.app_instance_indexes[count.index]].id
+  port             = 80
 }
 
 resource "aws_lb_listener" "https" {

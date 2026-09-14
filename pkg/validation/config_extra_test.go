@@ -11,6 +11,11 @@ import (
 
 func validSecrets() map[string]string {
 	return map[string]string{
+		"postgres_host":              "localhost",
+		"postgres_port":              "5432",
+		"postgres_user":              "garde",
+		"postgres_password":          "garde",
+		"postgres_db":                "garde",
 		"redis_host":                 "localhost",
 		"redis_port":                 "6379",
 		"redis_password":             "redis",
@@ -60,6 +65,9 @@ func TestValidateConfigTable(t *testing.T) {
 		wantErr bool
 	}{
 		{"minimal valid", mk(nil), false},
+		{"missing postgres host", mk(nil, "postgres_host"), true},
+		{"missing postgres db", mk(nil, "postgres_db"), true},
+		{"database_url alone is enough", mk(map[string]string{"database_url": "postgres://garde:garde@localhost:5432/garde?sslmode=disable"}, "postgres_host", "postgres_db", "postgres_user", "postgres_password"), false},
 		{"missing redis host", mk(nil, "redis_host"), true},
 		{"missing redis password", mk(nil, "redis_password"), true},
 		{"missing domain", mk(nil, "domain_name"), true},

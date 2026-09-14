@@ -6,12 +6,13 @@
 # Soft-skips when SUPERUSER_* / API_KEY are unset, or when the running image
 # does not yet expose POST /admin/api-keys.
 set -euo pipefail
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ha/lib.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
 ha_boot
 ha_banner "deploy: validate API keys"
 
-TARGET="${PRIMARY_NODE:?PRIMARY_NODE missing from inventory}"
+TARGET="$(app_nodes | awk '{print $1}')"
+[ -n "$TARGET" ] || die "no app node for validate API key checks"
 FAKE_SESSION_ID='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 
 ha_ensure_curl_image

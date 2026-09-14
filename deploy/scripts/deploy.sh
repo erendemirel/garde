@@ -8,13 +8,12 @@
 # Stacks:
 #   vault      Raft member (all nodes)      - rolling, one at a time
 #   metrics    exporters (all nodes)
-#   app        caddy/garde/redis/agent      - app nodes only, standby first
+#   app        caddy/garde/agent            - every app node (active-active)
 #   monitoring prometheus + grafana         - witness only
 #   all        every stack, in a safe order
 #
-# Order matters. Vault members are updated one at a time so quorum survives,
-# and the standby app node is updated before the primary so a bad build is
-# caught on the node that serves no traffic.
+# Order matters. Vault members are updated one at a time so quorum survives.
+# App nodes are identical; a bad build fails health on the first node updated.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -46,17 +45,7 @@ run() {
 nodes_for_stack() {
   case "$1" in
     vault|metrics) printf '%s' "$NODES" ;;
-    app)
-      # Standby first, then primary.
-      local out="" n
-      for n in $NODES; do
-        [ "$(node_role "$n")" = "app-standby" ] && out="$out $n"
-      done
-      for n in $NODES; do
-        [ "$(node_role "$n")" = "app-primary" ] && out="$out $n"
-      done
-      printf '%s' "${out# }"
-      ;;
+    app) app_nodes ;;
     monitoring)
       local n
       for n in $NODES; do
@@ -102,8 +91,6 @@ deploy_vault() {
 
   [ "$DRY_RUN" = "true" ] && return 0
 
-  # A restarted member comes back sealed under Shamir; with awskms it should
-  # auto-unseal via KMS. Wait briefly, but do not block the deploy.
   if retry_until 15 4 on_node "$node" \
       "docker exec garde-vault vault status >/dev/null 2>&1"; then
     ok "$node vault is unsealed and serving"
@@ -140,11 +127,11 @@ deploy_app() {
   [ "$DRY_RUN" = "true" ] && return 0
 
   if retry_until 20 5 on_node "$node" \
-      "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/health"; then
-    ok "$node garde is healthy"
+      "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready"; then
+    ok "$node garde is ready"
   else
     on_node "$node" "cd '$REMOTE_ROOT' && docker compose -f compose/app.yml -p garde-app logs --tail 40 garde" || true
-    die "$node garde did not become healthy"
+    die "$node garde did not become ready"
   fi
 }
 

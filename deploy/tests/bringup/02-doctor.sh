@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Impact: none — live doctor stages against inventory (read-only probes).
 set -euo pipefail
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ha/lib.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
 ha_banner "bringup: doctor.sh (non-strict + strict)"
 

@@ -10,24 +10,15 @@ import (
 	"time"
 
 	"garde/internal/models"
-	"garde/internal/repository"
+	"garde/internal/testutil"
 	pkgerrors "garde/pkg/errors"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 )
 
 func newAPIKeyTestHandler(t *testing.T) *APIKeyHandler {
 	t.Helper()
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(mr.Close)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
-	return NewAPIKeyHandler(repository.NewRedisRepositoryFromClient(client))
+	return NewAPIKeyHandler(testutil.NewTestStore(t))
 }
 
 // apiKeyRouter mounts the routes with a superuser already in context, since

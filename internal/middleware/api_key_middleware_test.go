@@ -11,12 +11,11 @@ import (
 
 	"garde/internal/models"
 	"garde/internal/repository"
+	"garde/internal/testutil"
 	"garde/pkg/config"
 	"garde/pkg/crypto"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 )
 
 const legacyTestKey = "TestApiKey123!TestApiKey123!"
@@ -34,14 +33,7 @@ func withLegacyKey(t *testing.T, value string) {
 
 func newKeyRepo(t *testing.T) *repository.RedisRepository {
 	t.Helper()
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis: %v", err)
-	}
-	t.Cleanup(mr.Close)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
-	return repository.NewRedisRepositoryFromClient(client)
+	return testutil.NewTestStore(t)
 }
 
 // issueKey mints a real key through the same path the admin handler uses and

@@ -541,8 +541,8 @@ Authorization: Bearer bccf1b28-fd...
 ```
 
 Important Notes:
-- Setup must be completed within 5 minutes (temp secret TTL)
-- Temporary and confirmed MFA secrets are stored **encrypted at rest** in Redis (`temp_mfa:{id}` / `user_mfa:{id}`) using AES-256-GCM (`MFA_ENCRYPTION_KEY`, or a key derived from `API_KEY` if unset)
+- Setup must be completed within 5 minutes (temp secret TTL in Redis)
+- Temporary MFA secrets live in Redis (`temp_mfa:{id}`, short TTL). Confirmed MFA secrets are stored **encrypted at rest in PostgreSQL** using AES-256-GCM (`MFA_ENCRYPTION_KEY`, or a key derived from `API_KEY` if unset)
 - If MFA is enforced but not set up:
   - Login succeeds without MFA code
   - All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, and `/logout` return 403
@@ -561,7 +561,7 @@ Authorization: Bearer bccf1b28-fd...
 Notes:
 - Cannot disable if MFA is enforced (`mfa_enforced=true`)
 - Requires valid MFA code verification
-- MFA secret is removed from the encrypted Redis key (`user_mfa:{id}`)
+- Encrypted MFA secret is cleared on the user row in PostgreSQL
 
 ### 5. Permission and Group Management
 
@@ -573,16 +573,16 @@ garde uses **four layers**. Mixing them up is the usual source of confusion:
 |-------|------------|----------------|---------|
 | **Privilege tier** | Superuser / Admin / User | Email lists in Vault (`SUPERUSER_EMAIL`, `ADMIN_USERS_JSON`) | Bootstrap administration (who can manage users, permissions catalog, etc.) |
 | **Scopes** | Named operations one credential or admin may perform | Compiled-in vocabulary; granted per admin in Vault (`ADMIN_SCOPES_JSON`) and per key on the API key record | Narrow *which endpoints* a caller may reach |
-| **Groups** | Named membership sets | SQLite `groups` + per-user `groups` map in Redis | Scope *which users an admin may manage* and *which permissions are visible* |
-| **Permissions** | Named boolean flags on a user | SQLite catalog + per-user `permissions` map in Redis | Application-level access rights your services interpret |
+| **Groups** | Named membership sets | PostgreSQL `groups` catalog + per-user membership on the user row | Scope *which users an admin may manage* and *which permissions are visible* |
+| **Permissions** | Named boolean flags on a user | PostgreSQL `permissions` catalog + per-user flags on the user row | Application-level access rights your services interpret |
 
 Scopes and permissions sound alike and are opposites. garde **enforces** scopes: a missing scope is a `403` from middleware, before the handler runs. garde only **stores** permissions — it never acts on them, and what they mean is up to the services that read them. Admin scopes carry a `garde:` prefix so the enforced set stays visibly distinct on a principal that holds both.
 
 Scopes also say nothing about *whose* records a call may touch. `garde:users:read` gets an admin past the door of the list-users endpoint; group sharing then decides which users come back. Privilege tier is not an app permission; app permissions are not roles.
 
 **Storage split:**
-- Redis: each user's enabled permissions/groups, sessions, password hash (`user_password:{id}`), encrypted MFA secret (`user_mfa:{id}`)
-- SQLite (`data/permissions.db`): permission/group definitions and `permission_visibility` mappings
+- **PostgreSQL** (durable): users, password hashes, encrypted MFA secrets/flags, per-user permissions/groups, pending permission requests, permission/group catalog, `permission_visibility`, PATs, tenant API keys
+- **Redis** (ephemeral): sessions, session blacklist, rate limits, OTPs, temporary MFA setup, short-lived security counters/lists, locks
 
 **Core rules:**
 - Admins can ONLY manage users who share at least one group with them (no exceptions for regular admins)
@@ -615,15 +615,15 @@ Scopes also say nothing about *whose* records a call may touch. `garde:users:rea
 2. Superuser puts admin Alice in `engineering`, user Bob in `engineering`.
 3. Bob calls `POST /users/request-update-from-admin` asking to add `deploy_app` (visible to his group). He cannot request `read_invoices` (not visible to `engineering`).
 4. Alice lists Bob via admin APIs (shared group `engineering`), sees the pending request, and approves with `PUT /users/:id`. She cannot grant `read_invoices` because it is not visible to her groups.
-5. Bob's Redis user record now has `permissions.deploy_app = true`. Downstream services call `/validate` (or read `/users/me`) and enforce that flag.
+5. Bob's user record in PostgreSQL now has `permissions.deploy_app = true`. Downstream services call `/validate` (or read `/users/me`) and enforce that flag.
 
 #### B. Permissions
-Permissions are stored in SQLite database with the following structure:
+Permissions are stored in PostgreSQL with the following structure:
 
 **Database Schema:**
-- `permissions` table: `id` (INTEGER PRIMARY KEY), `name` (TEXT UNIQUE), `definition` (TEXT)
-- `groups` table: `id` (INTEGER PRIMARY KEY), `name` (TEXT UNIQUE), `definition` (TEXT)
-- `permission_visibility` table: `permission_id` (INTEGER), `group_id` (INTEGER), PRIMARY KEY (permission_id, group_id)
+- `permissions` table: `id` (BIGSERIAL PRIMARY KEY), `name` (TEXT UNIQUE), `definition` (TEXT)
+- `groups` table: `id` (BIGSERIAL PRIMARY KEY), `name` (TEXT UNIQUE), `definition` (TEXT)
+- `permission_visibility` table: `permission_id` (BIGINT), `group_id` (BIGINT), PRIMARY KEY (permission_id, group_id)
 
 **Permission Visibility:**
 - A permission is visible to a group if there's an entry in `permission_visibility` linking them
@@ -639,7 +639,7 @@ Permissions are stored in SQLite database with the following structure:
 - Superuser operations remain unaffected by permissions system state
 
 #### C. Groups
-Groups are stored in SQLite database:
+Groups are stored in PostgreSQL:
 
 **Group Characteristics:**
 - Each group has a unique identifier (name)
@@ -881,7 +881,7 @@ Response shows only users in shared groups:
 
 #### F. Superuser-Only Permission and Group Management
 
-Superusers have exclusive access to manage the permission and group system stored in SQLite database. These endpoints allow creating, updating, and deleting permissions, groups, and permission visibility mappings.
+Superusers have exclusive access to manage the permission and group system stored in PostgreSQL. These endpoints allow creating, updating, and deleting permissions, groups, and permission visibility mappings.
 
 **Permission Management:**
 

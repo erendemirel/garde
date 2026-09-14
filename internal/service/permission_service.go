@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"garde/internal/models"
 	"garde/internal/repository"
 	"log/slog"
@@ -14,10 +15,11 @@ var (
 	permRepoErr  error
 )
 
-// This should be called once at application startup
-func InitPermissionRepository() error {
+// InitPermissionRepository installs the permission catalogue on the pool the
+// Store already opened. Call it once at application startup.
+func InitPermissionRepository(db *sql.DB) error {
 	permRepoOnce.Do(func() {
-		permRepo, permRepoErr = repository.GetPermissionRepository()
+		permRepo, permRepoErr = repository.InitPermissionRepository(db)
 		if permRepoErr != nil {
 			slog.Error("Failed to initialize permission repository", "error", permRepoErr)
 		} else {

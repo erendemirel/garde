@@ -14,9 +14,6 @@
   ansible.posix.authorized_key:
     user: "{{ deploy_user }}"
     key: "{{ lookup('file', deploy_pubkey_file) }}"
-    # Not exclusive: the snapshot role adds node-to-node keys for the same
-    # user, and an exclusive block here would delete them on every run and
-    # re-add them moments later. Stale keys therefore need removing by hand.
     exclusive: false
   when: deploy_pubkey_file is defined
 
@@ -42,16 +39,6 @@
     - "{{ remote_root }}/certs"
     - "{{ remote_root }}/configs"
     - "{{ remote_root }}/scripts"
-
-- name: Create the API data directory (UID matches Dockerfile nonroot)
-  # Bind-mounted as /app/data. The API process is USER 65532:65532; leaving this
-  # owned by deploy (0755) makes permissions.db creation and WAL files fail.
-  ansible.builtin.file:
-    path: "{{ remote_root }}/data"
-    state: directory
-    owner: "65532"
-    group: "65532"
-    mode: "0755"
 
 - name: Create the Vault credential directory
   # role-id and secret-id are written here by vault-cluster-init.sh (mode 600).

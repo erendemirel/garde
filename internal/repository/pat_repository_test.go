@@ -9,8 +9,20 @@ import (
 	"garde/pkg/crypto"
 )
 
+func newPATRepo(t *testing.T) *RedisRepository {
+	t.Helper()
+	repo := newDurableStore(t)
+	ctx := context.Background()
+	if err := repo.StoreUser(ctx, &models.User{
+		ID: "user-1", Email: "pat-owner@example.com", Status: models.UserStatusOk,
+	}); err != nil {
+		t.Fatalf("seed PAT owner: %v", err)
+	}
+	return repo
+}
+
 func TestPATStoreListRevoke(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newPATRepo(t)
 	ctx := context.Background()
 
 	_, id, hash, err := crypto.GeneratePAT()
@@ -79,7 +91,7 @@ func TestPATStoreListRevoke(t *testing.T) {
 
 // Issue/revoke cycles must not permanently fill MaxPATsPerUser.
 func TestPATCountIgnoresRevokedAfterCycles(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newPATRepo(t)
 	ctx := context.Background()
 
 	for i := 0; i < models.MaxPATsPerUser+3; i++ {

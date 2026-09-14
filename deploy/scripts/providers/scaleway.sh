@@ -40,8 +40,7 @@ PROVIDER_TRAFFIC_PROPAGATION_SECONDS=30
 # So the address is delivered, not merely routed, and this driver declares
 # false. Binding it statically on both app nodes would fight that agent: it
 # deconfigures the address on detach, and a static binding would put the same IP
-# on the node that no longer owns it. The bootstrap playbook skips the
-# failover_ip role here.
+# on the node that no longer owns it. Hosts do not bind FAILOVER_IP here.
 #
 # If you disable scw-net-reconfig, or run an image predating it, flip this to
 # true and re-run the playbook.

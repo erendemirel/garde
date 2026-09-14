@@ -26,8 +26,8 @@
 #   PROVIDER_TRAFFIC_PROPAGATION_SECONDS   how long a move takes to take effect
 #   PROVIDER_REQUIRES_IP_BINDING           must the host configure the address?
 #
-# Because those are data, failover.sh contains no provider conditionals at all:
-# a provider with no cooldown declares 0 and the same wait logic does nothing.
+# Because those are data, traffic routing contains no provider conditionals at
+# the call site: a provider with no cooldown declares 0 and the wait does nothing.
 #
 # Two further facts have defaults, so a driver declares them only if it differs.
 # Both describe how the *control plane* reaches a host, which turned out to vary
@@ -59,19 +59,18 @@
 #
 #   PROVIDER_TRAFFIC_MODES   floating_ip [managed_lb]   default: floating_ip
 #
-# `floating_ip` is the original model: one address, moved between hosts, and
-# the standby serves the instant it lands. Every VPS provider works this way.
+# `floating_ip` is the original model: one address, moved between hosts.
+# Every VPS provider works this way.
 #
 # `managed_lb` exists because AWS and GCP answer this problem natively with a
-# load balancer in front of instances, and forcing the floating-IP shape onto
-# them costs real machinery - hosts with no public address, tunnels, staged
-# images - for a worse result. In that mode the balancer holds the public
-# address and the certificate, and "route traffic to this node" means "make
-# this node the registered target".
+# load balancer in front of instances. In that mode the balancer holds the
+# public address and the certificate, and "route traffic to this node" means
+# register (or ensure) that node as a healthy target — active-active may keep
+# several app nodes registered.
 #
 # The mode is chosen by TRAFFIC_MODE in the inventory, and the verbs do not
-# change: traffic.sh and failover.sh call provider_route_traffic_to either way.
-# Only the driver knows which mechanism is behind it.
+# change: traffic.sh calls provider_route_traffic_to either way. Only the
+# driver knows which mechanism is behind it.
 PROVIDER_TRAFFIC_MODES_DEFAULT="floating_ip"
 
 PROVIDER_ADMIN_ACCESS_DEFAULT="mesh"
@@ -83,10 +82,8 @@ PROVIDER_IMAGE_TRANSPORT_DEFAULT="ssh"
 # it. Empty on mesh providers, where the mesh rule already covers SSH.
 PROVIDER_ADMIN_SSH_SOURCES_DEFAULT=""
 #
-# Policy stays here and in the callers, never in a driver. Ordering, fencing,
-# verification and the cooldown wait are identical whoever the host is; a driver
-# that made those decisions would give you subtly different failover behaviour
-# per provider, discoverable only during an incident.
+# Policy stays here and in the callers, never in a driver. Cooldown and
+# verification are identical whoever the host is.
 
 PROVIDER_DIR="$DEPLOY_DIR/scripts/providers"
 TRAFFIC_STATE_FILE="${TRAFFIC_STATE_FILE:-$DEPLOY_DIR/.traffic-last-move}"

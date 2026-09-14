@@ -1,6 +1,7 @@
-# Provisions the AWS side of a garde cluster: three hosts, the failover address,
-# the tunnel the control plane arrives through, the bucket images are staged
-# in, and (when dns_zone is set) Route 53 A records plus an ACME IAM user.
+# Provisions the AWS side of a garde cluster: three hosts, the public edge
+# address (Elastic IP when using floating_ip traffic), the tunnel the control
+# plane arrives through, the bucket images are staged in, and (when dns_zone
+# is set) Route 53 A records plus an ACME IAM user.
 # Everything above the operating system is Ansible's job, not this module's.
 #
 #   cd terraform/aws

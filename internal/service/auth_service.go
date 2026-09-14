@@ -70,9 +70,8 @@ func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) 
 		user.Permissions = AdminPermissions()
 		user.UpdatedAt = time.Now()
 		if err := repo.StoreUser(ctx, user); err != nil {
-			// App-standby talks to a Redis replica: reads succeed, writes do not.
-			// Primary already owns bootstrap; skipping the refresh is fine.
-			slog.Warn("Superuser refresh skipped (redis may be read-only)", "error", err)
+			// Another node may already own bootstrap; skipping the refresh is fine.
+			slog.Warn("Superuser refresh skipped; bootstrap write failed; another node may have won", "error", err)
 			return nil
 		}
 		slog.Info("Superuser refreshed from secrets")
@@ -95,7 +94,7 @@ func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) 
 
 	if err := repo.StoreUser(ctx, user); err != nil {
 		if existing, getErr := repo.GetUserByEmail(ctx, email); getErr == nil && existing != nil {
-			slog.Warn("Superuser create skipped; already present (likely redis replica)", "error", err)
+			slog.Warn("Superuser create skipped; bootstrap write failed; another node may have won", "error", err)
 			return nil
 		}
 		return fmt.Errorf("superuser init failed: %w", err)
@@ -136,7 +135,7 @@ func InitializeAdminUsers(ctx context.Context, repo *repository.RedisRepository)
 			}
 			user.UpdatedAt = time.Now()
 			if err := repo.StoreUser(ctx, user); err != nil {
-				slog.Warn("Admin refresh skipped (redis may be read-only)", "email", email, "error", err)
+				slog.Warn("Admin refresh skipped; bootstrap write failed; another node may have won", "email", email, "error", err)
 				continue
 			}
 			continue
@@ -158,7 +157,7 @@ func InitializeAdminUsers(ctx context.Context, repo *repository.RedisRepository)
 
 		if err := repo.StoreUser(ctx, user); err != nil {
 			if existing, getErr := repo.GetUserByEmail(ctx, email); getErr == nil && existing != nil {
-				slog.Warn("Admin create skipped; already present (likely redis replica)", "email", email, "error", err)
+				slog.Warn("Admin create skipped; bootstrap write failed; another node may have won", "email", email, "error", err)
 				continue
 			}
 			return fmt.Errorf("admin init failed: %w", err)
@@ -177,10 +176,10 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		isBlocked, err := s.repo.IsIPBlocked(ctx, ip)
 		if err != nil {
 			slog.Warn("Failed to check IP block status", "error", err)
-			return nil, fmt.Errorf(errors.ErrOperationFailed)
+			return nil, fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 		if isBlocked {
-			return nil, fmt.Errorf(errors.ErrAccessRestricted)
+			return nil, fmt.Errorf("%s", errors.ErrAccessRestricted)
 		}
 	}
 
@@ -190,20 +189,20 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		slog.Debug("User lookup failed during login", "email", req.Email, "error", err)
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
 	// Locked / pending / unknown all look the same to callers (anti-enumeration).
 	if user.Status == models.UserStatusLockedByAdmin || user.Status == models.UserStatusLockedBySecurity {
 		slog.Info("Login attempt by locked user", "email", req.Email, "status", user.Status)
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 	if user.Status == models.UserStatusPendingApproval || user.Status == models.UserStatusApprovalRejected {
 		slog.Info("Login attempt by unapproved user", "email", req.Email, "status", user.Status)
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 	if user.Status != models.UserStatusOk {
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
 	// Global MFA enforcement by config
@@ -226,39 +225,39 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 			for _, pattern := range patterns {
 				s.securityAnalyzer.RecordPattern(ctx, user.ID, pattern, ip, userAgent)
 			}
-			return nil, fmt.Errorf(errors.ErrAuthFailed)
+			return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 		}
 	}
 
 	valid, err := crypto.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 	if !valid {
 		if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
 	// Check MFA requirement - only require code if MFA is actually set up
 	// If MFA is enforced but not yet enabled, allow login and force setup later
 	if user.MFAEnabled {
 		if req.MFACode == "" {
-			return nil, fmt.Errorf(errors.ErrMFARequired)
+			return nil, fmt.Errorf("%s", errors.ErrMFARequired)
 		}
 		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
 			if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
 				return nil, err
 			}
-			return nil, fmt.Errorf(errors.ErrInvalidMFACode)
+			return nil, fmt.Errorf("%s", errors.ErrInvalidMFACode)
 		}
 	}
 
 	// Generate session
 	sessionID, err := session.GenerateSessionID()
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
 	sessionData := &session.SessionData{
@@ -269,7 +268,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	}
 
 	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, session.SessionDuration); err != nil {
-		return nil, fmt.Errorf(errors.ErrAuthFailed)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
 	// Successful auth resets lockout counters for this email/IP.
@@ -292,7 +291,7 @@ func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
 	// Get user info before deleting session
 	sessionData, err := s.repo.GetSessionData(ctx, sessionID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrAuthFailed)
+		return fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
 	// Delete session
@@ -301,7 +300,7 @@ func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
 		// If deletion fails, add to blacklist as fallback
 		blacklistErr := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration)
 		if blacklistErr != nil {
-			return fmt.Errorf(errors.ErrAuthFailed)
+			return fmt.Errorf("%s", errors.ErrAuthFailed)
 		}
 		// Log that we fell back to blacklisting
 		slog.Warn("Session deletion failed, added to blacklist", "error", err, "session_id", sessionID)
@@ -449,7 +448,7 @@ func (s *AuthService) recordFailedAuth(ctx context.Context, user *models.User, e
 	failedAttempts, err := s.repo.RecordFailedLogin(ctx, email, ip)
 	if err != nil {
 		slog.Warn("Failed to record failed login", "error", err)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	if !config.GetBool("DISABLE_IP_BLACKLISTING") && failedAttempts >= session.FailedLoginThreshold {
@@ -459,7 +458,7 @@ func (s *AuthService) recordFailedAuth(ctx context.Context, user *models.User, e
 		if storeErr := s.repo.StoreUser(ctx, user); storeErr != nil {
 			slog.Warn("Failed to lock user after failed auth threshold", "error", storeErr, "email", email)
 		}
-		return fmt.Errorf(errors.ErrAccessRestricted)
+		return fmt.Errorf("%s", errors.ErrAccessRestricted)
 	}
 	return nil
 }
@@ -493,13 +492,13 @@ func (s *AuthService) SetupMFA(ctx context.Context, userIDOrEmail string) (*mode
 		// If not found by ID, try email (for unauthenticated requests)
 		user, err = s.repo.GetUserByEmail(ctx, userIDOrEmail)
 		if err != nil {
-			return nil, fmt.Errorf(errors.ErrMFASetupFailed)
+			return nil, fmt.Errorf("%s", errors.ErrMFASetupFailed)
 		}
 	}
 
 	// Block if MFA is already enabled and verified
 	if user.MFAEnabled {
-		return nil, fmt.Errorf(errors.ErrMFAAlreadyEnabled)
+		return nil, fmt.Errorf("%s", errors.ErrMFAAlreadyEnabled)
 	}
 
 	// Check if user is allowed to setup MFA without auth
@@ -507,19 +506,19 @@ func (s *AuthService) SetupMFA(ctx context.Context, userIDOrEmail string) (*mode
 	if !needsSetup {
 		// If doesn't need setup, ensure request is authenticated
 		if _, err := s.repo.GetUserByID(ctx, userIDOrEmail); err != nil {
-			return nil, fmt.Errorf(errors.ErrUnauthorized)
+			return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
 		}
 	}
 
 	// Generate new secret
 	key, err := mfa.GenerateSecret(user.Email)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrMFASetupFailed)
+		return nil, fmt.Errorf("%s", errors.ErrMFASetupFailed)
 	}
 
 	// Store secret temporarily with TTL
 	if err := s.repo.StoreTempMFASecret(ctx, user.ID, key.Secret); err != nil {
-		return nil, fmt.Errorf(errors.ErrMFASetupFailed)
+		return nil, fmt.Errorf("%s", errors.ErrMFASetupFailed)
 	}
 
 	return &models.MFAResponse{
@@ -531,18 +530,18 @@ func (s *AuthService) SetupMFA(ctx context.Context, userIDOrEmail string) (*mode
 func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, code string) error {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrMFAVerificationFailed)
+		return fmt.Errorf("%s", errors.ErrMFAVerificationFailed)
 	}
 
 	// Get temporary secret
 	tempSecret, err := s.repo.GetTempMFASecret(ctx, user.ID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrMFAVerificationFailed)
+		return fmt.Errorf("%s", errors.ErrMFAVerificationFailed)
 	}
 
 	// Verify code using temporary secret
 	if !mfa.ValidateCode(tempSecret, code) {
-		return fmt.Errorf(errors.ErrInvalidMFACode)
+		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 	}
 
 	// If verification successful, save secret to user and enable MFA
@@ -552,12 +551,12 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 
 	// Save user first
 	if err := s.repo.StoreUser(ctx, user); err != nil {
-		return fmt.Errorf(errors.ErrMFAVerificationFailed)
+		return fmt.Errorf("%s", errors.ErrMFAVerificationFailed)
 	}
 
 	// Then delete temp secret
 	if err := s.repo.DeleteTempMFASecret(ctx, user.ID); err != nil {
-		return fmt.Errorf(errors.ErrMFAVerificationFailed)
+		return fmt.Errorf("%s", errors.ErrMFAVerificationFailed)
 	}
 
 	return nil
@@ -568,7 +567,7 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 
 	// Block public creation of the configured superuser; it is bootstrapped at startup
 	if isSuperuserEmail(req.Email) {
-		return nil, fmt.Errorf(errors.ErrUnauthorized)
+		return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Block public creation of configured admin users; they are initialized from secrets.
@@ -585,12 +584,12 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 
 	// Password is required for new users
 	if req.Password == "" {
-		return nil, fmt.Errorf(errors.ErrInvalidRequest)
+		return nil, fmt.Errorf("%s", errors.ErrInvalidRequest)
 	}
 
 	hashedPassword, err := crypto.HashPassword(req.Password)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrUserCreationFailed)
+		return nil, fmt.Errorf("%s", errors.ErrUserCreationFailed)
 	}
 
 	// Check if MFA is enforced globally
@@ -614,7 +613,7 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		if stderrors.Is(err, repository.ErrEmailAlreadyExists) {
 			return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
 		}
-		return nil, fmt.Errorf(errors.ErrUserCreationFailed)
+		return nil, fmt.Errorf("%s", errors.ErrUserCreationFailed)
 	}
 
 	return &models.CreateUserResponse{
@@ -627,19 +626,19 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
 		slog.Warn("Failed to get admin user by ID", "error", err, "admin_id", adminID)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// Get the target user
 	targetUser, err := s.repo.GetUserByID(ctx, targetUserID)
 	if err != nil {
 		slog.Warn("Failed to get target user by ID", "error", err, "target_user_id", targetUserID)
-		return fmt.Errorf(errors.ErrUserNotFound)
+		return fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Only superuser can modify superuser
 	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// An admin may not modify their own record. Permissions and groups are set
@@ -656,26 +655,26 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	// one superuser.
 	if !isSuperUser && adminID == targetUserID {
 		slog.Debug("Unauthorized update attempt", "reason", "admin targeted their own record", "admin_id", adminID)
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Check if admin has permission to modify this user
 	if !isSuperUser && !isAdmin {
 		slog.Debug("Unauthorized update attempt", "reason", "user is neither superuser nor admin", "admin_id", adminID)
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Check if groups system is loaded for admin operations
 	// Superusers are exempt from group sharing checks
 	if !isSuperUser && isAdmin {
 		if !IsGroupsLoaded() {
-			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 
 		// Admin must share at least one group with target user (no "claiming" allowed)
 		if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
 			slog.Debug("Unauthorized update attempt", "reason", "admin doesn't share groups with target user", "admin_id", adminID, "target_user_id", targetUserID)
-			return fmt.Errorf(errors.ErrUnauthorized)
+			return fmt.Errorf("%s", errors.ErrUnauthorized)
 		}
 
 		// If updating groups, check if admin is in the groups they're trying to ADD (not already present)
@@ -685,7 +684,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 				// If user is already in the group, admin can keep them there
 				isNewGroup := enabled && !targetUser.Groups[group]
 				if isNewGroup && !admin.Groups[group] {
-					return fmt.Errorf(errors.ErrUnauthorized)
+					return fmt.Errorf("%s", errors.ErrUnauthorized)
 				}
 			}
 		}
@@ -714,7 +713,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			// Safeguard: Prevent removing all permissions
 			if len(targetUser.PendingUpdates.Fields.PermissionsRemove) > 0 {
 				if !IsPermissionsLoaded() {
-					return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+					return fmt.Errorf("%s", errors.ErrPermissionsNotLoaded)
 				}
 				// Count how many permissions user currently has
 				currentCount := 0
@@ -728,14 +727,14 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 				finalCount := currentCount - len(targetUser.PendingUpdates.Fields.PermissionsRemove) + len(targetUser.PendingUpdates.Fields.PermissionsAdd)
 				if finalCount <= 0 {
 					slog.Warn("Update request rejected: would remove all permissions", "user_id", targetUserID)
-					return fmt.Errorf(errors.ErrCannotRemoveAllPermissions)
+					return fmt.Errorf("%s", errors.ErrCannotRemoveAllPermissions)
 				}
 			}
 
 			// Safeguard: Prevent removing all groups
 			if len(targetUser.PendingUpdates.Fields.GroupsRemove) > 0 {
 				if !IsGroupsLoaded() {
-					return fmt.Errorf(errors.ErrGroupsNotLoaded)
+					return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 				}
 				// Count how many groups user currently has
 				currentCount := 0
@@ -749,14 +748,14 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 				finalCount := currentCount - len(targetUser.PendingUpdates.Fields.GroupsRemove) + len(targetUser.PendingUpdates.Fields.GroupsAdd)
 				if finalCount <= 0 {
 					slog.Warn("Update request rejected: would remove all groups", "user_id", targetUserID)
-					return fmt.Errorf(errors.ErrCannotRemoveAllGroups)
+					return fmt.Errorf("%s", errors.ErrCannotRemoveAllGroups)
 				}
 			}
 
 			// Apply permission changes
 			if len(targetUser.PendingUpdates.Fields.PermissionsAdd) > 0 || len(targetUser.PendingUpdates.Fields.PermissionsRemove) > 0 {
 				if !IsPermissionsLoaded() {
-					return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+					return fmt.Errorf("%s", errors.ErrPermissionsNotLoaded)
 				}
 
 				// For non-superuser admins: verify admin can see all permissions they're approving
@@ -769,7 +768,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 						}
 						if len(adminGroupNames) > 0 && !IsPermissionVisibleToGroups(string(perm), adminGroupNames) {
 							slog.Warn("Admin attempted to approve adding permission they cannot see", "admin_id", adminID, "permission", perm, "user_id", targetUserID)
-							return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
+							return fmt.Errorf("%s: %s", errors.ErrInvalidPermissionRequested, string(perm))
 						}
 					}
 				}
@@ -791,7 +790,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			// Apply group changes
 			if len(targetUser.PendingUpdates.Fields.GroupsAdd) > 0 || len(targetUser.PendingUpdates.Fields.GroupsRemove) > 0 {
 				if !IsGroupsLoaded() {
-					return fmt.Errorf(errors.ErrGroupsNotLoaded)
+					return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 				}
 
 				// For non-superuser admins: verify admin is in all groups they're trying to add
@@ -850,7 +849,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			// Get all active sessions
 			sessions, err := s.repo.GetUserActiveSessions(ctx, targetUser.ID)
 			if err != nil {
-				return fmt.Errorf(errors.ErrOperationFailed)
+				return fmt.Errorf("%s", errors.ErrOperationFailed)
 			}
 
 			// Blacklist and delete each session
@@ -871,13 +870,13 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	if req.Permissions != nil {
 		if !IsPermissionsLoaded() {
-			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrPermissionsNotLoaded)
 		}
 		// Validate all permissions exist
 		for perm := range *req.Permissions {
 			if !IsValidPermission(perm) {
 				slog.Info("Invalid permission in update request", "permission", perm)
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
+				return fmt.Errorf("%s: %s", errors.ErrInvalidPermissionRequested, string(perm))
 			}
 		}
 		// For non-superuser admins: also check visibility - can only grant permissions they can see
@@ -886,7 +885,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			for perm, enabled := range *req.Permissions {
 				if enabled && len(adminGroupNames) > 0 && !IsPermissionVisibleToGroups(string(perm), adminGroupNames) {
 					slog.Info("Admin attempted to grant permission they cannot see", "admin_id", adminID, "permission", perm, "user_id", targetUserID)
-					return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + string(perm))
+					return fmt.Errorf("%s: %s", errors.ErrInvalidPermissionRequested, string(perm))
 				}
 			}
 		}
@@ -896,13 +895,13 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	// Add support for direct groups updates
 	if req.Groups != nil {
 		if !IsGroupsLoaded() {
-			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 		// Validate all groups exist
 		for group := range *req.Groups {
 			if !IsValidUserGroup(group) {
 				slog.Debug("Invalid group requested in user update", "group", string(group), "admin_id", adminID, "target_user_id", targetUserID)
-				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": " + string(group))
+				return fmt.Errorf("%s: %s", errors.ErrInvalidGroupRequested, string(group))
 			}
 		}
 
@@ -930,7 +929,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		req.RejectUpdate {
 		targetUser.UpdatedAt = time.Now()
 		if err := s.repo.StoreUser(ctx, targetUser); err != nil {
-			return fmt.Errorf(errors.ErrOperationFailed)
+			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 
 		// Record successful update in audit log
@@ -958,27 +957,27 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 	// Get admin user for group checks
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	if admin.MFAEnabled {
 		if mfaCode == "" {
-			return fmt.Errorf(errors.ErrMFARequired)
+			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
 		if !mfa.ValidateCode(admin.MFASecret, mfaCode) {
-			return fmt.Errorf(errors.ErrInvalidMFACode)
+			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 		}
 	}
 
 	// Get target user
 	targetUser, err := s.repo.GetUserByID(ctx, targetUserID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrUserNotFound)
+		return fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Only superuser can revoke superuser's sessions
 	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Superusers can revoke any user's sessions
@@ -986,7 +985,7 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 		// Get all active sessions using existing repository method
 		sessions, err := s.repo.GetUserActiveSessions(ctx, targetUserID)
 		if err != nil {
-			return fmt.Errorf(errors.ErrOperationFailed)
+			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 
 		for _, sessionID := range sessions {
@@ -1005,7 +1004,7 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 		// Get all active sessions using existing repository method
 		sessions, err := s.repo.GetUserActiveSessions(ctx, targetUserID)
 		if err != nil {
-			return fmt.Errorf(errors.ErrOperationFailed)
+			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 
 		for _, sessionID := range sessions {
@@ -1019,45 +1018,45 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 		return nil
 	}
 
-	return fmt.Errorf(errors.ErrUnauthorized)
+	return fmt.Errorf("%s", errors.ErrUnauthorized)
 }
 
 func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUserID string, isSuperUser bool, isAdmin bool) error {
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Get target user
 	targetUser, err := s.repo.GetUserByID(ctx, targetUserID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrUserNotFound)
+		return fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Only superuser can delete superuser
 	if isSuperuserEmail(targetUser.Email) && !isSuperUser {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Prevent self-deletion
 	if adminID == targetUserID {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Check if admin has permission to delete this user
 	if !isSuperUser && !isAdmin {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Superusers are exempt from group sharing checks
 	if !isSuperUser && isAdmin {
 		if !IsGroupsLoaded() {
-			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 
 		// Admin must share at least one group with target user
 		if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
-			return fmt.Errorf(errors.ErrUnauthorized)
+			return fmt.Errorf("%s", errors.ErrUnauthorized)
 		}
 	}
 
@@ -1083,7 +1082,7 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 
 	// Delete user from repository
 	if err := s.repo.DeleteUser(ctx, targetUserID); err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// Record deletion in audit log (using admin's audit log since target user is deleted)
@@ -1103,16 +1102,16 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	// Get user — unknown emails and superuser use the same InvalidOTP path to avoid enumeration.
 	user, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
-		return fmt.Errorf(errors.ErrInvalidOTP)
+		return fmt.Errorf("%s", errors.ErrInvalidOTP)
 	}
 	if isSuperuserEmail(user.Email) {
-		return fmt.Errorf(errors.ErrInvalidOTP)
+		return fmt.Errorf("%s", errors.ErrInvalidOTP)
 	}
 
 	// Verify OTP first and delete it immediately after verification
 	storedOTP, err := s.repo.GetOTP(ctx, user.ID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrInvalidOTP)
+		return fmt.Errorf("%s", errors.ErrInvalidOTP)
 	}
 
 	// Delete OTP regardless of verification outcome
@@ -1122,25 +1121,25 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		// Count only after a real OTP failure (not before verification / not for unknown emails).
 		attempts, trackErr := s.repo.TrackResetAttempt(ctx, user.ID)
 		if trackErr != nil {
-			return fmt.Errorf(errors.ErrOperationFailed)
+			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 		if attempts > maxResetAttempts {
 			user.Status = models.UserStatusLockedBySecurity
 			if err := s.repo.StoreUser(ctx, user); err != nil {
-				return fmt.Errorf(errors.ErrOperationFailed)
+				return fmt.Errorf("%s", errors.ErrOperationFailed)
 			}
-			return fmt.Errorf(errors.ErrTooManyAttempts)
+			return fmt.Errorf("%s", errors.ErrTooManyAttempts)
 		}
-		return fmt.Errorf(errors.ErrInvalidOTP)
+		return fmt.Errorf("%s", errors.ErrInvalidOTP)
 	}
 
 	// Check MFA if enabled
 	if user.MFAEnabled {
 		if req.MFACode == "" {
-			return fmt.Errorf(errors.ErrMFARequired)
+			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
 		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			return fmt.Errorf(errors.ErrInvalidMFACode)
+			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 		}
 	}
 
@@ -1152,7 +1151,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	// All verifications passed, update password
 	hashedPassword, err := crypto.HashPassword(req.NewPassword)
 	if err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// List sessions before mutating the password so a Redis outage cannot leave
@@ -1160,7 +1159,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
 	if err != nil {
 		slog.Error("Failed to get active sessions before password reset", "error", err, "user_id", user.ID)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// Update password; keep existing status so a verified OTP reset does not force re-approval
@@ -1169,7 +1168,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	user.UpdatedAt = time.Now()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	if err := s.revokeAllUserSessions(ctx, user.ID, sessions); err != nil {
@@ -1177,7 +1176,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 	}
 	if err := s.repo.RevokeAllPATsByUser(ctx, user.ID); err != nil {
 		slog.Error("Failed to revoke PATs after password reset", "error", err, "user_id", user.ID)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	return nil
@@ -1186,17 +1185,17 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 func (s *AuthService) DisableMFA(ctx context.Context, userID string, code string) error {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrUserNotFound)
+		return fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Check if MFA is enforced
 	if user.MFAEnforced {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Verify MFA code
 	if !mfa.ValidateCode(user.MFASecret, code) {
-		return fmt.Errorf(errors.ErrInvalidMFACode)
+		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 	}
 
 	// Disable MFA
@@ -1205,7 +1204,7 @@ func (s *AuthService) DisableMFA(ctx context.Context, userID string, code string
 	user.UpdatedAt = time.Now()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	return nil
@@ -1215,34 +1214,34 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	// Get user
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return fmt.Errorf(errors.ErrUserNotFound)
+		return fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Don't allow superuser password change through this endpoint
 	if isSuperuserEmail(user.Email) {
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Verify old password
 	valid, err := crypto.VerifyPassword(req.OldPassword, user.PasswordHash)
 	if err != nil || !valid {
-		return fmt.Errorf(errors.ErrInvalidCredentials)
+		return fmt.Errorf("%s", errors.ErrInvalidCredentials)
 	}
 
 	// If user has MFA enabled, verify MFA code
 	if user.MFAEnabled {
 		if req.MFACode == "" {
-			return fmt.Errorf(errors.ErrMFARequired)
+			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
 		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			return fmt.Errorf(errors.ErrInvalidMFACode)
+			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 		}
 	}
 
 	// Hash and set new password
 	hashedPassword, err := crypto.HashPassword(req.NewPassword)
 	if err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// List sessions before mutating the password so a Redis outage cannot leave
@@ -1250,14 +1249,14 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	sessions, err := s.repo.GetUserActiveSessions(ctx, user.ID)
 	if err != nil {
 		slog.Error("Failed to get active sessions before password change", "error", err, "user_id", user.ID)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	user.PasswordHash = hashedPassword
 	user.UpdatedAt = time.Now()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// Revoke every session, including the caller's — same posture as ResetPassword.
@@ -1269,7 +1268,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	}
 	if err := s.repo.RevokeAllPATsByUser(ctx, user.ID); err != nil {
 		slog.Error("Failed to revoke PATs after password change", "error", err, "user_id", user.ID)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	return nil
@@ -1284,7 +1283,7 @@ func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, 
 		}
 		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
 			slog.Error("Failed to delete session during credential revoke", "error", err, "session_id", sessionID, "user_id", userID)
-			return fmt.Errorf(errors.ErrOperationFailed)
+			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 	}
 	return nil
@@ -1311,7 +1310,7 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 	for i := 0; i < len(otp); {
 		var b [1]byte
 		if _, err := rand.Read(b[:]); err != nil {
-			return fmt.Errorf(errors.ErrOperationFailed)
+			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 		if int(b[0]) >= 256-(256%len(otpAlphabet)) {
 			continue
@@ -1323,12 +1322,12 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 
 	hashedOTP, err := crypto.HashPassword(otpStr)
 	if err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// Store hashed OTP with TTL
 	if err := s.repo.StoreOTP(ctx, user.ID, hashedOTP); err != nil {
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// Send OTP via email — failures are logged only so the endpoint cannot
@@ -1350,7 +1349,7 @@ func (s *AuthService) GetSessionData(ctx context.Context, sessionID string) (*se
 func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*models.UserResponse, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrUserNotFound)
+		return nil, fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Filter permissions by group visibility. Users with no groups must not
@@ -1376,25 +1375,25 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID string) (*model
 func (s *AuthService) ListUsers(ctx context.Context, adminID string, isSuperUser bool, isAdmin bool) ([]models.UserResponse, error) {
 	// Check if user has admin or superuser privileges first
 	if !isSuperUser && !isAdmin {
-		return nil, fmt.Errorf(errors.ErrUnauthorized)
+		return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Get admin user for group checks
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrUnauthorized)
+		return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Check if groups system is loaded for admin operations
 	if isAdmin && !isSuperUser {
 		if !IsGroupsLoaded() {
-			return nil, fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return nil, fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 	}
 
 	users, err := s.repo.GetAllUsers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrOperationFailed)
+		return nil, fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	var response []models.UserResponse
@@ -1448,19 +1447,19 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 
 	// Check if the user is neither a superuser nor an admin
 	if !isSuperUser && !isAdmin {
-		return nil, fmt.Errorf(errors.ErrUnauthorized)
+		return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Get admin user for group checks
 	admin, err := s.repo.GetUserByID(ctx, adminID)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrUnauthorized)
+		return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Get target user
 	targetUser, err := s.repo.GetUserByID(ctx, targetUserID)
 	if err != nil {
-		return nil, fmt.Errorf(errors.ErrUserNotFound)
+		return nil, fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Superusers can see any user
@@ -1484,10 +1483,10 @@ func (s *AuthService) GetUser(ctx context.Context, adminID, targetUserID string,
 	// Check if groups system is loaded for admin operations
 	if isAdmin {
 		if !IsGroupsLoaded() {
-			return nil, fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return nil, fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 		if !models.SharesAnyUserGroup(admin.Groups, targetUser.Groups) {
-			return nil, fmt.Errorf(errors.ErrUnauthorized)
+			return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
 		}
 	}
 
@@ -1525,27 +1524,27 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 
 	if req == nil {
 		slog.Warn("Request update failed", "reason", "request is nil", "user_id", userID)
-		return fmt.Errorf(errors.ErrInvalidRequest)
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
 	}
 
 	// Get current user
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		slog.Warn("Request update failed", "error", err, "user_id", userID)
-		return fmt.Errorf(errors.ErrUserNotFound)
+		return fmt.Errorf("%s", errors.ErrUserNotFound)
 	}
 
 	// Don't allow superuser to request updates
 	if isSuperuserEmail(user.Email) {
 		slog.Info("Superuser attempted to request updates", "user_id", userID)
-		return fmt.Errorf(errors.ErrUnauthorized)
+		return fmt.Errorf("%s", errors.ErrUnauthorized)
 	}
 
 	// Validate that at least one change is requested
 	if len(req.Updates.PermissionsAdd) == 0 && len(req.Updates.PermissionsRemove) == 0 &&
 		len(req.Updates.GroupsAdd) == 0 && len(req.Updates.GroupsRemove) == 0 {
 		slog.Warn("Invalid update request", "reason", "empty permissions and groups", "user_id", userID)
-		return fmt.Errorf(errors.ErrInvalidRequest)
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
 	}
 
 	var userUpdateFields models.UserUpdateFields
@@ -1553,7 +1552,7 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 	// Validate and process permissions
 	if len(req.Updates.PermissionsAdd) > 0 || len(req.Updates.PermissionsRemove) > 0 {
 		if !IsPermissionsLoaded() {
-			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrPermissionsNotLoaded)
 		}
 
 		// Get user's groups for visibility checking
@@ -1564,12 +1563,12 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 			perm := models.Permission(permStr)
 			if !IsValidPermission(perm) {
 				slog.Warn("Invalid permission requested to add", "permission", permStr, "user_id", userID)
-				return fmt.Errorf(errors.ErrInvalidRequest)
+				return fmt.Errorf("%s", errors.ErrInvalidRequest)
 			}
 			// Check visibility - regular users can only request permissions visible to their groups
 			if len(userGroupNames) > 0 && !IsPermissionVisibleToGroups(permStr, userGroupNames) {
 				slog.Warn("User attempted to request permission not visible to their groups", "permission", permStr, "user_id", userID, "groups", userGroupNames)
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + permStr)
+				return fmt.Errorf("%s: %s", errors.ErrInvalidPermissionRequested, permStr)
 			}
 			userUpdateFields.PermissionsAdd = append(userUpdateFields.PermissionsAdd, perm)
 		}
@@ -1578,12 +1577,12 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 			perm := models.Permission(permStr)
 			if !IsValidPermission(perm) {
 				slog.Warn("Invalid permission requested to remove", "permission", permStr, "user_id", userID)
-				return fmt.Errorf(errors.ErrInvalidRequest)
+				return fmt.Errorf("%s", errors.ErrInvalidRequest)
 			}
 			// Users can only remove permissions they currently have
 			if !user.Permissions[perm] {
 				slog.Warn("User attempted to remove permission they don't have", "permission", permStr, "user_id", userID)
-				return fmt.Errorf(errors.ErrInvalidRequest)
+				return fmt.Errorf("%s", errors.ErrInvalidRequest)
 			}
 			userUpdateFields.PermissionsRemove = append(userUpdateFields.PermissionsRemove, perm)
 		}
@@ -1592,14 +1591,14 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 	// Validate and process groups
 	if len(req.Updates.GroupsAdd) > 0 || len(req.Updates.GroupsRemove) > 0 {
 		if !IsGroupsLoaded() {
-			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 		// Validate groups to add
 		for _, groupStr := range req.Updates.GroupsAdd {
 			group := models.UserGroup(groupStr)
 			if !IsValidUserGroup(group) {
 				slog.Warn("Invalid group requested to add", "group", groupStr, "user_id", userID)
-				return fmt.Errorf(errors.ErrInvalidRequest)
+				return fmt.Errorf("%s", errors.ErrInvalidRequest)
 			}
 			userUpdateFields.GroupsAdd = append(userUpdateFields.GroupsAdd, group)
 		}
@@ -1608,7 +1607,7 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 			group := models.UserGroup(groupStr)
 			if !IsValidUserGroup(group) {
 				slog.Warn("Invalid group requested to remove", "group", groupStr, "user_id", userID)
-				return fmt.Errorf(errors.ErrInvalidRequest)
+				return fmt.Errorf("%s", errors.ErrInvalidRequest)
 			}
 			userUpdateFields.GroupsRemove = append(userUpdateFields.GroupsRemove, group)
 		}
@@ -1628,14 +1627,14 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 	// Ensure updates are stored to Redis
 	if err := s.repo.StoreUser(ctx, user); err != nil {
 		slog.Error("Failed to store user update", "error", err, "user_id", userID)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	// Verify the update was saved by retrieving the user again
 	updatedUser, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		slog.Error("Failed to verify user update", "error", err, "user_id", userID)
-		return fmt.Errorf(errors.ErrOperationFailed)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
 	if updatedUser.PendingUpdates == nil {
@@ -1646,7 +1645,7 @@ func (s *AuthService) RequestUpdate(ctx context.Context, userID string, req *mod
 		updatedUser.UpdatedAt = time.Now()
 		if err := s.repo.StoreUser(ctx, updatedUser); err != nil {
 			slog.Error("Failed in retry storing user update", "error", err, "user_id", userID)
-			return fmt.Errorf(errors.ErrOperationFailed)
+			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 	}
 

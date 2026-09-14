@@ -6,16 +6,19 @@ import (
 	"time"
 
 	"garde/internal/models"
-	"garde/internal/testutil"
 	"garde/pkg/session"
 )
 
 // Second-wave repository coverage: the security primitives around users and
-// sessions. All run on miniredis; TempMFA paths need an encryption key.
+// sessions. Ephemeral paths run on miniredis; durable user listing needs Postgres.
 func newSecRepo(t *testing.T) *RedisRepository {
 	t.Helper()
-	_, client := testutil.NewMiniRedis(t)
-	return NewRedisRepositoryFromClient(client)
+	return NewRedisRepositoryFromClient(newMiniRedisClient(t))
+}
+
+func newDurableSecRepo(t *testing.T) *RedisRepository {
+	t.Helper()
+	return newDurableStore(t)
 }
 
 func TestBlockAndCheckIP(t *testing.T) {
@@ -166,7 +169,7 @@ func TestSecurityCodeRoundTrip(t *testing.T) {
 }
 
 func TestTempMFASecretRoundTrip(t *testing.T) {
-	testutil.InitConfig(t, map[string]string{"mfa_encryption_key": "test-key-for-unit-tests"})
+	initTestConfig(t, map[string]string{"mfa_encryption_key": "test-key-for-unit-tests"})
 	ctx := context.Background()
 	r := newSecRepo(t)
 	if err := r.StoreTempMFASecret(ctx, "u-1", "JBSWY3DPEHPK3PXP"); err != nil {
@@ -186,7 +189,7 @@ func TestTempMFASecretRoundTrip(t *testing.T) {
 
 func TestGetLockedUsersFilters(t *testing.T) {
 	ctx := context.Background()
-	r := newSecRepo(t)
+	r := newDurableSecRepo(t)
 	mk := func(id, email string, status models.UserStatus) {
 		t.Helper()
 		if err := r.StoreUser(ctx, &models.User{ID: id, Email: email, Status: status}); err != nil {
@@ -215,7 +218,7 @@ func TestGetLockedUsersFilters(t *testing.T) {
 
 func TestGetAllUsersListsStored(t *testing.T) {
 	ctx := context.Background()
-	r := newSecRepo(t)
+	r := newDurableSecRepo(t)
 	for _, u := range [][2]string{{"u-a", "a@example.com"}, {"u-b", "b@example.com"}} {
 		if err := r.StoreUser(ctx, &models.User{ID: u[0], Email: u[1], Status: models.UserStatusOk}); err != nil {
 			t.Fatal(err)
@@ -228,8 +231,7 @@ func TestGetAllUsersListsStored(t *testing.T) {
 }
 
 func TestGetGroupByIDAndAllGroups(t *testing.T) {
-	t.Setenv("DATA_DIR", t.TempDir())
-	repo, err := NewPermissionRepository()
+	repo, err := NewPermissionRepository(newTestDB(t))
 	if err != nil {
 		t.Fatal(err)
 	}

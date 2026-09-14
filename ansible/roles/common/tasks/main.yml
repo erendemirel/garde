@@ -7,8 +7,7 @@
       - wireguard
       - wireguard-tools
       - zstd          # image streaming compresses with this
-      - rsync         # config sync and snapshot distribution
-      - sqlite3       # host-side inspection of permissions.db
+      - rsync         # config sync between operator and hosts
       - jq
       - ufw
       - unattended-upgrades

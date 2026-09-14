@@ -44,6 +44,41 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/database_url\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/database_url"
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_host\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_host"
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_port\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_port"
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_user\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_user"
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_password\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_password"
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_db\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_db"
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_sslmode\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_sslmode"
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/superuser_email\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/superuser_email"
 }

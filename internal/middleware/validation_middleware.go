@@ -215,7 +215,7 @@ func validatePasswordResetRequest(req *models.PasswordResetRequest) error {
 		return err
 	}
 	if len(sanitized) != 8 {
-		return fmt.Errorf(errors.ErrInvalidOTP)
+		return fmt.Errorf("%s", errors.ErrInvalidOTP)
 	}
 	req.OTP = sanitized
 	return nil
@@ -267,14 +267,14 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 	if len(req.Updates.PermissionsAdd) == 0 && len(req.Updates.PermissionsRemove) == 0 &&
 		len(req.Updates.GroupsAdd) == 0 && len(req.Updates.GroupsRemove) == 0 {
 		slog.Debug("All permission and group lists are empty - invalid request")
-		return fmt.Errorf(errors.ErrInvalidRequest)
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
 	}
 
 	// Validate permissions if provided and permissions system is loaded
 	if len(req.Updates.PermissionsAdd) > 0 || len(req.Updates.PermissionsRemove) > 0 {
 		if !service.IsPermissionsLoaded() {
 			slog.Debug("Permissions system is not loaded")
-			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrPermissionsNotLoaded)
 		}
 
 		// Get all valid permissions
@@ -290,7 +290,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			perm := models.Permission(permStr)
 			if !permissionSet[perm] {
 				slog.Debug("Invalid permission requested to add", "permission", permStr)
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + permStr)
+				return fmt.Errorf("%s: %s", errors.ErrInvalidPermissionRequested, permStr)
 			}
 		}
 		// Validate permissions to remove
@@ -298,7 +298,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			perm := models.Permission(permStr)
 			if !permissionSet[perm] {
 				slog.Debug("Invalid permission requested to remove", "permission", permStr)
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested + ": " + permStr)
+				return fmt.Errorf("%s: %s", errors.ErrInvalidPermissionRequested, permStr)
 			}
 		}
 		slog.Debug("Permissions validation successful")
@@ -310,7 +310,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 	if len(req.Updates.GroupsAdd) > 0 || len(req.Updates.GroupsRemove) > 0 {
 		if !service.IsGroupsLoaded() {
 			slog.Debug("Groups system is not loaded")
-			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 
 		// Get all valid groups
@@ -326,7 +326,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			group := models.UserGroup(groupStr)
 			if !groupSet[group] {
 				slog.Debug("Invalid group requested to add", "group", groupStr)
-				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": " + groupStr)
+				return fmt.Errorf("%s: %s", errors.ErrInvalidGroupRequested, groupStr)
 			}
 		}
 		// Validate groups to remove
@@ -334,7 +334,7 @@ func validateUpdateRequest(req *models.RequestUpdateRequest) error {
 			group := models.UserGroup(groupStr)
 			if !groupSet[group] {
 				slog.Debug("Invalid group requested to remove", "group", groupStr)
-				return fmt.Errorf(errors.ErrInvalidGroupRequested + ": " + groupStr)
+				return fmt.Errorf("%s: %s", errors.ErrInvalidGroupRequested, groupStr)
 			}
 		}
 		slog.Debug("Groups validation successful")
@@ -351,7 +351,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 		req.Status == nil && req.MFAEnforced == nil &&
 		!req.ApproveUpdate && !req.RejectUpdate {
 		slog.Debug("No update parameters provided - invalid request")
-		return fmt.Errorf(errors.ErrInvalidRequest)
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
 	}
 
 	// Validate permissions if provided and permissions system is loaded
@@ -360,7 +360,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 
 		if !service.IsPermissionsLoaded() {
 			slog.Debug("Permissions system is not loaded")
-			return fmt.Errorf(errors.ErrPermissionsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrPermissionsNotLoaded)
 		}
 
 		// Get all valid permissions
@@ -377,7 +377,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 			// Check if permission exists in our loaded permissions
 			if !permissionSet[perm] {
 				slog.Debug("Invalid permission requested", "permission", string(perm))
-				return fmt.Errorf(errors.ErrInvalidPermissionRequested+": %s", string(perm))
+				return fmt.Errorf("%s: %s", errors.ErrInvalidPermissionRequested, string(perm))
 			}
 		}
 		slog.Debug("Permissions validation successful")
@@ -392,7 +392,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 
 		if !service.IsGroupsLoaded() {
 			slog.Debug("Groups system is not loaded")
-			return fmt.Errorf(errors.ErrGroupsNotLoaded)
+			return fmt.Errorf("%s", errors.ErrGroupsNotLoaded)
 		}
 
 		// Get all valid groups
@@ -408,7 +408,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 			// Check if group exists in our loaded groups
 			if !groupSet[group] {
 				slog.Debug("Invalid group requested", "group", string(group))
-				return fmt.Errorf(errors.ErrInvalidGroupRequested+": %s", string(group))
+				return fmt.Errorf("%s: %s", errors.ErrInvalidGroupRequested, string(group))
 			}
 		}
 	} else {
@@ -416,7 +416,7 @@ func validateUpdateUserRequest(req *models.UpdateUserRequest) error {
 	}
 
 	if req.Status != nil && !models.IsValidUserStatus(*req.Status) {
-		return fmt.Errorf(errors.ErrInvalidRequest)
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
 	}
 
 	return nil
@@ -434,7 +434,7 @@ func GetValidatedRequest[T any](c *gin.Context) (T, bool) { // Safely retrieves 
 
 func validateContext(c *gin.Context) error {
 	if c.Request == nil || c.Request.Context() == nil {
-		return fmt.Errorf(errors.ErrInvalidRequest)
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
 	}
 	return nil
 }

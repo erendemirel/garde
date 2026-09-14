@@ -28,7 +28,7 @@ on:
         default: false
 
 concurrency:
-  # Never let two deploys, or a deploy and a failover, touch the cluster at once.
+  # Never let two deploys touch the cluster at once.
   group: cluster-mutation
   cancel-in-progress: false
 

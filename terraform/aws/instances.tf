@@ -1,5 +1,8 @@
-# Three hosts, one per availability zone, and the address that moves between the
-# first two. Ubuntu because the Ansible roles assume apt and ufw.
+# Three hosts, one per availability zone. Ubuntu because the Ansible roles
+# assume apt and ufw.
+#
+# Roles: two (or more) identical `app` nodes behind the edge, plus a `witness`
+# for Vault Raft quorum and monitoring.
 #
 # Private addresses are fixed rather than left to DHCP. They become
 # NODE*_MESH_ENDPOINT, and a WireGuard endpoint that changed when an instance
@@ -31,11 +34,11 @@ data "aws_key_pair" "bootstrap" {
 }
 
 locals {
-  # Index 0 and 1 are the app pair the Elastic IP moves between; index 2 is the
-  # witness, which exists to give Vault's Raft cluster a third vote and never
-  # holds the address.
-  roles              = ["app-primary", "app-standby", "witness"]
-  bootstrap_key_name = var.create_bootstrap_key ? aws_key_pair.bootstrap[0].key_name : data.aws_key_pair.bootstrap[0].key_name
+  # Index 0 and 1 are identical app nodes; index 2 is the witness (Vault vote +
+  # monitoring). Adjust roles here if you add more app instances.
+  roles                = ["app", "app", "witness"]
+  app_instance_indexes = [for i, r in local.roles : i if r == "app"]
+  bootstrap_key_name   = var.create_bootstrap_key ? aws_key_pair.bootstrap[0].key_name : data.aws_key_pair.bootstrap[0].key_name
 }
 
 resource "aws_instance" "nodes" {
@@ -76,16 +79,15 @@ resource "aws_instance" "nodes" {
   }
 }
 
-# The only public address in the deployment. Terraform allocates it and points
-# it at the first app node; after that it belongs to the failover tooling, which
-# is why there is no aws_eip_association here. Adding one would mean Terraform
-# and failover.sh both believing they decide where traffic goes, and the next
-# `terraform apply` would quietly undo a failover.
+# Allocated for the floating_ip traffic mode (and kept for reversibility when
+# using managed_lb). Terraform may initially associate it with the first app
+# node; day-to-day routing in floating_ip mode is via traffic.sh / the provider
+# driver, which is why instance association is ignored after create.
 resource "aws_eip" "failover" {
   domain   = "vpc"
   instance = aws_instance.nodes[0].id
 
-  tags = { Name = "${var.name}-failover" }
+  tags = { Name = "${var.name}-edge-ip" }
 
   lifecycle {
     ignore_changes = [instance]

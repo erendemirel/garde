@@ -8,25 +8,15 @@ import (
 	"time"
 
 	"garde/internal/models"
-	"garde/internal/repository"
+	"garde/internal/testutil"
 	"garde/pkg/errors"
-
-	"github.com/alicebob/miniredis/v2"
-	"github.com/go-redis/redis/v8"
 
 	"garde/pkg/config"
 )
 
 func newAuthServiceWithMiniRedis(t *testing.T) *AuthService {
 	t.Helper()
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(mr.Close)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
-	return NewAuthService(repository.NewRedisRepositoryFromClient(client))
+	return NewAuthService(testutil.NewTestStore(t))
 }
 
 func initSuperuserEmail(t *testing.T, email string) {

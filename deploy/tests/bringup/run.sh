@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-. "$ROOT/../ha/lib.sh"
+. "$ROOT/../lib.sh"
 
 ha_banner "bring-up / doctor suite"
 

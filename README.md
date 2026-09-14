@@ -1,6 +1,6 @@
 # garde
 
-A lightweight yet secure authentication API. Uses Redis as primary database.
+A lightweight yet secure authentication API. App nodes are stateless and active-active.
 
 ---
 
@@ -101,22 +101,25 @@ garde uses HashiCorp Vault for secrets management:
 
 ##### What hot-reloads without restart
 
-Secret files under `/run/secrets` refresh the in-memory map automatically, but **TLS, trusted proxies, rate-limit thresholds, rapid-request config, and log level need a process restart**. API key, CORS, cookies, feature flags, SMTP, Redis reconnect, and superuser/admin bootstrap apply live.
+Secret files under `/run/secrets` refresh the in-memory map automatically, but **TLS, trusted proxies, rate-limit thresholds, rapid-request config, and log level need a process restart**. API key, CORS, cookies, feature flags, SMTP, Redis reconnect, and superuser/admin bootstrap apply live. PostgreSQL connection settings are read at startup (pool recovery is automatic; changing `DATABASE_URL` / `POSTGRES_*` needs a restart).
 
 See the full table: [Configuration hot reload](docs/INSTALLATION.md#configuration-hot-reload).
 
 #### Configurable Security Features:
 Offers configurable rate limiter, switchable behavior detection and MFA.
 
-#### Data storage notes:
-- **Redis**: users, sessions, rate limits, OTPs, encrypted MFA secrets (`user_mfa:{id}`), password hashes (`user_password:{id}`), per-tenant API keys, and personal access tokens
-- **SQLite** (`data/permissions.db`): permission catalog, groups, and `permission_visibility` mappings
+#### Data storage:
+- **PostgreSQL** (durable authority): users, email uniqueness, password hashes, encrypted MFA secrets and flags, groups, permissions, `permission_visibility`, membership and permission requests, personal access tokens, and tenant API keys
+- **Redis** (shared ephemeral): sessions, session blacklist, rate-limit windows, OTPs, temporary MFA setup, short-lived security counters/lists, and distributed locks
+
+Single-VPS and multi-node use the same application image and secret names. Multi-node HA points every app node at shared PostgreSQL and Redis endpoints; a single VPS runs one of each locally (parity, not HA).
 
 ---
 
 ## Requirements
 
-- **Go**: 1.23.0 or later
+- **Go**: 1.25 or later (see `go.mod`)
+- **PostgreSQL**: 16 or later
 - **Redis**: 6.0 or later
 - **Docker and Docker Compose**: 17.06+ and v2.0+
 - **HashiCorp Vault**: 1.15 or later
@@ -138,16 +141,17 @@ docker compose --profile dev up --build
 
 This automatically sets up:
 - **Vault** (dev mode)
-- **Redis** 
+- **PostgreSQL**
+- **Redis**
 - **garde** application
 
 > [!TIP]
 > The development setup is fully self-contained and includes everything you need to get started immediately
 
-Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com`(Superuser) or `test.admin@test.com`(Admin) using the password ` DevAdminTest123!`  for both.
+Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com` (Superuser) or `test.admin@test.com` (Admin) using the password `DevAdminTest123!` for both.
 
 > [!NOTE]
-> The `dev` profile auto-creates the Vault Agent token during `init-vault.sh` (no host `vault/dev-token` file needed). Secrets are seeded from `dev.secrets`.
+> The `dev` profile auto-creates the Vault Agent token during `init-vault.sh` (no host `vault/dev-token` file needed). Secrets are seeded from `dev.secrets` (including `POSTGRES_*` and `REDIS_*`).
 
 > [!TIP]
 > A web UI is included in the `web/` directory. To run it, navigate to the `web/` folder and use `bun start`. The UI connects to the API at `http://localhost:8443`.
@@ -157,7 +161,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 ## Endpoint Documentation
 
 > [!TIP]
-> Swagger documentation is available at http://localhost:8443/swagger/index.html when `ENABLE_SWAGGER=true` (enabled in `dev.secrets` for local setups; use `https://` only when built-in TLS is enabled). Health check: `GET /health`.
+> Swagger documentation is available at http://localhost:8443/swagger/index.html when `ENABLE_SWAGGER=true` (enabled in `dev.secrets` for local setups; use `https://` only when built-in TLS is enabled). Probes: `GET /live` (process up), `GET /ready` (Postgres + Redis), `GET /health` (alias of `/ready`).
 
 ---
 
@@ -165,7 +169,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 
 See [Installation Guide](docs/INSTALLATION.md)
 
-For a high-availability three-node layout (Vault Raft, warm standby, scripted failover, AWS/GCP or VPS providers), see [Deploy](docs/DEPLOY.md).
+For a multi-node active-active layout (Vault Raft, shared PostgreSQL + Redis, ALB or floating IP, AWS/GCP or VPS providers), see [Deploy](docs/DEPLOY.md).
 
 
 ## Integration Guide

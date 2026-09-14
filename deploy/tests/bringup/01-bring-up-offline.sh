@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Impact: none — offline checks for terraform/aws/bring-up.sh (no AWS apply).
 set -euo pipefail
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ha/lib.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
 ha_banner "bringup: bring-up.sh offline checks"
 

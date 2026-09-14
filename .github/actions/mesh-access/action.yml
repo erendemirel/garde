@@ -26,8 +26,8 @@ inputs:
     required: true
   require-all-nodes:
     description: >-
-      Fail the job if any node is unreachable. Deploys want this; failover does
-      not, since it usually runs precisely because a node is down.
+      Fail the job if any node is unreachable. Deploys want this; diagnostic
+      jobs may set it false when a host is known down.
     required: false
     default: "true"
   gcp-service-account-key:
@@ -66,7 +66,7 @@ runs:
         chmod +x deploy/scripts/*.sh
         # Fail here with a clear message — load_inventory's : ${NODES:?} is opaque in CI logs.
         missing=""
-        for key in NODES SSH_USER REMOTE_ROOT PROVIDER PRIMARY_NODE; do
+        for key in NODES SSH_USER REMOTE_ROOT PROVIDER; do
           if ! grep -qE "^[[:space:]]*${key}=" deploy/inventory.env; then
             missing="$missing $key"
           fi
@@ -101,16 +101,14 @@ runs:
         echo "mode=$mode" >> "$GITHUB_OUTPUT"
         echo "  access mode: $mode"
 
-        # Tunnel providers need cloud credentials on the job env. Scheduled
-        # workflows (snapshot) often have no GitHub Environment, so secrets that
-        # exist only under "production" appear as empty here — fail loudly.
+        # Tunnel providers need cloud credentials on the job env. Fail loudly
+        # if they are missing rather than with an opaque SSH error later.
         . deploy/scripts/lib.sh
         load_inventory
         case "${PROVIDER:-}:$mode" in
           aws:tunnel)
             if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
               echo "::error::PROVIDER=aws needs AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY on this job."
-              echo "::error::If Deploy works but Snapshot does not, those secrets are probably Environment-scoped (production) only."
               echo "::error::Add them as Repository secrets, or duplicate them for every Environment this workflow uses."
               exit 1
             fi

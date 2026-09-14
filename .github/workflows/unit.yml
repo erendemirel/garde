@@ -14,6 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: garde
+          POSTGRES_PASSWORD: garde
+          POSTGRES_DB: garde
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U garde -d garde"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -25,12 +40,13 @@ jobs:
           cache: true
 
       - name: Vet
-        # CGO required by github.com/mattn/go-sqlite3
         run: go vet ./...
         env:
-          CGO_ENABLED: "1"
+          CGO_ENABLED: "0"
 
       - name: Test
-        run: go test ./...
+        # Serialise packages that share GARDE_TEST_DATABASE_URL (TRUNCATE races).
+        run: go test -p 1 ./...
         env:
-          CGO_ENABLED: "1"
+          CGO_ENABLED: "0"
+          GARDE_TEST_DATABASE_URL: postgres://garde:garde@localhost:5432/garde?sslmode=disable

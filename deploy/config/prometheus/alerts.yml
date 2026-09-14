@@ -41,7 +41,7 @@ groups:
           severity: critical
         annotations:
           summary: "Node {{ $labels.instance }} is not responding"
-          description: "If this is the app primary, consider running the failover workflow."
+          description: "App or witness host unreachable; check the instance and Vault quorum."
 
       - alert: DiskFilling
         expr: |

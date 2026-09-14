@@ -1,6 +1,8 @@
-# Public exposure is WireGuard everywhere, plus HTTP/HTTPS on the two app
-# nodes. Everything else - SSH, Vault, Redis, the exporters - is reachable only
-# from inside the mesh.
+# Public exposure is WireGuard everywhere, plus HTTP/HTTPS on app nodes.
+# Everything else - SSH, Vault, the exporters - is reachable only from inside
+# the mesh. Shared Redis and PostgreSQL live outside these hosts (managed
+# services or separate data nodes); open mesh Redis only if you self-host it
+# on a data node and need app nodes to reach it over WireGuard.
 #
 # Note the ordering constraint from the playbook: WireGuard is configured
 # first, because these rules restrict SSH to the mesh subnet.
@@ -53,7 +55,7 @@
     comment: public edge
   loop: ["80", "443"]
   when:
-    - node_role in ['app-primary', 'app-standby']
+    - node_role == 'app'
     - garde_facts.edge_sources | default('') | length == 0
 
 # In the managed-load-balancer lane the edge is the platform's load balancer,
@@ -69,7 +71,7 @@
     comment: load balancer edge
   loop: "{{ garde_facts.edge_sources | default('') | split() }}"
   when:
-    - node_role in ['app-primary', 'app-standby']
+    - node_role == 'app'
     - garde_facts.edge_sources | default('') | length > 0
 
 - name: Deny public HTTPS where the load balancer terminates TLS
@@ -79,7 +81,7 @@
     proto: tcp
     delete: true
   when:
-    - node_role in ['app-primary', 'app-standby']
+    - node_role == 'app'
     - garde_facts.edge_sources | default('') | length > 0
   failed_when: false
 
@@ -92,7 +94,7 @@
     proto: tcp
     delete: true
   loop: ["80", "443"]
-  when: node_role not in ['app-primary', 'app-standby']
+  when: node_role != 'app'
   failed_when: false
 
 - name: Allow internal services from the mesh only
@@ -105,7 +107,9 @@
   loop:
     - { port: "8200", comment: "vault api" }
     - { port: "8201", comment: "vault raft cluster" }
-    - { port: "6379", comment: "redis replication" }
+    # Optional: only needed if Redis is self-hosted on a mesh data node.
+    # Prefer managed Redis (ElastiCache) reachable from the VPC instead.
+    - { port: "6379", comment: "shared redis (if self-hosted on mesh)" }
     # garde's service listener: /validate over mTLS, for calling services that
     # are on the mesh. Never reachable from the edge.
     - { port: "{{ garde_facts.service_port | default('8444') }}", comment: "garde service listener" }

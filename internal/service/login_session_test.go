@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"garde/internal/models"
-	"garde/internal/repository"
 	"garde/internal/testutil"
 	"garde/pkg/crypto"
 	pkgerrors "garde/pkg/errors"
@@ -16,8 +15,7 @@ import (
 func newSessionService(t *testing.T) *AuthService {
 	t.Helper()
 	testutil.InitConfig(t, map[string]string{"superuser_email": "root@example.com"})
-	_, client := testutil.NewMiniRedis(t)
-	return NewAuthService(repository.NewRedisRepositoryFromClient(client))
+	return NewAuthService(testutil.NewTestStore(t))
 }
 
 func seedLoginUser(t *testing.T, s *AuthService, email, password string, status models.UserStatus) *models.User {
@@ -120,12 +118,16 @@ func TestLoginMFARequiredWithoutCode(t *testing.T) {
 		"superuser_email":    "root@example.com",
 		"mfa_encryption_key": "test-key-for-unit-tests",
 	})
-	u.MFAEnabled = true
-	u.MFASecret = "JBSWY3DPEHPK3PXP"
-	if err := s.repo.StoreUser(ctx, u); err != nil {
+	fresh, err := s.repo.GetUserByID(ctx, u.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	_, err := s.Login(ctx, &models.LoginRequest{Email: "mfa@example.com", Password: "DevAdminTest123!"}, "10.0.0.1", "ua")
+	fresh.MFAEnabled = true
+	fresh.MFASecret = "JBSWY3DPEHPK3PXP"
+	if err := s.repo.StoreUser(ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Login(ctx, &models.LoginRequest{Email: "mfa@example.com", Password: "DevAdminTest123!"}, "10.0.0.1", "ua")
 	if err == nil || err.Error() != pkgerrors.ErrMFARequired {
 		t.Fatalf("err = %v, want %q", err, pkgerrors.ErrMFARequired)
 	}

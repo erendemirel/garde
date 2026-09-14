@@ -194,7 +194,7 @@ async function ensurePermissionVisibility(api: RequestLike, permissionName: stri
 	);
 }
 
-/** Idempotent catalog seed for fresh CI/local SQLite (permissions.db starts empty). */
+/** Idempotent catalog seed for a fresh CI/local Postgres catalog. */
 export async function ensureE2eCatalog(api: RequestLike) {
 	for (const group of E2E_GROUPS) {
 		await ensureGroup(api, group.name, group.definition);

@@ -1,5 +1,5 @@
 # Public edge for the floating-IP lane. Runs on both app nodes; only the one
-# holding the failover address actually receives traffic.
+# holding FAILOVER_IP actually receives traffic.
 #
 # The managed-load-balancer lane uses Caddyfile.lb.tpl instead, where the
 # platform terminates TLS and this file's ACME machinery has nothing to do.
