@@ -47,7 +47,7 @@ import (
 // Everything the HTTP surfaces need. Both listeners serve the same objects;
 // only the routes they mount and the certificates they demand differ.
 type routerDeps struct {
-	repo             *repository.RedisRepository
+	repo             *repository.Store
 	authService      *service.AuthService
 	securityAnalyzer *service.SecurityAnalyzer
 	authHandler      *handlers.AuthHandler
@@ -95,27 +95,24 @@ func main() {
 
 	slog.Info("Logger initialized", "level", envLogLevel)
 
-	// Initialize permission repository (SQLite based in Memory I/O mode)
-	if err := service.InitPermissionRepository(); err != nil {
-		slog.Error("Failed to initialize permission repository", "error", err)
-		slog.Info("Running without permissions/groups system")
-	}
-
 	if err := validation.ValidateConfig(); err != nil {
 		slog.Error("Configuration validation failed", "error", err)
 		os.Exit(1)
 	}
 
-	var repo *repository.RedisRepository
-	var err error
-
-	slog.Info("Connecting to Redis...")
-	repo, err = repository.NewRedisRepository()
+	slog.Info("Connecting to PostgreSQL and Redis...")
+	repo, err := repository.NewStore()
 	if err != nil {
-		slog.Error("Failed to connect to Redis", "error", err)
+		slog.Error("Failed to connect to the data stores", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("Connected to Redis successfully")
+	slog.Info("Connected to the data stores successfully")
+
+	// The permission catalogue shares the durable pool the store just opened.
+	if err := service.InitPermissionRepository(repo.DB()); err != nil {
+		slog.Error("Failed to initialize permission repository", "error", err)
+		slog.Info("Running without permissions/groups system")
+	}
 
 	// Initialize superuser
 	if err := service.InitializeSuperUser(context.Background(), repo); err != nil {
@@ -129,7 +126,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set up hot-reload: reconnect Redis when secrets change
+	// Set up hot-reload: reconnect Redis when secrets change. Postgres needs no
+	// equivalent — database/sql re-dials from the pool on its own.
 	config.SetReloadHook(func() {
 		slog.Info("Secrets changed, reconnecting to Redis...")
 		if err := repo.Reconnect(); err != nil {
@@ -290,15 +288,29 @@ func newEngine(deps *routerDeps) *gin.Engine {
 
 	router.Use(middleware.ValidateRequestParameters())
 
-	// Liveness/readiness — before rate limiting so probes are not throttled
-	router.GET("/health", func(c *gin.Context) {
-		if err := deps.repo.Ping(c.Request.Context()); err != nil {
-			slog.Warn("Health check failed", "error", err)
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
+	// Probes run before the rate limiter so load balancers are never throttled.
+	// /live  — process is up (do not check backends; used for restart loops)
+	// /ready — node can serve traffic (Postgres + Redis)
+	// /health — alias of /ready for older LB configs
+	router.GET("/live", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	ready := func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if err := deps.repo.PingPostgres(ctx); err != nil {
+			slog.Warn("Readiness check failed", "backend", "postgres", "error", err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "backend": "postgres"})
+			return
+		}
+		if err := deps.repo.PingRedis(ctx); err != nil {
+			slog.Warn("Readiness check failed", "backend", "redis", "error", err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "backend": "redis"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	}
+	router.GET("/ready", ready)
+	router.GET("/health", ready)
 
 	router.Use(deps.rateLimiter.Limit())
 

@@ -7,7 +7,7 @@ import (
 )
 
 // Pure catalogue helpers with permRepo forced nil: everything resolves to the
-// documented fallbacks rather than touching SQLite.
+// documented fallbacks rather than touching the permission store.
 func TestNilRepoHelpers(t *testing.T) {
 	prev := permRepo
 	permRepo = nil

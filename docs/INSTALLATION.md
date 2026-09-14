@@ -26,7 +26,7 @@
    ```
 
 2. **Review development configuration (Optional)**
-   - There are two types of things to configure: secrets, permissions, and groups. On dev, secrets are managed via `dev.secrets` (already populated with defaults); permissions and groups use a built-in SQLite database and require no configuration.
+   - Secrets are managed via `dev.secrets` (already populated with defaults, including `POSTGRES_*` and `REDIS_*`). Permissions and groups live in PostgreSQL with the rest of the durable user data; the `dev` compose profile starts Postgres for you.
    - Modify as needed for your environment. The easiest way to learn about secrets and permission system is:
        - **For secrets:** Following the comments inside `dev.secrets` file,  
        - **For permission and group system:** Following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) section in integration guide to understand how they work. You can also have a look at this section in [Key Concepts](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#security-without-scope-paradoxes) to have the bigger picture.
@@ -38,7 +38,7 @@
 
 4. **Access the application**
    - API: `http://localhost:8443`
-   - Health: `http://localhost:8443/health`
+   - Ready: `http://localhost:8443/ready` (Postgres + Redis); also `/live` and `/health`
    - Swagger docs (when `ENABLE_SWAGGER=true`): `http://localhost:8443/swagger/index.html`
 
 5. **Web UI (Optional)**   
@@ -50,7 +50,7 @@
 - `init-vault.sh` writes the Vault Agent token into a shared Docker volume (no host `vault/dev-token` file required)
 - Secrets from `dev.secrets` are seeded into Vault
 - Vault Agent writes secrets to tmpfs (`/run/secrets`)
-- Application reads secrets and connects to Redis
+- PostgreSQL and Redis start; the application connects to both
 - Secret file watching is enabled; see [Configuration hot reload](#configuration-hot-reload) for what applies live vs what needs a restart
 
 ---
@@ -59,24 +59,25 @@
 
 ### Prerequisites
 - HashiCorp Vault
-- Redis
+- Redis (shared; ephemeral sessions, rate limits, OTPs)
+- PostgreSQL (shared; durable authority — users, credentials, catalog, PATs, tenant keys)
 - Docker & Docker Compose
 - TLS certificates, if you enable built-in TLS or the service listener (`deploy/scripts/service-pki.sh` generates the latter)
 
 ### Deployment paths
 
-**If you run Vault and Redis yourself** (e.g. external or self-managed cluster), use this path:
+**If you run Vault, Redis, and PostgreSQL yourself** (e.g. external or managed services), use this path:
 
 1. **Setup Vault cluster** with AppRole authentication. See [Vault Guide – Manual setup](https://github.com/erendemirel/garde/blob/master/vault/README.md#setup) (follow steps 1–3 in that doc; step 4 is optional).
-2. **Setup Redis**
+2. **Setup Redis and PostgreSQL**; seed `redis_host` and `DATABASE_URL` / `POSTGRES_*` into Vault
 3. **Configure TLS and mTLS** (see [TLS and mTLS](#tls-and-mtls-configuration) below).
 4. **Deploy** using docker-compose or your orchestrator.
 
 **If you use the single-VPS Docker Compose stack** below, Vault runs in **production server mode** (persistent file storage). You still initialize, unseal, and configure AppRole once—then Vault Agent uses AppRole for day-to-day secret delivery. Go to [Deploying to a VPS](#deploying-to-a-vps).
 
-**Single VPS with Docker Compose:** A supported production pattern is running everything on one host with Docker Compose (Vault server, Vault Agent, Redis, garde, and the web UI). The stack is defined in `docker-compose.prod.yml`. It does **not** use `vault server -dev`. For Vault/Agent details, see [vault/README.md](https://github.com/erendemirel/garde/blob/master/vault/README.md).
+**Single VPS with Docker Compose:** A supported production pattern is running everything on one host with Docker Compose (Vault server, Vault Agent, Redis, Postgres, garde, and the web UI). The stack is defined in `docker-compose.prod.yml`. It does **not** use `vault server -dev`. For Vault/Agent details, see [vault/README.md](https://github.com/erendemirel/garde/blob/master/vault/README.md).
 
-**Three hosts with HA and failover:** If losing a single host is unacceptable, see [Deploying on three hosts (HA)](DEPLOY.md). That layout runs a 3-member Vault Raft cluster, a warm application standby with Redis replication, and a scripted failover, all driven from GitHub Actions. DNS and ACME follow whichever hosting provider you choose. It is considerably more machinery than the single-VPS stack, so only take it on if you need it.
+**Multi-node active-active:** If losing a single host is unacceptable, see [Deploying garde (active-active)](DEPLOY.md). That layout runs a multi-member Vault Raft cluster, identical app nodes against shared PostgreSQL and Redis, and a public ALB (or floating IP).
 
 ### Deploying to a VPS
 
@@ -88,7 +89,7 @@
 
 2. **Get the project** on the VPS (clone the repo or copy files, e.g. with `rsync` or `scp`).
 
-3. **Create `prod.secrets`** (copy from `dev.secrets`, set production values). For the single-VPS stack, set `REDIS_HOST=redis` (the Compose service name). Set `CORS_ALLOW_ORIGINS` to the URL users will use for the UI. Create a `.env` in the project root with `REDIS_PASSWORD` (same as in `prod.secrets`) and optionally `PUBLIC_API_URL`. You will add `VAULT_TOKEN` after the next step.
+3. **Create `prod.secrets`** (copy from `dev.secrets`, set production values). For the single-VPS stack, set `REDIS_HOST=redis` and `POSTGRES_HOST=postgres` (Compose service names), or set `DATABASE_URL`. Set `CORS_ALLOW_ORIGINS` to the URL users will use for the UI. Create a `.env` in the project root with `REDIS_PASSWORD` and `POSTGRES_PASSWORD` (same values as in `prod.secrets`) and optionally `PUBLIC_API_URL`. You will add `VAULT_TOKEN` after the next step.
 
 4. **Start Vault (server mode) and initialize once:**
    ```bash
@@ -139,10 +140,11 @@ docker compose -f docker-compose.prod.yml up -d
 - **Rotate AppRole after compromise:** with Vault unsealed and a root (or AppRole-admin) token, mint a new secret-id, replace `./vault/secret-id` (`chmod 600`), restart `vault-agent`, and destroy old secret-ids when possible. See [Vault Security Notes](../vault/README.md#security-notes).
 
 > [!IMPORTANT]
-> Production Vault requires offline credentials (`vault-credentials.json`). On the HA path with AWS KMS auto-unseal, day-to-day reboots do not need Shamir keys; keep recovery keys for break-glass. The single-VPS Compose stack below still uses Shamir unseal after reboot. Losing credentials without a backup means permanent loss of access to the Vault data volume.
+> Production Vault requires offline credentials (`vault-credentials.json`). On the multi-node path with AWS KMS auto-unseal, day-to-day reboots do not need Shamir keys; keep recovery keys for break-glass. The single-VPS Compose stack below still uses Shamir unseal after reboot. Losing credentials without a backup means permanent loss of access to the Vault data volume.
 ### Required mandatory secrets in Vault
 | Secret Path | Description |
 |-------------|-------------|
+| `secret/garde/database_url` **or** discrete `postgres_host` / `postgres_port` / `postgres_user` / `postgres_password` / `postgres_db` (/ `postgres_sslmode`) | PostgreSQL durable store (single-VPS Compose: `postgres_host=postgres`) |
 | `secret/garde/redis_host` | Redis server hostname (for single-VPS Docker Compose: use `redis`, the Compose service name) |
 | `secret/garde/redis_port` | Redis server port |
 | `secret/garde/redis_password` | Redis authentication password |
@@ -169,7 +171,7 @@ authenticate a service. So garde can run two listeners.
 
 #### Recommended production layout (browser + services)
 
-1. **Browsers and the web UI** talk HTTPS only to a reverse proxy or load balancer (Caddy, nginx, ALB, …). It forwards to garde over the private network (Compose network / localhost). Do **not** expose Redis or Vault publicly.
+1. **Browsers and the web UI** talk HTTPS only to a reverse proxy or load balancer (Caddy, nginx, ALB, …). It forwards to garde over the private network (Compose network / localhost). Do **not** expose Redis, PostgreSQL, or Vault publicly.
 2. Leave **`secret/garde/use_tls` = `false`** on the browser-facing listener (or enable built-in TLS if you prefer HTTPS on garde itself). Set **`cookie_secure=true`** and **`trusted_proxies`** to the proxy CIDR when TLS is terminated at the edge. Leave **`browser_mtls` = `off`**.
 3. Set **`cookie_same_site`** for your topology: `strict` when UI and API share a site; `lax` (default) when they are different origins (common in dev); `none` when you need cross-site cookies (requires Secure cookies over HTTPS).
 4. **Turn on the service listener** so `/validate` leaves the public hostname entirely:
@@ -183,7 +185,7 @@ authenticate a service. So garde can run two listeners.
 | `service_tls_key_path` | `/app/certs/service-key.pem` |
 | `service_tls_ca_path` | `/app/certs/ca-cert.pem` |
 
-Publish that port on a private interface only — the HA compose file binds it to
+Publish that port on a private interface only — the multi-node compose file binds it to
 the WireGuard address. Generate the CA and the certificates with
 `deploy/scripts/service-pki.sh` (see
 [Service authentication](DEPLOY.md#service-authentication-validate)).
@@ -214,7 +216,7 @@ limit, record when they were last used, and are revocable one at a time with
 `DELETE /admin/tenants/{tenant_id}/api-keys`. See
 [External Callers](API_INTEGRATION_GUIDE.md#4-external-callers-per-tenant-api-keys).
 
-In a deployment fronted by the HA Caddy config, the edge blocks `/validate`
+In a deployment fronted by the multi-node Caddy config, the edge blocks `/validate`
 independently, so publishing it also takes `PUBLIC_VALIDATE=true` in the
 inventory. Two switches, so that one mistaken value cannot expose the endpoint.
 
@@ -324,17 +326,13 @@ not have one. The service listener is unaffected either way.
 Admin scopes are provisioned here rather than through the admin API on purpose: an admin's own authorization data must not live somewhere an admin can write it. Superusers are unaffected — they hold every scope and may not be listed.
 
 **Permissions & Groups**:
-- Permissions and groups are managed via SQLite database (separate from Redis user/session storage).
-- The database is stored at `data/permissions.db` and is automatically created on first run.
+- Permission/group catalog, visibility, user membership, and credentials live in **PostgreSQL**. Sessions and other short-lived state stay in **Redis**.
+- Configure via `DATABASE_URL` or `POSTGRES_*` secrets (see vault/README.md). Schema is applied by embedded migrations at startup.
 - **Privilege tiers vs permissions:** Superuser/Admin/User (from Vault email lists) are bootstrap privilege tiers. Named permissions + groups are application access rights. See [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) for the full model, admin matrix, and a request→approve walkthrough.
-- **Database Schema:**
-  - `permissions` table: `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `name` (TEXT NOT NULL UNIQUE), `definition` (TEXT NOT NULL)
-  - `groups` table: `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `name` (TEXT NOT NULL UNIQUE), `definition` (TEXT NOT NULL)
-  - `permission_visibility` table: `permission_id` (INTEGER NOT NULL), `group_id` (INTEGER NOT NULL), PRIMARY KEY (permission_id, group_id) with FOREIGN KEY constraints
 - Superusers can manage permissions, groups, and visibility mappings via API endpoints (see [Superuser-Only Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#f-superuser-only-permission-and-group-management) in the integration guide).
 
 > [!TIP]
-> The built-in SQLite database doesn't require any configuration or infrastructure.
+> On AWS, `terraform/aws/rds.tf` can provision Multi-AZ Postgres; seed the endpoint into Vault after apply.
 
 **Logging:** `secret/garde/log_level` (DEBUG/INFO/WARN/ERROR), `secret/garde/gin_mode` (debug/release)
 
@@ -364,6 +362,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | Secret / key | Why |
 |--------------|-----|
 | `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
+| `database_url`, `postgres_*` | DSN / pool are opened at startup; changing them needs a restart (dropped connections recover from the existing pool) |
 | `browser_mtls`, `service_mtls`, `public_validate` | The client-certificate policy is part of the handshake configuration, and which routes exist is decided when the listeners are built |
 | `public_validate_shared_key` | Which credentials `/validate` accepts is fixed when the route is mounted. A reload that empties or mistypes it does not weaken the running process, but the next restart will refuse to start |
 | `service_listener`, `service_port`, `service_tls_*` | Same: a second listener is opened, or not, at startup |

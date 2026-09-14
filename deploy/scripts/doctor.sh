@@ -92,7 +92,7 @@ if [ "$INV_OK" = "true" ]; then
   # FAILOVER_IP is only meaningful in the floating-IP lane; under a managed
   # load balancer the platform owns the address and the target group replaces
   # it as the thing routing depends on.
-  required_keys="PROVIDER NODES SSH_USER REMOTE_ROOT PRIMARY_NODE STANDBY_NODE"
+  required_keys="PROVIDER NODES SSH_USER REMOTE_ROOT"
   if [ "${TRAFFIC_MODE:-floating_ip}" = "managed_lb" ]; then
     required_keys="$required_keys LB_SOURCE_CIDRS LB_TRUSTED_PROXIES"
     [ "${PROVIDER:-}" = "aws" ] && required_keys="$required_keys AWS_TARGET_GROUP_ARN"
@@ -105,6 +105,12 @@ if [ "$INV_OK" = "true" ]; then
     else have "$key=$val"; fi
   done
   have "TRAFFIC_MODE=${TRAFFIC_MODE:-floating_ip}"
+  app_count=0
+  for node in ${NODES:-}; do
+    [ "$(node_role "$node" 2>/dev/null || true)" = "app" ] && app_count=$((app_count + 1))
+  done
+  if [ "$app_count" -ge 1 ]; then have "$app_count app node(s) (active-active)"
+  else miss "no NODE*_ROLE=app — need at least one application node"; fi
   if [ "${PROVIDER:-}" = "aws" ]; then
     for key in AWS_REGION ADMIN_SSH_SOURCES AWS_IMAGE_BUCKET \
                NODE1_PROVIDER_ID NODE2_PROVIDER_ID NODE3_PROVIDER_ID \
@@ -213,8 +219,10 @@ fi
 
 printf '\n==> 7/8 images\n'
 if [ "$reachable" -gt 0 ]; then
-  for node in ${PRIMARY_NODE:-} ${STANDBY_NODE:-}; do
-    [ -n "$node" ] || continue
+  found_app=false
+  for node in $NODES; do
+    is_app_node "$node" 2>/dev/null || continue
+    found_app=true
     on_node "$node" "true" 2>/dev/null || continue
     if on_node "$node" "docker images --format '{{.Repository}}' | grep -q '^garde/'"; then
       have "$node: garde/* images present"
@@ -222,20 +230,26 @@ if [ "$reachable" -gt 0 ]; then
       miss "$node: no garde/* images — build + ship-image"
     fi
   done
+  [ "$found_app" = "true" ] || note "no app-role nodes to check for images"
 else
   skip "no reachable nodes — cannot check images"
 fi
 
 printf '\n==> 8/8 app (optional for bring-up tracking)\n'
-if [ -n "${PRIMARY_NODE:-}" ] && on_node "${PRIMARY_NODE}" "true" 2>/dev/null; then
-  if on_node "$PRIMARY_NODE" "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/health" 2>/dev/null; then
-    have "primary /health OK"
-  else
-    note "primary /health not OK yet — expected until app deploy finishes"
-  fi
-else
-  skip "primary not reachable — app stage later"
+app_ready=false
+if [ "$reachable" -gt 0 ]; then
+  for node in $NODES; do
+    is_app_node "$node" 2>/dev/null || continue
+    on_node "$node" "true" 2>/dev/null || continue
+    if on_node "$node" "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready" 2>/dev/null; then
+      have "$node /ready OK"
+      app_ready=true
+    else
+      note "$node /ready not OK yet — expected until app deploy finishes"
+    fi
+  done
 fi
+[ "$app_ready" = "true" ] || skip "no app node /ready yet — app stage later"
 
 printf '\n==> secrets in this environment (presence only)\n'
 for key in REDIS_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ACME_ACCESS_KEY_ID; do

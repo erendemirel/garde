@@ -8,14 +8,18 @@ import (
 	"time"
 
 	"garde/internal/models"
-	"garde/internal/testutil"
 	"garde/pkg/session"
 )
 
+// Durable user tests need Postgres; session/OTP/lock paths stay Redis-only.
 func newUserRepo(t *testing.T) *RedisRepository {
 	t.Helper()
-	_, client := testutil.NewMiniRedis(t)
-	return NewRedisRepositoryFromClient(client)
+	return newDurableStore(t)
+}
+
+func newEphemeralRepo(t *testing.T) *RedisRepository {
+	t.Helper()
+	return NewRedisRepositoryFromClient(newMiniRedisClient(t))
 }
 
 func TestStoreAndGetUserRoundTrip(t *testing.T) {
@@ -43,13 +47,14 @@ func TestStoreAndGetUserRoundTrip(t *testing.T) {
 	if err != nil || byID.Email != "a@example.com" {
 		t.Fatalf("by id = %+v, %v", byID, err)
 	}
-	// Password hash must not leak into the user JSON blob itself.
-	raw, err := r.getClient().Get(ctx, "user:u-1").Result()
-	if err != nil {
+	// Password hash lives in its own column, not inside JSONB blobs.
+	db := r.DB()
+	var perms, groups []byte
+	if err := db.QueryRowContext(ctx, `SELECT permissions, "groups" FROM users WHERE id = $1`, "u-1").Scan(&perms, &groups); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(raw, "HASH") {
-		t.Fatalf("hash inside user JSON: %s", raw)
+	if strings.Contains(string(perms), "HASH") || strings.Contains(string(groups), "HASH") {
+		t.Fatalf("hash inside JSONB: permissions=%s groups=%s", perms, groups)
 	}
 	if _, err := r.GetUserByEmail(ctx, "missing@example.com"); err == nil {
 		t.Fatal("missing email returns nil error")
@@ -76,7 +81,7 @@ func TestStoreUserDuplicateEmail(t *testing.T) {
 }
 
 func TestUserMFASecretRoundTrip(t *testing.T) {
-	testutil.InitConfig(t, map[string]string{"mfa_encryption_key": "test-key-for-unit-tests"})
+	initTestConfig(t, map[string]string{"mfa_encryption_key": "test-key-for-unit-tests"})
 	ctx := context.Background()
 	r := newUserRepo(t)
 	u := &models.User{ID: "u-mfa", Email: "mfa@example.com", Status: models.UserStatusOk, MFASecret: "JBSWY3DPEHPK3PXP"}
@@ -88,15 +93,18 @@ func TestUserMFASecretRoundTrip(t *testing.T) {
 		t.Fatalf("mfa round-trip = %+v, %v", got, err)
 	}
 	// Stored form must be encrypted, not plaintext.
-	enc, err := r.getClient().Get(ctx, "user_mfa:u-mfa").Result()
-	if err != nil || enc == "JBSWY3DPEHPK3PXP" || enc == "" {
-		t.Fatalf("stored mfa = %q, %v", enc, err)
+	var enc string
+	if err := r.DB().QueryRowContext(ctx, `SELECT mfa_secret_encrypted FROM users WHERE id = $1`, "u-mfa").Scan(&enc); err != nil {
+		t.Fatal(err)
+	}
+	if enc == "JBSWY3DPEHPK3PXP" || enc == "" {
+		t.Fatalf("stored mfa = %q", enc)
 	}
 }
 
 func TestSessionStoreGetDelete(t *testing.T) {
 	ctx := context.Background()
-	r := newUserRepo(t)
+	r := newEphemeralRepo(t)
 	data := &session.SessionData{UserID: "u-1", IP: "h", UserAgent: "ua", CreatedAt: time.Now()}
 	if err := r.StoreSessionData(ctx, "sess-1", data, time.Hour); err != nil {
 		t.Fatal(err)
@@ -127,7 +135,7 @@ func TestSessionStoreGetDelete(t *testing.T) {
 
 func TestOTPStoreGetDeleteAndAttempts(t *testing.T) {
 	ctx := context.Background()
-	r := newUserRepo(t)
+	r := newEphemeralRepo(t)
 	if err := r.StoreOTP(ctx, "u-1", "HASHED"); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +159,7 @@ func TestOTPStoreGetDeleteAndAttempts(t *testing.T) {
 
 func TestUserLockAcquireRelease(t *testing.T) {
 	ctx := context.Background()
-	r := newUserRepo(t)
+	r := newEphemeralRepo(t)
 	ok, err := r.AcquireUserLock(ctx, "u-1", time.Minute)
 	if err != nil || !ok {
 		t.Fatalf("first acquire = %v, %v", ok, err)

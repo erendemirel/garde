@@ -5,15 +5,13 @@ import (
 	"testing"
 
 	"garde/internal/models"
-	"garde/internal/repository"
 	"garde/internal/testutil"
 )
 
 func newBootstrapService(t *testing.T, secrets map[string]string) *AuthService {
 	t.Helper()
 	testutil.InitConfig(t, secrets)
-	_, client := testutil.NewMiniRedis(t)
-	return NewAuthService(repository.NewRedisRepositoryFromClient(client))
+	return NewAuthService(testutil.NewTestStore(t))
 }
 
 func TestInitializeSuperUserCreatesAndRefreshes(t *testing.T) {

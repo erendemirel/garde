@@ -1,4 +1,4 @@
-# Single-VPS production stack (Vault server + Agent + Redis + garde API + UI)
+# Single-VPS production stack (Vault + Agent + PostgreSQL + Redis + garde API + UI)
 #
 # Vault runs in production mode (file storage), NOT `vault server -dev`.
 # You must initialize and unseal Vault once, then configure AppRole.
@@ -8,7 +8,7 @@
 #   2. docker compose -f docker-compose.prod.yml up -d vault
 #   3. docker compose -f docker-compose.prod.yml exec vault \
 #        vault operator init -key-shares=5 -key-threshold=3 -format=json > vault-credentials.json
-#      chmod 600 vault-credentials.json   # keep offline / never commit
+#      chmod 600 vault-credentials.json
 #      jq -r '.unseal_keys_b64[]' vault-credentials.json > vault-unseal-keys
 #      chmod 600 vault-unseal-keys
 #   4. Put root_token from that JSON into .env as VAULT_TOKEN=...
@@ -24,26 +24,17 @@ services:
     image: hashicorp/vault:1.15
     cap_add:
       - IPC_LOCK
-    # No -config: the entrypoint already adds -config=/vault/config, which picks
-    # up server.hcl below. Passing it again loads the file twice and the
-    # duplicate listener fails to bind. See deploy/compose/vault-node.yml.
     command: server
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
     volumes:
       - ./vault/server.hcl:/vault/config/server.hcl:ro
-      # /vault/file - see the note in vault/server.hcl
       - vault_data:/vault/file
-    # Bind to localhost only — never expose Vault to the public internet.
-    # Application secrets are rendered by vault-agent into a tmpfs (/run/secrets),
-    # not into ./data. AppRole files live under ./vault/ (mode 600 after vault-init).
     ports:
       - "127.0.0.1:8200:8200"
     networks:
       - prod_network
     healthcheck:
-      # Exit 0 = unsealed; exit 2 = sealed. Fail healthcheck while sealed so
-      # dependents wait until the operator has unsealed.
       test: ["CMD", "vault", "status"]
       interval: 5s
       timeout: 3s
@@ -51,7 +42,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # One-shot: unseal using vault-unseal-keys (one key per line; see INSTALLATION.md)
   vault-unseal:
     image: hashicorp/vault:1.15
     entrypoint: /bin/sh
@@ -69,8 +59,6 @@ services:
     profiles:
       - ops
 
-  # One-shot: enable AppRole, write role-id/secret-id, seed secrets from prod.secrets.
-  # Requires an unsealed Vault and VAULT_TOKEN (root or equivalent policy token).
   vault-init:
     image: hashicorp/vault:1.15
     entrypoint: /bin/sh
@@ -105,12 +93,29 @@ services:
       vault:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "sh", "-c", "test -s /run/secrets/redis_host"]
+      test: ["CMD", "sh", "-c", "test -s /run/secrets/redis_host && (test -s /run/secrets/database_url || test -s /run/secrets/postgres_host)"]
       interval: 5s
       timeout: 3s
       retries: 30
     networks:
       - prod_network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-garde}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-garde}
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    networks:
+      - prod_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U garde -d garde"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   redis:
@@ -136,23 +141,20 @@ services:
       target: service
     ports:
       - "8443:8443"
-      # The service listener carrying /validate, when service_listener is on in
-      # Vault. Bound to loopback: callers on this host reach it, the internet
-      # does not. Point a private network at it deliberately if you need to.
       - "127.0.0.1:${SERVICE_PORT:-8444}:${SERVICE_PORT:-8444}"
     volumes:
       - ./certs:/app/certs:ro
       - ./configs:/app/configs:ro
-      - ./data:/app/data
       - prod-secrets:/run/secrets:ro
     depends_on:
       vault-agent:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      # Uses HTTP; if USE_TLS=true on the app itself, change this probe to https:// with -no-check-certificate
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/ready"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -178,13 +180,14 @@ services:
 volumes:
   vault_data:
     driver: local
+  postgres_data_prod:
+    driver: local
   redis_data_prod:
     driver: local
   prod-secrets:
     driver_opts:
       type: tmpfs
       device: tmpfs
-      # Owned by Vault image user (uid 100) so the agent can write; world-readable for garde; not world-writable
       o: size=2m,uid=100,gid=1000,mode=0755
 
 networks:

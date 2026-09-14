@@ -48,13 +48,12 @@
     - name: Fail early if roles are missing
       ansible.builtin.assert:
         that:
-          - garde.nodes | selectattr('role', 'equalto', 'app-primary') | list | length == 1
-          - garde.nodes | selectattr('role', 'equalto', 'app-standby') | list | length == 1
+          - garde.nodes | selectattr('role', 'equalto', 'app') | list | length >= 1
           - garde.nodes | selectattr('role', 'equalto', 'witness') | list | length >= 1
         fail_msg: >-
-          deploy/inventory.env must define exactly one app-primary, one
-          app-standby and at least one witness. After a failover, swap the
-          NODE*_ROLE values before running this playbook.
+          deploy/inventory.env must define at least one app node and at least
+          one witness (Vault Raft quorum + optional monitoring). App nodes are
+          identical (active-active).
 
     - name: Register the nodes
       ansible.builtin.add_host:
@@ -113,20 +112,3 @@
     # current connection survives only because ufw keeps established sessions.
     - wireguard
     - firewall
-    # Skipped entirely on providers that deliver the address rather than route
-    # it. The capability comes from the driver, so there is no provider name
-    # anywhere in the Ansible layer.
-    - role: failover_ip
-      when:
-        - node_role in ['app-primary', 'app-standby']
-        - garde_facts.requires_ip_binding | bool
-
-- name: Snapshot timer
-  hosts: role_app_primary:role_app_standby:role_witness
-  gather_facts: false
-  become: "{{ garde_facts.bootstrap_user != 'root' }}"
-  vars:
-    deploy_user: "{{ garde_facts.ssh_user }}"
-    remote_root: "{{ garde_facts.remote_root }}"
-  roles:
-    - snapshot

@@ -56,6 +56,50 @@ template {
   destination = "/run/secrets/redis_db"
 }
 
+# Shared PostgreSQL (required for durable catalog). Prefer DATABASE_URL, or the
+# discrete POSTGRES_* keys — same shape as config.Get / postgresDSN().
+template {
+  contents = "{{ with secret \"secret/data/garde/database_url\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/database_url"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_host\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_host"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_port\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_port"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_db\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_db"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_user\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_user"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_password\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_password"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/postgres_sslmode\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/postgres_sslmode"
+  error_on_missing_key = false
+}
+
 template {
   contents = "{{ with secret \"secret/data/garde/superuser_email\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/superuser_email"

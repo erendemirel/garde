@@ -5,11 +5,11 @@
 #   ./deploy/scripts/power.sh node1 on
 #   ./deploy/scripts/power.sh node1 reset
 #
-# Used by fence.sh when a host cannot be reached over the mesh and stopping the
-# machine is the only way left to stop it writing.
+# Used when an operator needs the provider to hard-stop, start, or reset a host
+# (for example after a failed node must leave the mesh before traffic returns).
 #
-# `off` is a hard stop, not a graceful shutdown. That is the point: a host that
-# needs fencing is one that is not responding to polite requests.
+# `off` is a hard stop, not a graceful shutdown — use it when the host is not
+# responding to polite requests.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 

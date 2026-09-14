@@ -174,10 +174,7 @@ step "5/6 Distributing AppRole credentials to the application nodes"
 role_id="$(vault_on "$FIRST_NODE" "vault read -field=role_id auth/approle/role/garde/role-id")"
 
 for node in $NODES; do
-  case "$(node_role "$node")" in
-    app-primary|app-standby) ;;
-    *) continue ;;
-  esac
+  is_app_node "$node" || continue
   secret_id="$(vault_on "$FIRST_NODE" "vault write -f -field=secret_id auth/approle/role/garde/secret-id")"
   on_node "$node" "
     mkdir -p '$REMOTE_ROOT/vault'

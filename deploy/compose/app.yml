@@ -1,13 +1,13 @@
-# Application stack. Deployed identically to app-primary and app-standby.
+# Application stack. Deployed identically on every app node (active-active).
 #
-# The only difference between the two nodes lives in config/redis/redis.conf:
-# the standby's copy carries a `replicaof` line, the primary's does not. That
-# means failover changes no secrets and no compose config — Redis is promoted
-# in place and the failover IP moves.
+# garde reads REDIS_HOST and DATABASE_URL / POSTGRES_* from Vault Agent secrets
+# that point at shared Redis (ElastiCache or an external container) and shared
+# PostgreSQL (RDS Multi-AZ or an external container). Local compose dependencies
+# are only vault-agent (this node's Vault Raft member via extra_hosts).
 #
-# Nothing here is published to the public internet except Caddy's 80/443.
-# garde, the UI and Redis are reachable only inside the compose network or over
-# the WireGuard mesh.
+# Nothing here is published to the public internet except Caddy's 80/443 (or
+# :80 behind a managed load balancer). The UI and garde's public API listener
+# stay on the compose network; the service listener is mesh-only.
 
 services:
   # Vault Agent renders secrets to a tmpfs volume that garde watches.
@@ -28,35 +28,11 @@ services:
       - ../config/vault/templates:/vault/config/templates:ro
       - app-secrets:/run/secrets
     healthcheck:
-      test: ["CMD", "sh", "-c", "test -s /run/secrets/redis_host"]
+      # Shared Redis endpoint must be rendered before garde starts.
+      test: ["CMD", "sh", "-c", "test -s /run/secrets/redis_host && (test -s /run/secrets/database_url || test -s /run/secrets/postgres_host)"]
       interval: 5s
       timeout: 3s
       retries: 30
-    restart: unless-stopped
-    networks:
-      - app_net
-
-  redis:
-    image: redis:7-alpine
-    container_name: garde-redis
-    # The config file is authoritative and writable: `REPLICAOF NO ONE` plus
-    # `CONFIG REWRITE` during failover removes the replicaof line permanently,
-    # so a promoted Redis stays a primary across restarts.
-    command: redis-server /etc/redis/redis.conf
-    environment:
-      # Prefer env over -a on the healthcheck argv (password stays out of ps).
-      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
-    volumes:
-      - ../config/redis/redis.conf:/etc/redis/redis.conf
-      - redis_data:/data
-    ports:
-      # Replication traffic between nodes travels over the mesh only.
-      - "${NODE_WG_IP}:6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
     restart: unless-stopped
     networks:
       - app_net
@@ -74,15 +50,12 @@ services:
     volumes:
       - ../certs:/app/certs:ro
       - ../configs:/app/configs:ro
-      - ../data:/app/data
       - app-secrets:/run/secrets:ro
     depends_on:
       vault-agent:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/ready"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -100,9 +73,10 @@ services:
     networks:
       - app_net
 
-  # Only the node currently holding the failover IP receives public traffic.
-  # The standby still runs Caddy and renews certificates through DNS-01, so it
-  # can serve immediately when the IP moves.
+  # Every healthy app node may receive public traffic (active-active). Behind a
+  # managed load balancer, Caddy still does Host-based routing; TLS terminates
+  # at the platform. In the floating-IP lane only one address is routed, but
+  # each app node still runs an identical Caddy stack.
   caddy:
     image: "${CADDY_IMAGE:?CADDY_IMAGE is required}:${IMAGE_TAG:-latest}"
     container_name: garde-caddy
@@ -148,8 +122,6 @@ services:
       - app_net
 
 volumes:
-  redis_data:
-    driver: local
   caddy_data:
     driver: local
   caddy_config:

@@ -4,106 +4,58 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"garde/internal/entities"
-	"log/slog"
-	"os"
-	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
-	_ "github.com/mattn/go-sqlite3"
+	"garde/internal/entities"
 )
 
+// PermissionRepository is the catalogue of permissions, groups, and which
+// groups may see which permission. It shares the Store's PostgreSQL pool: the
+// catalogue is read on nearly every authorization decision, so it belongs
+// beside the accounts it describes rather than in a second database.
 type PermissionRepository struct {
 	db *sql.DB
 	mu sync.RWMutex
 }
 
 var (
-	permissionRepo     *PermissionRepository
-	permissionRepoErr  error
-	permissionRepoOnce sync.Once
+	permissionRepo   *PermissionRepository
+	permissionRepoMu sync.RWMutex
 )
 
-// Singleton instance of PermissionRepository
-func GetPermissionRepository() (*PermissionRepository, error) {
-	permissionRepoOnce.Do(func() {
-		permissionRepo, permissionRepoErr = NewPermissionRepository()
-	})
-	return permissionRepo, permissionRepoErr
+// NewPermissionRepository wraps an already-open pool. The schema is owned by
+// Migrate, so there is nothing to create here.
+func NewPermissionRepository(db *sql.DB) (*PermissionRepository, error) {
+	if db == nil {
+		return nil, errPostgresUnavailable
+	}
+	return &PermissionRepository{db: db}, nil
 }
 
-func NewPermissionRepository() (*PermissionRepository, error) {
-	dataDir := os.Getenv("DATA_DIR")
-	if dataDir == "" {
-		dataDir = "data"
-	}
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory: %w", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "permissions.db")
-	db, err := sql.Open("sqlite3", dbPath+"?_mmap_size=268435456&_busy_timeout=5000")
+// InitPermissionRepository installs the process-wide catalogue. Call it once,
+// at startup, with the pool the Store opened.
+func InitPermissionRepository(db *sql.DB) (*PermissionRepository, error) {
+	repo, err := NewPermissionRepository(db)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, err
 	}
 
-	// Prefer WAL; some bind mounts (e.g. Docker Desktop on Windows) may reject it.
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		slog.Warn("Could not enable SQLite WAL; continuing with default journal", "error", err)
-	}
-	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
-		return nil, fmt.Errorf("failed to set busy_timeout: %w", err)
-	}
-	// Enable memory-mapped I/O
-	if _, err := db.Exec("PRAGMA mmap_size = 268435456"); err != nil {
-		return nil, fmt.Errorf("failed to set mmap_size: %w", err)
-	}
-
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
-
-	repo := &PermissionRepository{db: db}
-
-	// Initialize schema
-	if err := repo.initSchema(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-
-	slog.Info("Permission repository initialized", "db_path", dbPath)
+	permissionRepoMu.Lock()
+	defer permissionRepoMu.Unlock()
+	permissionRepo = repo
 	return repo, nil
 }
 
-func (r *PermissionRepository) initSchema() error {
-	schema := `
-	CREATE TABLE IF NOT EXISTS permissions (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE,
-		definition TEXT NOT NULL
-	);
-
-	CREATE TABLE IF NOT EXISTS groups (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE,
-		definition TEXT NOT NULL
-	);
-
-	CREATE TABLE IF NOT EXISTS permission_visibility (
-		permission_id INTEGER NOT NULL,
-		group_id INTEGER NOT NULL,
-		PRIMARY KEY (permission_id, group_id),
-		FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
-		FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_permission_visibility_permission ON permission_visibility(permission_id);
-	CREATE INDEX IF NOT EXISTS idx_permission_visibility_group ON permission_visibility(group_id);
-	`
-
-	_, err := r.db.Exec(schema)
-	return err
+// GetPermissionRepository returns the catalogue installed at startup.
+func GetPermissionRepository() (*PermissionRepository, error) {
+	permissionRepoMu.RLock()
+	defer permissionRepoMu.RUnlock()
+	if permissionRepo == nil {
+		return nil, fmt.Errorf("permission repository is not initialized")
+	}
+	return permissionRepo, nil
 }
 
 func (r *PermissionRepository) GetPermissionByID(ctx context.Context, id int64) (*entities.PermissionEntity, error) {
@@ -111,7 +63,7 @@ func (r *PermissionRepository) GetPermissionByID(ctx context.Context, id int64) 
 	defer r.mu.RUnlock()
 
 	var perm entities.PermissionEntity
-	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM permissions WHERE id = ?", id).
+	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM permissions WHERE id = $1", id).
 		Scan(&perm.ID, &perm.Name, &perm.Definition)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("permission not found")
@@ -127,7 +79,7 @@ func (r *PermissionRepository) GetPermissionByName(ctx context.Context, name str
 	defer r.mu.RUnlock()
 
 	var perm entities.PermissionEntity
-	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM permissions WHERE name = ?", name).
+	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM permissions WHERE name = $1", name).
 		Scan(&perm.ID, &perm.Name, &perm.Definition)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("permission not found")
@@ -179,7 +131,7 @@ func (r *PermissionRepository) GetVisiblePermissions(ctx context.Context, groupN
 		INNER JOIN groups g ON pv.group_id = g.id
 		WHERE g.name IN (%s)
 		ORDER BY p.name
-	`, buildPlaceholdersFixed(len(groupNames)))
+	`, buildPlaceholders(1, len(groupNames)))
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -203,7 +155,7 @@ func (r *PermissionRepository) GetGroupByID(ctx context.Context, id int64) (*ent
 	defer r.mu.RUnlock()
 
 	var group entities.GroupEntity
-	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM groups WHERE id = ?", id).
+	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM groups WHERE id = $1", id).
 		Scan(&group.ID, &group.Name, &group.Definition)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("group not found")
@@ -219,7 +171,7 @@ func (r *PermissionRepository) GetGroupByName(ctx context.Context, name string) 
 	defer r.mu.RUnlock()
 
 	var group entities.GroupEntity
-	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM groups WHERE name = ?", name).
+	err := r.db.QueryRowContext(ctx, "SELECT id, name, definition FROM groups WHERE name = $1", name).
 		Scan(&group.ID, &group.Name, &group.Definition)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("group not found")
@@ -264,8 +216,8 @@ func (r *PermissionRepository) IsPermissionVisibleToGroups(ctx context.Context, 
 		FROM permission_visibility pv
 		INNER JOIN permissions p ON pv.permission_id = p.id
 		INNER JOIN groups g ON pv.group_id = g.id
-		WHERE p.name = ? AND g.name IN (%s)
-	`, buildPlaceholdersFixed(len(groupNames)))
+		WHERE p.name = $1 AND g.name IN (%s)
+	`, buildPlaceholders(2, len(groupNames)))
 
 	args := make([]interface{}, len(groupNames)+1)
 	args[0] = permissionName
@@ -287,7 +239,7 @@ func (r *PermissionRepository) GetGroupsForPermission(ctx context.Context, permi
 		FROM groups g
 		INNER JOIN permission_visibility pv ON g.id = pv.group_id
 		INNER JOIN permissions p ON pv.permission_id = p.id
-		WHERE p.name = ?
+		WHERE p.name = $1
 		ORDER BY g.name
 	`
 
@@ -343,14 +295,14 @@ func (r *PermissionRepository) CreatePermission(ctx context.Context, name, defin
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	result, err := r.db.ExecContext(ctx, "INSERT INTO permissions (name, definition) VALUES (?, ?)", name, definition)
+	var id int64
+	err := r.db.QueryRowContext(ctx,
+		"INSERT INTO permissions (name, definition) VALUES ($1, $2) RETURNING id", name, definition).Scan(&id)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return nil, ErrPermissionAlreadyExists
+		}
 		return nil, fmt.Errorf("failed to create permission: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get permission ID: %w", err)
 	}
 
 	return &entities.PermissionEntity{
@@ -364,7 +316,7 @@ func (r *PermissionRepository) UpdatePermission(ctx context.Context, id int64, d
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	result, err := r.db.ExecContext(ctx, "UPDATE permissions SET definition = ? WHERE id = ?", definition, id)
+	result, err := r.db.ExecContext(ctx, "UPDATE permissions SET definition = $1 WHERE id = $2", definition, id)
 	if err != nil {
 		return fmt.Errorf("failed to update permission: %w", err)
 	}
@@ -385,7 +337,7 @@ func (r *PermissionRepository) DeletePermission(ctx context.Context, id int64) e
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	result, err := r.db.ExecContext(ctx, "DELETE FROM permissions WHERE id = ?", id)
+	result, err := r.db.ExecContext(ctx, "DELETE FROM permissions WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete permission: %w", err)
 	}
@@ -406,14 +358,14 @@ func (r *PermissionRepository) CreateGroup(ctx context.Context, name, definition
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	result, err := r.db.ExecContext(ctx, "INSERT INTO groups (name, definition) VALUES (?, ?)", name, definition)
+	var id int64
+	err := r.db.QueryRowContext(ctx,
+		"INSERT INTO groups (name, definition) VALUES ($1, $2) RETURNING id", name, definition).Scan(&id)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return nil, ErrGroupAlreadyExists
+		}
 		return nil, fmt.Errorf("failed to create group: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get group ID: %w", err)
 	}
 
 	return &entities.GroupEntity{
@@ -427,7 +379,7 @@ func (r *PermissionRepository) UpdateGroup(ctx context.Context, id int64, defini
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	result, err := r.db.ExecContext(ctx, "UPDATE groups SET definition = ? WHERE id = ?", definition, id)
+	result, err := r.db.ExecContext(ctx, "UPDATE groups SET definition = $1 WHERE id = $2", definition, id)
 	if err != nil {
 		return fmt.Errorf("failed to update group: %w", err)
 	}
@@ -448,7 +400,7 @@ func (r *PermissionRepository) DeleteGroup(ctx context.Context, id int64) error 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	result, err := r.db.ExecContext(ctx, "DELETE FROM groups WHERE id = ?", id)
+	result, err := r.db.ExecContext(ctx, "DELETE FROM groups WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete group: %w", err)
 	}
@@ -469,8 +421,12 @@ func (r *PermissionRepository) AddPermissionVisibility(ctx context.Context, perm
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	_, err := r.db.ExecContext(ctx, "INSERT INTO permission_visibility (permission_id, group_id) VALUES (?, ?)", permissionID, groupID)
+	_, err := r.db.ExecContext(ctx,
+		"INSERT INTO permission_visibility (permission_id, group_id) VALUES ($1, $2)", permissionID, groupID)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrVisibilityAlreadyExists
+		}
 		return fmt.Errorf("failed to add permission visibility: %w", err)
 	}
 
@@ -481,7 +437,8 @@ func (r *PermissionRepository) RemovePermissionVisibility(ctx context.Context, p
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	result, err := r.db.ExecContext(ctx, "DELETE FROM permission_visibility WHERE permission_id = ? AND group_id = ?", permissionID, groupID)
+	result, err := r.db.ExecContext(ctx,
+		"DELETE FROM permission_visibility WHERE permission_id = $1 AND group_id = $2", permissionID, groupID)
 	if err != nil {
 		return fmt.Errorf("failed to remove permission visibility: %w", err)
 	}
@@ -498,29 +455,18 @@ func (r *PermissionRepository) RemovePermissionVisibility(ctx context.Context, p
 	return nil
 }
 
-func (r *PermissionRepository) Close() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.db != nil {
-		return r.db.Close()
-	}
-	return nil
-}
+// Close is a no-op: the pool is owned by the Store that opened it, and closing
+// it here would take the accounts down with the catalogue.
+func (r *PermissionRepository) Close() error { return nil }
 
-func buildPlaceholdersFixed(count int) string {
+// buildPlaceholders renders "$start,$start+1,..." for an IN list.
+func buildPlaceholders(start, count int) string {
 	if count == 0 {
 		return ""
 	}
 	placeholders := make([]string, count)
 	for i := range placeholders {
-		placeholders[i] = "?"
+		placeholders[i] = "$" + strconv.Itoa(start+i)
 	}
-	result := ""
-	for i, p := range placeholders {
-		if i > 0 {
-			result += ","
-		}
-		result += p
-	}
-	return result
+	return strings.Join(placeholders, ",")
 }

@@ -277,7 +277,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 }
 
 // @Summary Update user information
-// @Description Update user details or process pending update requests. Requires admin privileges. Admins cannot target their own record; only the superuser may update themselves. Requires permissions/groups system to be initialized (SQLite-based). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:write scope; an admin with no entry there is unrestricted.
+// @Description Update user details or process pending update requests. Requires admin privileges. Admins cannot target their own record; only the superuser may update themselves. Requires permissions/groups system to be initialized (PostgreSQL). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:write scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -470,7 +470,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 }
 
 // @Summary Revoke user sessions
-// @Description Revokes all active sessions for a user. Requires permissions/groups system to be initialized (SQLite-based). An admin listed in ADMIN_SCOPES_JSON also needs the garde:sessions:revoke scope; an admin with no entry there is unrestricted.
+// @Description Revokes all active sessions for a user. Requires permissions/groups system to be initialized (PostgreSQL). An admin listed in ADMIN_SCOPES_JSON also needs the garde:sessions:revoke scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -626,7 +626,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 }
 
 // @Summary List users
-// @Description Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (SQLite-based). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:read scope; an admin with no entry there is unrestricted.
+// @Description Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (PostgreSQL). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:read scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -761,7 +761,7 @@ func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.List
 }
 
 // @Summary Get user details
-// @Description Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (SQLite-based). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:read scope; an admin with no entry there is unrestricted.
+// @Description Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (PostgreSQL). An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:read scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -799,7 +799,7 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 }
 
 // @Summary Delete user
-// @Description Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (SQLite-based) for admin operations. An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:delete scope; an admin with no entry there is unrestricted.
+// @Description Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (PostgreSQL) for admin operations. An admin listed in ADMIN_SCOPES_JSON also needs the garde:users:delete scope; an admin with no entry there is unrestricted.
 // @Tags Protected and Admin-Only Routes
 // @Accept json
 // @Produce json
@@ -912,7 +912,7 @@ func (h *AuthHandler) RequestUpdate(c *gin.Context) {
 }
 
 // @Summary List available permissions
-// @Description Returns available permissions. Regular users and admins only see permissions visible to their groups. Superusers see all permissions. Permissions are managed via SQLite database.
+// @Description Returns available permissions. Regular users and admins only see permissions visible to their groups. Superusers see all permissions. Permissions are managed in PostgreSQL.
 // @Tags Protected Routes
 // @Produce json
 // @Security SessionCookie
@@ -972,7 +972,7 @@ func (h *AuthHandler) ListPermissions(c *gin.Context) {
 }
 
 // @Summary List available groups
-// @Description Returns all available groups defined in the system. Groups are managed via SQLite database.
+// @Description Returns all available groups defined in the system. Groups are managed in PostgreSQL.
 // @Tags Protected Routes
 // @Produce json
 // @Security SessionCookie
@@ -1089,7 +1089,7 @@ func (h *AuthHandler) GetAdminUserManagement(c *gin.Context) {
 // Permission Management Handlers (Superuser Only)
 
 // @Summary Create a new permission
-// @Description Creates a new permission in the SQLite database. Only superuser can perform this operation.
+// @Description Creates a new permission in PostgreSQL. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Accept json
 // @Produce json
@@ -1126,9 +1126,7 @@ func (h *AuthHandler) CreatePermission(c *gin.Context) {
 
 	perm, err := permRepo.CreatePermission(c.Request.Context(), req.Name, definition)
 	if err != nil {
-		// Check for unique constraint violation
-		errStr := err.Error()
-		if strings.Contains(errStr, "UNIQUE constraint failed") && strings.Contains(errStr, "permissions.name") {
+		if errors.Is(err, repository.ErrPermissionAlreadyExists) {
 			c.JSON(http.StatusConflict, models.NewErrorResponse("permission already exists"))
 			return
 		}
@@ -1214,7 +1212,7 @@ func (h *AuthHandler) UpdatePermission(c *gin.Context) {
 }
 
 // @Summary Delete a permission
-// @Description Deletes a permission from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.
+// @Description Deletes a permission from PostgreSQL. This will cascade delete all visibility mappings. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Produce json
 // @Security SessionCookie
@@ -1263,7 +1261,7 @@ func (h *AuthHandler) DeletePermission(c *gin.Context) {
 // Group Management Handlers (Superuser Only)
 
 // @Summary Create a new group
-// @Description Creates a new group in the SQLite database. Only superuser can perform this operation.
+// @Description Creates a new group in PostgreSQL. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Accept json
 // @Produce json
@@ -1300,9 +1298,7 @@ func (h *AuthHandler) CreateGroup(c *gin.Context) {
 
 	group, err := permRepo.CreateGroup(c.Request.Context(), req.Name, definition)
 	if err != nil {
-		// Check for unique constraint violation
-		errStr := err.Error()
-		if strings.Contains(errStr, "UNIQUE constraint failed") && strings.Contains(errStr, "groups.name") {
+		if errors.Is(err, repository.ErrGroupAlreadyExists) {
 			c.JSON(http.StatusConflict, models.NewErrorResponse("group already exists"))
 			return
 		}
@@ -1388,7 +1384,7 @@ func (h *AuthHandler) UpdateGroup(c *gin.Context) {
 }
 
 // @Summary Delete a group
-// @Description Deletes a group from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.
+// @Description Deletes a group from PostgreSQL. This will cascade delete all visibility mappings. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Produce json
 // @Security SessionCookie
@@ -1489,9 +1485,7 @@ func (h *AuthHandler) AddPermissionVisibility(c *gin.Context) {
 	// Add visibility mapping
 	err = permRepo.AddPermissionVisibility(c.Request.Context(), perm.ID, group.ID)
 	if err != nil {
-		// Check for unique constraint violation
-		errStr := err.Error()
-		if strings.Contains(errStr, "UNIQUE constraint failed") && strings.Contains(errStr, "permission_visibility") {
+		if errors.Is(err, repository.ErrVisibilityAlreadyExists) {
 			c.JSON(http.StatusConflict, models.NewErrorResponse("visibility mapping already exists"))
 			return
 		}

@@ -25,7 +25,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Creates a new group in the SQLite database. Only superuser can perform this operation.",
+                "description": "Creates a new group in PostgreSQL. Only superuser can perform this operation.",
                 "consumes": [
                     "application/json"
                 ],
@@ -174,7 +174,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Deletes a group from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.",
+                "description": "Deletes a group from PostgreSQL. This will cascade delete all visibility mappings. Only superuser can perform this operation.",
                 "produces": [
                     "application/json"
                 ],
@@ -235,7 +235,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Creates a new permission in the SQLite database. Only superuser can perform this operation.",
+                "description": "Creates a new permission in PostgreSQL. Only superuser can perform this operation.",
                 "consumes": [
                     "application/json"
                 ],
@@ -588,7 +588,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Deletes a permission from the SQLite database. This will cascade delete all visibility mappings. Only superuser can perform this operation.",
+                "description": "Deletes a permission from PostgreSQL. This will cascade delete all visibility mappings. Only superuser can perform this operation.",
                 "produces": [
                     "application/json"
                 ],
@@ -707,7 +707,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Returns all available groups defined in the system. Groups are managed via SQLite database.",
+                "description": "Returns all available groups defined in the system. Groups are managed in PostgreSQL.",
                 "produces": [
                     "application/json"
                 ],
@@ -863,7 +863,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Returns available permissions. Regular users and admins only see permissions visible to their groups. Superusers see all permissions. Permissions are managed via SQLite database.",
+                "description": "Returns available permissions. Regular users and admins only see permissions visible to their groups. Superusers see all permissions. Permissions are managed in PostgreSQL.",
                 "produces": [
                     "application/json"
                 ],
@@ -906,7 +906,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Revokes all active sessions for a user. Requires permissions/groups system to be initialized (SQLite-based).",
+                "description": "Revokes all active sessions for a user. Requires permissions/groups system to be initialized (PostgreSQL).",
                 "consumes": [
                     "application/json"
                 ],
@@ -972,7 +972,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (SQLite-based).",
+                "description": "Returns users with their details and pending requests. Admins see users in their groups, superusers see all. Permission visibility filtering: Regular users only see permissions visible to their groups in their own data. Admins see user's permissions, but filtered to only show permissions visible to the admin's groups. Superusers see all permissions for all users. Requires permissions/groups system to be initialized (PostgreSQL).",
                 "consumes": [
                     "application/json"
                 ],
@@ -1585,7 +1585,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (SQLite-based).",
+                "description": "Returns details for a specific user. Admins can only access users in their groups. Superuser can access all users. Requires permissions/groups system to be initialized (PostgreSQL).",
                 "consumes": [
                     "application/json"
                 ],
@@ -1659,7 +1659,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Update user details or process pending update requests. Requires admin privileges. Requires permissions/groups system to be initialized (SQLite-based). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user).",
+                "description": "Update user details or process pending update requests. Requires admin privileges. Requires permissions/groups system to be initialized (PostgreSQL). Approval restrictions: Admins can only approve adding groups they are members of. Admins can only approve adding permissions visible to their groups. If a pending update request includes groups the admin is not in, approval will fail with error. If a pending update request includes permissions the admin cannot see, approval will fail with error. Cannot approve requests that would remove all permissions or all groups. Admins can remove any groups (including the last shared group - this will revoke their access to manage that user).",
                 "consumes": [
                     "application/json"
                 ],
@@ -1754,7 +1754,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (SQLite-based) for admin operations.",
+                "description": "Deletes a user from the system. Admins can only delete users who share at least one group with them. Superuser can delete any user except themselves. All active sessions are revoked and security records are cleaned up. Requires permissions/groups system to be initialized (PostgreSQL) for admin operations.",
                 "consumes": [
                     "application/json"
                 ],

@@ -113,15 +113,9 @@ terraform/**/*.tfstate.*
 terraform/**/terraform.tfvars
 terraform/**/tfplan
 
-# Database files
+# Database leftovers (local artifacts)
 *.db
-*.sqlite
-*.sqlite3
-data/*.db
-data/*.sqlite
-data/*.db-wal
-data/*.db-shm
-data/*.db-journal
+data/
 
 # Temporary files
 *.tmp

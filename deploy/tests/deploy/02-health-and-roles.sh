@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# Impact: none — full healthcheck plus explicit Redis/Vault topology asserts.
+# Impact: none — full healthcheck plus Vault quorum and app-role asserts.
 set -euo pipefail
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ha/lib.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
 ha_boot
 ha_banner "deploy: health + roles"
 
 "$(ha_scripts)/healthcheck.sh" --all
 
-# Redis topology
-prim_role="$(redis_cli_on "$PRIMARY_NODE" "info replication" | tr -d '\r' | sed -n 's/^role://p')"
-[ "$prim_role" = "master" ] || die "primary $PRIMARY_NODE redis role=$prim_role (want master)"
-ok "Redis master on $PRIMARY_NODE"
+apps="$(app_nodes)"
+[ -n "$apps" ] || die "no NODE*_ROLE=app in inventory"
+ok "app nodes: $apps"
 
-stand_role="$(redis_cli_on "$STANDBY_NODE" "info replication" | tr -d '\r' | sed -n 's/^role://p')"
-stand_link="$(redis_cli_on "$STANDBY_NODE" "info replication" | tr -d '\r' | sed -n 's/^master_link_status://p')"
-[ "$stand_role" = "slave" ] || die "standby $STANDBY_NODE redis role=$stand_role (want slave)"
-[ "$stand_link" = "up" ] || die "standby redis link=$stand_link (want up)"
-ok "Redis replica on $STANDBY_NODE (link up)"
+for node in $apps; do
+  on_node "$node" "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready" \
+    || die "$node /ready failed"
+  ok "$node /ready"
+done
 
 # Vault: at least 2 unsealed, exactly one Raft leader
 unsealed=0

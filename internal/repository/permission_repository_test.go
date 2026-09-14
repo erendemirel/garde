@@ -5,13 +5,11 @@ import (
 	"testing"
 )
 
-// SQLite CRUD against an isolated temp DATA_DIR. Exercises the schema,
-// uniqueness, visibility mappings and cascade deletes without touching the
-// checked-in data/permissions.db.
+// Catalogue CRUD against the scratch PostgreSQL database. Exercises the
+// schema, uniqueness, visibility mappings and cascade deletes.
 func newIsolatedPermRepo(t *testing.T) *PermissionRepository {
 	t.Helper()
-	t.Setenv("DATA_DIR", t.TempDir())
-	repo, err := NewPermissionRepository()
+	repo, err := NewPermissionRepository(newTestDB(t))
 	if err != nil {
 		t.Fatal(err)
 	}

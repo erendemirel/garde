@@ -9,6 +9,11 @@ import (
 	"garde/internal/models"
 )
 
+func newAPIKeyRepo(t *testing.T) *RedisRepository {
+	t.Helper()
+	return newDurableStore(t)
+}
+
 func storeKey(t *testing.T, repo *RedisRepository, id, name string) *models.ServiceAPIKey {
 	t.Helper()
 	key := &models.ServiceAPIKey{
@@ -41,7 +46,7 @@ func storeTenantKey(t *testing.T, repo *RedisRepository, id, tenantID, name stri
 }
 
 func TestListServiceAPIKeysByTenant(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeTenantKey(t, repo, "aa01", "acme", "acme-prod")
@@ -73,7 +78,7 @@ func TestListServiceAPIKeysByTenant(t *testing.T) {
 // The incident-response path: one call takes out a compromised holder and
 // leaves everyone else alone.
 func TestRevokeServiceAPIKeysByTenant(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeTenantKey(t, repo, "aa01", "acme", "acme-prod")
@@ -105,7 +110,7 @@ func TestRevokeServiceAPIKeysByTenant(t *testing.T) {
 // Calling it twice must not fail or change the reported set, so that an
 // operator can re-run it without wondering whether it worked the first time.
 func TestRevokeServiceAPIKeysByTenantIsIdempotent(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeTenantKey(t, repo, "aa01", "acme", "acme-prod")
@@ -124,7 +129,7 @@ func TestRevokeServiceAPIKeysByTenantIsIdempotent(t *testing.T) {
 }
 
 func TestServiceAPIKeyStoreAndGet(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeKey(t, repo, "aabb", "billing")
@@ -145,7 +150,7 @@ func TestServiceAPIKeyStoreAndGet(t *testing.T) {
 }
 
 func TestServiceAPIKeyMissingIsDistinguishable(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 
 	_, err := repo.GetServiceAPIKey(context.Background(), "nope")
 	if !errors.Is(err, ErrAPIKeyNotFound) {
@@ -154,7 +159,7 @@ func TestServiceAPIKeyMissingIsDistinguishable(t *testing.T) {
 }
 
 func TestServiceAPIKeyTouchDoesNotRewriteRecord(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeKey(t, repo, "ccdd", "reporting")
@@ -178,7 +183,7 @@ func TestServiceAPIKeyTouchDoesNotRewriteRecord(t *testing.T) {
 }
 
 func TestServiceAPIKeyRevokeIsIdempotentAndKeepsRecord(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeKey(t, repo, "eeff", "partner")
@@ -211,7 +216,7 @@ func TestServiceAPIKeyRevokeIsIdempotentAndKeepsRecord(t *testing.T) {
 }
 
 func TestServiceAPIKeyRevokeUnknownID(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 
 	if _, err := repo.RevokeServiceAPIKey(context.Background(), "missing"); !errors.Is(err, ErrAPIKeyNotFound) {
 		t.Fatalf("err = %v, want ErrAPIKeyNotFound", err)
@@ -219,7 +224,7 @@ func TestServiceAPIKeyRevokeUnknownID(t *testing.T) {
 }
 
 func TestServiceAPIKeyListIsNewestFirst(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	older := &models.ServiceAPIKey{ID: "1111", Name: "older", CreatedAt: time.Now().UTC().Add(-time.Hour)}
@@ -243,7 +248,7 @@ func TestServiceAPIKeyListIsNewestFirst(t *testing.T) {
 }
 
 func TestServiceAPIKeyListIgnoresLastUsedMarkers(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeKey(t, repo, "abcd", "one")
@@ -263,7 +268,7 @@ func TestServiceAPIKeyListIgnoresLastUsedMarkers(t *testing.T) {
 }
 
 func TestServiceAPIKeyDeleteRemovesMarker(t *testing.T) {
-	repo, _ := newTestRepo(t)
+	repo := newAPIKeyRepo(t)
 	ctx := context.Background()
 
 	storeKey(t, repo, "dead", "gone")

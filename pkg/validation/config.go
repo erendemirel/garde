@@ -32,6 +32,10 @@ func DefaultConfig() *ValidatorConfig {
 }
 
 func ValidateConfig() error {
+	if err := validatePostgresConfig(); err != nil {
+		return err
+	}
+
 	// Redis configuration
 	if config.Get("REDIS_HOST") == "" {
 		return fmt.Errorf("REDIS_HOST is required")
@@ -100,6 +104,25 @@ func ValidateConfig() error {
 		return err
 	}
 
+	return nil
+}
+
+// PostgreSQL is the durable authority. Prefer DATABASE_URL; otherwise require
+// the discrete POSTGRES_* secrets so a misconfigured node fails at startup
+// rather than on the first account write.
+func validatePostgresConfig() error {
+	if strings.TrimSpace(config.Get("DATABASE_URL")) != "" {
+		return nil
+	}
+	if strings.TrimSpace(config.Get("POSTGRES_HOST")) == "" {
+		return fmt.Errorf("DATABASE_URL or POSTGRES_HOST is required")
+	}
+	if strings.TrimSpace(config.Get("POSTGRES_DB")) == "" {
+		return fmt.Errorf("POSTGRES_DB is required when DATABASE_URL is not set")
+	}
+	if strings.TrimSpace(config.Get("POSTGRES_USER")) == "" {
+		return fmt.Errorf("POSTGRES_USER is required when DATABASE_URL is not set")
+	}
 	return nil
 }
 

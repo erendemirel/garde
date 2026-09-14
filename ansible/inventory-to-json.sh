@@ -76,9 +76,6 @@ else
 fi
 printf '  "service_port": "%s",\n' "$(json_escape "${SERVICE_PORT:-8444}")"
 printf '  "failover_ip": "%s",\n'  "$(json_escape "${FAILOVER_IP:-}")"
-printf '  "primary_node": "%s",\n' "$(json_escape "${PRIMARY_NODE:-}")"
-printf '  "standby_node": "%s",\n' "$(json_escape "${STANDBY_NODE:-}")"
-printf '  "snapshot_interval": "%s",\n' "$(json_escape "${SQLITE_SNAPSHOT_INTERVAL:-5min}")"
 printf '  "nodes": [\n'
 
 first=true

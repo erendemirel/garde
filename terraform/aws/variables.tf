@@ -17,13 +17,13 @@ variable "vpc_cidr" {
 }
 
 variable "instance_type" {
-  description = "t3.small is the floor: Vault, Redis, the API, the UI and Caddy on one host. t3.medium if you want headroom."
+  description = "t3.small is the floor: Vault, the API, the UI and Caddy on one host (Redis/Postgres are shared). t3.medium if you want headroom."
   type        = string
   default     = "t3.small"
 }
 
 variable "root_volume_gb" {
-  description = "Images, Vault data and snapshots. 30 is comfortable; the default 8 is not."
+  description = "Images and Vault data. 30 is comfortable; the default 8 is not."
   type        = number
   default     = 30
 }

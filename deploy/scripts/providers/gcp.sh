@@ -16,11 +16,9 @@
 # Google-managed certificate in front of the instances, so no host ever holds
 # the public address or proves domain control.
 #
-# managed_lb here still routes deliberately rather than load-balancing across
-# both app nodes: this is a warm-standby cluster whose standby runs a Redis
-# replica. Each node sits in its own zonal unmanaged instance group, all
-# attached to one backend service, and routing means making sure only the
-# intended node's group holds its instance.
+# managed_lb can load-balance across healthy app nodes (shared Redis + Postgres).
+# Each node sits in its own zonal unmanaged instance group; `traffic.sh route`
+# adds the node without removing other app backends.
 #
 # Credentials: a service account key with compute.instances.get,
 # compute.instances.start/stop/reset, compute.instances.addAccessConfig and
@@ -70,8 +68,7 @@ fi
 
 # Compute Engine translates the external address to the instance's internal one
 # and the guest interface only ever carries the internal address, so there is
-# nothing for the host to bind. The bootstrap playbook skips the failover_ip
-# role here.
+# nothing for the host to bind. Hosts do not bind FAILOVER_IP here.
 PROVIDER_REQUIRES_IP_BINDING=false
 
 # IAP TCP forwarding: an identity-aware tunnel into instances with no external
@@ -179,13 +176,13 @@ _gcp_group_holds_instance() {
 }
 
 _gcp_route_via_backend() {
-  local node="$1" other
+  local node="$1"
+  is_app_node "$node" || die "$node is not an app node — refuse to put a witness in the backend"
   provider_preflight
 
-  # Add before removing, for the same reason the AWS driver registers first: a
-  # backend service with no instances anywhere answers 502.
+  # Active-active: add this node without removing other app backends.
   if _gcp_group_holds_instance "$node"; then
-    log "$node is already the backend instance"
+    log "$node is already in its instance group"
   else
     _gcp compute instance-groups unmanaged add-instances \
       "$(_gcp_group_field "$node" name)" \
@@ -193,21 +190,10 @@ _gcp_route_via_backend() {
       --instances "$(_gcp_name_of "$node")" >/dev/null
   fi
 
-  for other in $NODES; do
-    [ "$other" = "$node" ] && continue
-    [ -n "$(node_var "$other" INSTANCE_GROUP)" ] || continue
-    _gcp_group_holds_instance "$other" || continue
-    log "removing $other from its instance group"
-    _gcp compute instance-groups unmanaged remove-instances \
-      "$(_gcp_group_field "$other" name)" \
-      --zone "$(_gcp_group_field "$other" zone)" \
-      --instances "$(_gcp_name_of "$other")" >/dev/null
-  done
-
   _gcp_group_holds_instance "$node" \
     || die "Google Cloud accepted the change but $node is not in its instance group"
 
-  ok "Google Cloud pointed the backend service at $node"
+  ok "Google Cloud registered $node in the backend service"
 }
 
 _gcp_backend_location() {

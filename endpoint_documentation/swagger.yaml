@@ -328,7 +328,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Creates a new group in the SQLite database. Only superuser can
+      description: Creates a new group in PostgreSQL. Only superuser can
         perform this operation.
       parameters:
       - description: Group details
@@ -369,7 +369,7 @@ paths:
       - Superuser Routes
   /admin/groups/{group_name}:
     delete:
-      description: Deletes a group from the SQLite database. This will cascade delete
+      description: Deletes a group from PostgreSQL. This will cascade delete
         all visibility mappings. Only superuser can perform this operation.
       parameters:
       - description: Group name
@@ -453,7 +453,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Creates a new permission in the SQLite database. Only superuser
+      description: Creates a new permission in PostgreSQL. Only superuser
         can perform this operation.
       parameters:
       - description: Permission details
@@ -494,7 +494,7 @@ paths:
       - Superuser Routes
   /admin/permissions/{permission_name}:
     delete:
-      description: Deletes a permission from the SQLite database. This will cascade
+      description: Deletes a permission from PostgreSQL. This will cascade
         delete all visibility mappings. Only superuser can perform this operation.
       parameters:
       - description: Permission name
@@ -734,7 +734,7 @@ paths:
   /groups:
     get:
       description: Returns all available groups defined in the system. Groups are
-        managed via SQLite database.
+        managed in PostgreSQL.
       produces:
       - application/json
       responses:
@@ -830,7 +830,7 @@ paths:
     get:
       description: Returns available permissions. Regular users and admins only see
         permissions visible to their groups. Superusers see all permissions. Permissions
-        are managed via SQLite database.
+        are managed in PostgreSQL.
       produces:
       - application/json
       responses:
@@ -856,7 +856,7 @@ paths:
       consumes:
       - application/json
       description: Revokes all active sessions for a user. Requires permissions/groups
-        system to be initialized (SQLite-based).
+        system to be initialized (PostgreSQL).
       parameters:
       - description: Session revocation request with user ID
         in: body
@@ -902,7 +902,7 @@ paths:
         Regular users only see permissions visible to their groups in their own data.
         Admins see user''s permissions, but filtered to only show permissions visible
         to the admin''s groups. Superusers see all permissions for all users. Requires
-        permissions/groups system to be initialized (SQLite-based).'
+        permissions/groups system to be initialized (PostgreSQL).'
       produces:
       - application/json
       responses:
@@ -976,7 +976,7 @@ paths:
       description: Deletes a user from the system. Admins can only delete users who
         share at least one group with them. Superuser can delete any user except themselves.
         All active sessions are revoked and security records are cleaned up. Requires
-        permissions/groups system to be initialized (SQLite-based) for admin operations.
+        permissions/groups system to be initialized (PostgreSQL) for admin operations.
       parameters:
       - description: User ID
         in: path
@@ -1017,7 +1017,7 @@ paths:
       - application/json
       description: Returns details for a specific user. Admins can only access users
         in their groups. Superuser can access all users. Requires permissions/groups
-        system to be initialized (SQLite-based).
+        system to be initialized (PostgreSQL).
       parameters:
       - description: User ID
         in: path
@@ -1062,7 +1062,7 @@ paths:
       consumes:
       - application/json
       description: 'Update user details or process pending update requests. Requires
-        admin privileges. Requires permissions/groups system to be initialized (SQLite-based).
+        admin privileges. Requires permissions/groups system to be initialized (PostgreSQL).
         Approval restrictions: Admins can only approve adding groups they are members
         of. Admins can only approve adding permissions visible to their groups. If
         a pending update request includes groups the admin is not in, approval will

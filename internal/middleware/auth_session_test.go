@@ -21,8 +21,7 @@ import (
 func authStack(t *testing.T) (*service.AuthService, *service.SecurityAnalyzer, *repository.RedisRepository) {
 	t.Helper()
 	testutil.InitConfig(t, map[string]string{"superuser_email": "root@example.com"})
-	_, client := testutil.NewMiniRedis(t)
-	repo := repository.NewRedisRepositoryFromClient(client)
+	repo := testutil.NewTestStore(t)
 	svc := service.NewAuthService(repo)
 	return svc, service.NewSecurityAnalyzer(repo), repo
 }

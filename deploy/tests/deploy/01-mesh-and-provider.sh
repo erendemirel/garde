@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Impact: none — mesh reachability + provider credential/tooling preflight.
 set -euo pipefail
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ha/lib.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
 ha_boot
 ha_banner "deploy: mesh + provider preflight"

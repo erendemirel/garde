@@ -9,7 +9,7 @@ import (
 )
 
 // Admin-object flows through miniredis: superuser paths plus every guard.
-// Admin shared-group paths need the groups system loaded (SQLite singleton),
+// Admin shared-group paths need the groups system loaded (Postgres-backed),
 // so they stay with the integration suite; guards are asserted here.
 func newAdminService(t *testing.T) *AuthService {
 	t.Helper()

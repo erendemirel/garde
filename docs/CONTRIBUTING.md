@@ -28,14 +28,15 @@ GitHub Actions runs `go vet` and `go test ./...` on every push and pull request
 (see `.github/workflows/unit.yml`), in parallel with e2e. Locally:
 
 ```bash
-go vet ./...
-go test ./...
-go test -cover ./...
+export GARDE_TEST_DATABASE_URL='postgres://garde:garde@localhost:5432/garde?sslmode=disable'
+CGO_ENABLED=0 go vet ./...
+CGO_ENABLED=0 go test -p 1 ./...
+CGO_ENABLED=0 go test -p 1 -cover ./...
 ```
 
-No external services: miniredis, temp `DATA_DIR`, temp secret dirs.
+Needs a scratch Postgres (`GARDE_TEST_DATABASE_URL`) plus miniredis for Redis.
 See [UNIT_TESTS.md](UNIT_TESTS.md) for layout, conventions (global config,
-optimistic-locking re-fetch, no permission singleton), and coverage policy.
+`NewTestStore`, optimistic-locking re-fetch, no permission singleton), and coverage policy.
 
 ### Playwright E2E (web UI)
 

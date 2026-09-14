@@ -1,16 +1,16 @@
-# DNS for the AWS garde cluster: Route 53 A records for app and api.
+# DNS for the AWS garde cluster: Route 53 A / alias records for app and api.
 #
 # Where they point depends on traffic_mode.
 #
-#   floating_ip  the Elastic IP. Failover moves that address between EC2
-#                instances, so DNS never changes and there is no TTL wait on
-#                cutover. Caddy solves ACME DNS-01 against the same hosted zone
-#                (see AWS_ACME_* credentials). Do not declare _acme-challenge
-#                records here — Caddy creates and removes them.
+#   floating_ip  the Elastic IP. Operator tooling may move that address between
+#                EC2 instances; DNS stays stable. Caddy solves ACME DNS-01
+#                against the same hosted zone (see AWS_ACME_* credentials).
+#                Do not declare _acme-challenge records here — Caddy creates
+#                and removes them.
 #
-#   managed_lb   alias records to the load balancer, which holds the address
-#                and an ACM certificate. Nothing on the hosts issues
-#                certificates, so there is no DNS-01 at all.
+#   managed_lb   alias records to the load balancer (primary AWS path for
+#                active-active). The ALB holds the address and an ACM
+#                certificate. Nothing on the hosts issues certificates.
 
 variable "dns_zone" {
   description = <<-EOT
@@ -41,7 +41,7 @@ variable "api_hostname" {
 }
 
 variable "dns_record_ttl" {
-  description = "TTL for the app/api A records. Keep low so abandoning the EIP is recoverable without a long wait."
+  description = "TTL for floating_ip A records. Prefer managed_lb aliases (no TTL wait) for active-active."
   type        = number
   default     = 60
 }
@@ -114,7 +114,7 @@ resource "aws_route53_record" "app_lb" {
   alias {
     name                   = aws_lb.main[0].dns_name
     zone_id                = aws_lb.main[0].zone_id
-    evaluate_target_health = false
+    evaluate_target_health = true
   }
 }
 
@@ -128,6 +128,6 @@ resource "aws_route53_record" "api_lb" {
   alias {
     name                   = aws_lb.main[0].dns_name
     zone_id                = aws_lb.main[0].zone_id
-    evaluate_target_health = false
+    evaluate_target_health = true
   }
 }

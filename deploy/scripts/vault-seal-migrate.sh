@@ -126,7 +126,7 @@ migrate_node() {
   die "$node still sealed after migrate — check Vault logs and KMS permissions"
 }
 
-# Raft leader last when detectable; otherwise inventory app-primary last.
+# Raft leader last when detectable; otherwise last node in inventory order.
 ORDER=""
 LEADER=""
 for node in $NODES; do
@@ -143,18 +143,8 @@ if [ -n "$LEADER" ]; then
   ORDER="$ORDER $LEADER"
   log "Raft leader $LEADER will migrate last"
 else
-  for node in $NODES; do
-    case "$(node_role "$node")" in
-      app-primary) ;;
-      *) ORDER="$ORDER $node" ;;
-    esac
-  done
-  for node in $NODES; do
-    case "$(node_role "$node")" in
-      app-primary) ORDER="$ORDER $node" ;;
-    esac
-  done
-  warn "could not detect Raft leader — migrating inventory app-primary last"
+  ORDER="$NODES"
+  warn "could not detect Raft leader — migrating in inventory node order"
 fi
 
 for node in $ORDER; do

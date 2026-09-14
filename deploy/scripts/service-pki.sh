@@ -127,7 +127,7 @@ case "$ACTION" in
     if [ -z "$targets" ]; then
       # Only the app nodes run garde; the witness has no service listener.
       for node in $NODES; do
-        case "$(node_role "$node")" in app-primary|app-standby) targets="$targets $node" ;; esac
+        is_app_node "$node" && targets="$targets $node"
       done
     fi
     for node in $targets; do

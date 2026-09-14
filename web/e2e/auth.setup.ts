@@ -3,7 +3,7 @@ import { e2eSuperuser, loginViaRequest, openDashboardSession } from './helpers/a
 import { ensureSeedAdmin2Ready, ensureSeedAdminReady, ensureE2eCatalog } from './helpers/userApi';
 
 /**
- * Once before the suite: seed permission catalog (fresh CI SQLite) and restore seed admin groups/permissions.
+ * Once before the suite: seed permission catalog (fresh CI Postgres) and restore seed admin groups/permissions.
  * Does not share session cookies with workers (each worker logs in separately).
  */
 setup('restore seed admin access', async ({ page }) => {

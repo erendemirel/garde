@@ -1,13 +1,12 @@
 # Infra test suites
 
 Operator drills against a live garde cluster. Not unit tests — they SSH to the
-nodes and sometimes cause a brief outage on purpose.
+nodes. App nodes are active-active against shared PostgreSQL and Redis.
 
 | Suite | Path | Default impact |
 |-------|------|----------------|
 | **Bring-up / doctor** | `deploy/tests/bringup/` | None (offline + read-only probes) |
-| **Deploy verification** | `deploy/tests/deploy/` | None (read-only / dry-run) |
-| **HA / failover** | `deploy/tests/ha/` | Mixed — see that suite's README |
+| **Deploy verification** | `deploy/tests/deploy/` | None (read-only) |
 
 ```bash
 export REDIS_PASSWORD=... ASSUME_YES=true
@@ -15,9 +14,7 @@ export REDIS_PASSWORD=... ASSUME_YES=true
 
 ./deploy/tests/run.sh bringup         # bring-up.sh offline + doctor
 ./deploy/tests/run.sh deploy          # post-deploy / smoke
-./deploy/tests/run.sh ha no-outage    # safe HA slice
-./deploy/tests/run.sh ha soft         # planned soft cutover
-./deploy/tests/run.sh all-safe        # bringup + deploy + ha no-outage + service-stays-up
+./deploy/tests/run.sh all-safe        # bringup + deploy
 ```
 
-Shared helpers live in `ha/lib.sh` (sourced by both suites for now).
+Shared helpers live in `deploy/tests/lib.sh`.

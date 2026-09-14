@@ -26,9 +26,18 @@ image_bucket_name = "garde-images-CHANGEME"
 # app_hostname = "app"
 # api_hostname = "api"
 
-# t3.small is the floor for a host running Vault, Redis, the API, the UI and
-# Caddy together. Raise it if you plan to leave this running.
+# t3.small is the floor for a host running Vault, the API, the UI and Caddy.
+# Shared Redis/Postgres are separate (see rds.tf / elasticache.tf).
 # instance_type = "t3.medium"
+
+# Preferred AWS edge for active-active app nodes:
+# traffic_mode = "managed_lb"
+# lb_health_check_path = "/healthz"
+
+# Optional shared data plane (pass via TF_VAR_* or a secrets-backed tfvars; never commit):
+# postgres_password  = "…"   # creates Multi-AZ RDS (db.t4g.micro)
+# redis_auth_token   = "…"   # creates ElastiCache Redis (cache.t4g.micro, 16+ chars)
+# Then seed terraform output postgres_endpoint / redis_primary_endpoint into Vault.
 
 # Bring-up: after editing this file, run from this directory:
 #   ./bring-up.sh

@@ -12,7 +12,7 @@
 #   3. the same call succeeds with a certificate from the service CA (+ shared
 #      or per-tenant key)
 #
-# Claims 2–3 soft-skip when the service listener is not running on the primary
+# Claims 2–3 soft-skip when the service listener is not running on an app node
 # (single-listener deployments). Claim 3 also needs:
 #   SERVICE_CLIENT_CERT=deploy/pki/client-ci-cert.pem
 #   SERVICE_CLIENT_KEY=deploy/pki/client-ci-key.pem
@@ -21,13 +21,14 @@
 # Session ids must be well-formed (86-char base64url). A UUID fails format
 # validation with 400 and cannot distinguish "key accepted" from "key refused".
 set -euo pipefail
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ha/lib.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
 ha_boot
 ha_banner "deploy: service listener"
 
 PORT="${SERVICE_PORT:-8444}"
-TARGET="${PRIMARY_NODE:?PRIMARY_NODE missing from inventory}"
+TARGET="$(app_nodes | awk '{print $1}')"
+[ -n "$TARGET" ] || die "no app node for service-listener checks"
 TARGET_IP="$(node_wg_ip "$TARGET")"
 [ -n "$TARGET_IP" ] || die "no mesh address for $TARGET"
 
@@ -99,9 +100,10 @@ if [ "$listener_up" != "yes" ]; then
   exit 0
 fi
 
-# Run from the standby, so this also proves the listener is reachable across
-# the mesh rather than only from its own host.
-FROM="${STANDBY_NODE:-$TARGET}"
+# Prefer a second app node when present, so this also proves the listener is
+# reachable across the mesh rather than only from its own host.
+FROM="$(app_nodes | awk '{print ($2 != "" ? $2 : $1)}')"
+[ -n "$FROM" ] || FROM="$TARGET"
 naked="$(on_node "$FROM" "docker run --rm $HA_CURL_IMG \
   curl -sS -k -o /dev/null -w '%{http_code}' --max-time 15 \
   'https://$TARGET_IP:$PORT/validate' 2>&1 || true")"
