@@ -19,6 +19,9 @@ services:
     command: vault agent -config=/vault/config/agent.hcl
     environment:
       VAULT_ADDR: http://vault:8200
+      # Used by vault/templates/service_tls_*.tpl (Agent pkiCert auto-renew).
+      SERVICE_CERT_DOMAIN: "${COOKIE_DOMAIN:-}"
+      NODE_WG_IP: "${NODE_WG_IP:?NODE_WG_IP is required}"
     extra_hosts:
       - "vault:${NODE_WG_IP:?NODE_WG_IP is required}"
     volumes:

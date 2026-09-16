@@ -39,8 +39,9 @@ Pick the traffic mode before applying — it changes which resources exist:
 - [ ] Vault cluster initialized with KMS auto-unseal; recovery keys stored **offline**
 - [ ] Seed Vault with shared `redis_host` / `DATABASE_URL` or `POSTGRES_*` (from terraform outputs when using RDS/ElastiCache)
 - [ ] Existing Shamir cluster? Run `vault-seal-migrate.sh` after sync-config (see DEPLOY.md)
-- [ ] Service CA created and pushed: `service-pki.sh init && service-pki.sh server && service-pki.sh push`; `ca-key.pem` backed up offline
-- [ ] Vault holds `service_listener=true`, `service_mtls=required` and the three `service_tls_*` paths
+- [ ] Service CA via Vault PKI: enabled by `init-vault-prod` (or `vault-pki.sh enable`); Agent auto-issues/renews server leaf to `/run/secrets/service_tls_*.pem`; client certs via `vault-pki.sh issue-client <name>`; cron `service-tls-reload.sh --remote`
+- [ ] Vault holds `service_listener=true`, `service_mtls=required`, Agent PEM paths, and **`mfa_encryption_key`**
+- [ ] Issue per-caller `/validate` keys with `POST /admin/api-keys` for each internal service
 - [ ] Images built and shipped; `./deploy/scripts/deploy.sh …`
 - [ ] `REDIS_PASSWORD` (and other secrets) available to sync-config / CI
 - [ ] GitHub secrets/vars updated (`DEPLOY_INVENTORY`, compute keys, …)

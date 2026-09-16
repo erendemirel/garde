@@ -53,11 +53,8 @@ vault kv put secret/garde/database_url value='postgres://garde:SECRET@db.xxxxx.r
 vault kv put secret/garde/domain_name value=your-domain.com
 vault kv put secret/garde/superuser_email value=admin@example.com
 vault kv put secret/garde/superuser_password value=YourSecurePassword
-vault kv put secret/garde/api_key value=YourApiKey20CharsMin!
-# Whether that shared api_key authenticates /validate on the public listener.
-# No default — garde refuses to start until this says which way you want it.
-# Set false and issue per-caller keys once anyone but you is calling.
-vault kv put secret/garde/public_validate_shared_key value=false
+vault kv put secret/garde/mfa_encryption_key value=your-dedicated-mfa-key
+# Issue /validate callers with POST /admin/api-keys (no shared API_KEY secret).
 # ... and other keys (see dev.secrets or Required Mandatory Secrets in docs/INSTALLATION.md).
 
 # Optional: use dynamic Redis credentials from the database secrets engine instead of static redis_password.
@@ -76,6 +73,18 @@ path "secret/data/garde/*" {
   capabilities = ["read"]
 }
 path "database/creds/garde-redis" {
+  capabilities = ["read"]
+}
+path "pki_int/issue/garde-service" {
+  capabilities = ["create", "update"]
+}
+path "pki_int/issue/garde-client" {
+  capabilities = ["create", "update"]
+}
+path "pki_int/cert/ca" {
+  capabilities = ["read"]
+}
+path "pki_int/ca/pem" {
   capabilities = ["read"]
 }
 EOF

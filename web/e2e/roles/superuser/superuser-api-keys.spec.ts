@@ -2,7 +2,7 @@ import { test, expect } from '../../helpers/fixtures';
 import { describeTags, TAG } from '../../helpers/tags';
 import {
 	cleanupTenantKeys,
-	e2eSharedApiKey,
+	e2eLegacySharedSecret,
 	expectAPIKeyAccepted,
 	expectAPIKeyRejected,
 	issueAPIKey,
@@ -408,13 +408,8 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 	});
 
 	test.describe('API contract and edge cases', () => {
-		test('shared API_KEY still authenticates /validate in the single-listener dev layout', async ({
-			suRequest
-		}) => {
-			// dev.secrets sets PUBLIC_VALIDATE_SHARED_KEY=true and SERVICE_LISTENER=false.
-			// This asserts the acknowledgement gate kept the chosen posture, not that the
-			// shared key is desirable — mesh layouts refuse it on the public edge.
-			await expectAPIKeyAccepted(await validateWithAPIKey(suRequest, e2eSharedApiKey));
+		test('legacy shared secret never authenticates /validate', async ({ suRequest }) => {
+			await expectAPIKeyRejected(await validateWithAPIKey(suRequest, e2eLegacySharedSecret));
 		});
 
 		test('garbage and forged-looking credentials are refused', async ({ suRequest }) => {

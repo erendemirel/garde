@@ -1,8 +1,8 @@
 import { expect, type APIRequestContext } from '@playwright/test';
 
-/** Shared API_KEY from dev.secrets — accepted on public /validate when PUBLIC_VALIDATE_SHARED_KEY=true. */
-export const e2eSharedApiKey =
-	process.env.E2E_API_KEY || process.env.API_KEY || 'TestApiKey123!TestApiKey123!';
+/** Legacy shared secret — must never authenticate /validate after API_KEY removal. */
+export const e2eLegacySharedSecret =
+	process.env.E2E_LEGACY_API_KEY || 'TestApiKey123!TestApiKey123!';
 
 export type IssuedAPIKey = {
 	id: string;
@@ -81,7 +81,7 @@ export async function expectAPIKeyAccepted(res: Awaited<ReturnType<typeof valida
 	expect(String(body?.error?.message || '').toLowerCase()).toContain('session invalid');
 }
 
-/** Assert the credential was refused before the handler — key unknown, revoked, or shared-key blocked. */
+/** Assert the credential was refused before the handler. */
 export async function expectAPIKeyRejected(res: Awaited<ReturnType<typeof validateWithAPIKey>>) {
 	expect(res.status()).toBe(401);
 	const body = await res.json();

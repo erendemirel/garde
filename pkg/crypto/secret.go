@@ -13,26 +13,20 @@ import (
 	"garde/pkg/config"
 )
 
-const mfaKeyFallbackInfo = "garde-mfa-encryption-v1"
-
 // MFAEncryptionKey returns a 32-byte AES key for MFA secret encryption.
-// Preference order:
-//  1. MFA_ENCRYPTION_KEY — raw string (hashed to 32 bytes) or base64-encoded 32 bytes
-//  2. Derived from API_KEY (stable fallback so existing deployments keep working)
+//
+// MFA_ENCRYPTION_KEY is required: a raw string (SHA-256'd to 32 bytes) or a
+// base64-encoded 32-byte key. There is no fallback from a shared API credential —
+// auth secrets and at-rest encryption keys must stay separate.
 func MFAEncryptionKey() ([]byte, error) {
-	if keyMaterial := strings.TrimSpace(config.Get("MFA_ENCRYPTION_KEY")); keyMaterial != "" {
-		if decoded, err := base64.StdEncoding.DecodeString(keyMaterial); err == nil && len(decoded) == 32 {
-			return decoded, nil
-		}
-		sum := sha256.Sum256([]byte(keyMaterial))
-		return sum[:], nil
+	keyMaterial := strings.TrimSpace(config.Get("MFA_ENCRYPTION_KEY"))
+	if keyMaterial == "" {
+		return nil, fmt.Errorf("MFA encryption key unavailable: set MFA_ENCRYPTION_KEY")
 	}
-
-	apiKey := strings.TrimSpace(config.Get("API_KEY"))
-	if apiKey == "" {
-		return nil, fmt.Errorf("MFA encryption key unavailable: set MFA_ENCRYPTION_KEY or API_KEY")
+	if decoded, err := base64.StdEncoding.DecodeString(keyMaterial); err == nil && len(decoded) == 32 {
+		return decoded, nil
 	}
-	sum := sha256.Sum256([]byte(mfaKeyFallbackInfo + ":" + apiKey))
+	sum := sha256.Sum256([]byte(keyMaterial))
 	return sum[:], nil
 }
 

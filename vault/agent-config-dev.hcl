@@ -119,23 +119,8 @@ template {
 }
 
 template {
-  contents = "{{ with secret \"secret/data/garde/api_key\" }}{{ .Data.data.value }}{{ end }}"
-  destination = "/run/secrets/api_key"
-}
-
-# Dev runs the single-listener layout, where garde will not start until this
-# says whether the shared api_key may authenticate the public /validate.
-# true is the usual dev answer: there is no per-caller key to test with yet.
-template {
-  contents = "{{ with secret \"secret/data/garde/public_validate_shared_key\" }}{{ .Data.data.value }}{{ end }}"
-  destination = "/run/secrets/public_validate_shared_key"
-  error_on_missing_key = false
-}
-
-template {
   contents = "{{ with secret \"secret/data/garde/mfa_encryption_key\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/mfa_encryption_key"
-  error_on_missing_key = false
 }
 
 template {

@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 # Impact: none — proves /validate is private and certificate-gated when the
-# service listener is deployed, and that a published public copy refuses the
-# shared API_KEY.
+# service listener is deployed, and that a published public copy refuses
+# non-issued credentials.
 #
 # Claims:
 #
 #   1. the public API hostname does not serve /validate (or, with
 #      PUBLIC_VALIDATE=true, serves it but refuses unauthenticated callers and
-#      the shared API_KEY)
+#      legacy shared-secret shapes)
 #   2. the mesh service listener refuses a caller with no client certificate
-#   3. the same call succeeds with a certificate from the service CA (+ shared
-#      or per-tenant key)
+#   3. the same call succeeds with a certificate from the service CA + an
+#      issued per-caller key (POST /admin/api-keys)
 #
 # Claims 2–3 soft-skip when the service listener is not running on an app node
 # (single-listener deployments). Claim 3 also needs:
 #   SERVICE_CLIENT_CERT=deploy/pki/client-ci-cert.pem
 #   SERVICE_CLIENT_KEY=deploy/pki/client-ci-key.pem
-#   API_KEY=...           (the same value seeded into Vault)
+#   SERVICE_VALIDATE_KEY=garde_...   (issued per-caller key with validate scope)
+#
+# Prefer Vault PKI: deploy/scripts/vault-pki.sh (openssl service-pki.sh is fallback).
 #
 # Session ids must be well-formed (86-char base64url). A UUID fails format
 # validation with 400 and cannot distinguish "key accepted" from "key refused".
@@ -51,31 +53,24 @@ else
       || die "https://${API_DOMAIN}/validate returned $code; an unauthenticated call must be refused with 401"
     ok "public edge serves /validate and refuses unauthenticated callers"
 
-    # And that the shared key is not a way in. Tenants hold per-tenant keys;
-    # this one is the operator's, valid only on the mesh listener.
-    # Distinguishing outcomes: key accepted → "session invalid"; key refused →
-    # plain "unauthorized". Both are HTTP 401.
-    if [ -n "${API_KEY:-}" ]; then
-      shared_body="$(mktemp)"
-      shared="$(curl -sS -o "$shared_body" -w '%{http_code}' --max-time 20 \
-        -H "X-API-Key: ${API_KEY}" \
-        -H "X-Session-ID: ${FAKE_SESSION_ID}" \
-        "https://${API_DOMAIN}/validate" || echo 000)"
-      shared_msg="$(tr '[:upper:]' '[:lower:]' < "$shared_body")"
-      rm -f "$shared_body"
-      [ "$shared" = "401" ] \
-        || die "the shared API key returned $shared on the public edge; it must not authenticate there"
-      case "$shared_msg" in
-        *session\ invalid*)
-          die "the shared API key authenticated on the public edge (got session invalid); it must be refused there" ;;
-        *unauthorized*)
-          ok "public edge refuses the shared API key" ;;
-        *)
-          die "the shared API key returned 401 with unexpected body: $shared_msg" ;;
-      esac
-    else
-      warn "API_KEY unset — skipping the shared-key rejection check"
-    fi
+    # Legacy shared-secret shapes must never authenticate on the public edge.
+    shared_body="$(mktemp)"
+    shared="$(curl -sS -o "$shared_body" -w '%{http_code}' --max-time 20 \
+      -H 'X-API-Key: TestApiKey123!TestApiKey123!' \
+      -H "X-Session-ID: ${FAKE_SESSION_ID}" \
+      "https://${API_DOMAIN}/validate" || echo 000)"
+    shared_msg="$(tr '[:upper:]' '[:lower:]' < "$shared_body")"
+    rm -f "$shared_body"
+    [ "$shared" = "401" ] \
+      || die "legacy shared secret returned $shared on the public edge; it must not authenticate"
+    case "$shared_msg" in
+      *session\ invalid*)
+        die "legacy shared secret authenticated on the public edge (got session invalid)" ;;
+      *unauthorized*)
+        ok "public edge refuses legacy shared-secret credentials" ;;
+      *)
+        die "legacy shared secret returned 401 with unexpected body: $shared_msg" ;;
+    esac
   else
     [ "$code" = "404" ] \
       || die "https://${API_DOMAIN}/validate returned $code; the service endpoint must not be published"
@@ -121,8 +116,8 @@ esac
 
 # --- 3. a certificate from the service CA works -----------------------------
 
-if [ -z "${SERVICE_CLIENT_CERT:-}" ] || [ -z "${SERVICE_CLIENT_KEY:-}" ] || [ -z "${API_KEY:-}" ]; then
-  warn "SERVICE_CLIENT_CERT / SERVICE_CLIENT_KEY / API_KEY unset — skipping the positive mTLS check"
+if [ -z "${SERVICE_CLIENT_CERT:-}" ] || [ -z "${SERVICE_CLIENT_KEY:-}" ] || [ -z "${SERVICE_VALIDATE_KEY:-}" ]; then
+  warn "SERVICE_CLIENT_CERT / SERVICE_CLIENT_KEY / SERVICE_VALIDATE_KEY unset — skipping the positive mTLS check"
   exit 0
 fi
 [ -f "$SERVICE_CLIENT_CERT" ] || die "no such file: $SERVICE_CLIENT_CERT"
@@ -139,6 +134,7 @@ rsync -az -e "$(rsync_rsh "$FROM")" \
   "$SERVICE_CLIENT_CERT" "$(ssh_target "$FROM"):$REMOTE_DIR/client-cert.pem"
 rsync -az -e "$(rsync_rsh "$FROM")" \
   "$SERVICE_CLIENT_KEY" "$(ssh_target "$FROM"):$REMOTE_DIR/client-key.pem"
+on_node "$FROM" "printf '%s' $(printf '%q' "$SERVICE_VALIDATE_KEY") > '$REMOTE_DIR/api-key'"
 
 # Auth success with a never-issued session is 401 "session invalid" — not 200.
 # A UUID fails format checks with 400 and cannot prove the key was accepted.
@@ -146,7 +142,7 @@ rsync -az -e "$(rsync_rsh "$FROM")" \
 code="$(on_node "$FROM" "docker run --rm -v '$REMOTE_DIR':/pki:rw $HA_CURL_IMG \
   sh -c \"curl -sS -k -o /pki/validate.body -w '%{http_code}' --max-time 15 \
     --cert /pki/client-cert.pem --key /pki/client-key.pem \
-    -H 'X-API-Key: $API_KEY' \
+    -H \\\"X-API-Key: \\\$(cat /pki/api-key)\\\" \
     -H 'X-Session-ID: $FAKE_SESSION_ID' \
     'https://$TARGET_IP:$PORT/validate'\")"
 msg="$(on_node "$FROM" "tr '[:upper:]' '[:lower:]' < '$REMOTE_DIR/validate.body' 2>/dev/null || true")"
@@ -155,13 +151,13 @@ case "$code" in
   401)
     case "$msg" in
       *session\ invalid*)
-        ok "service listener accepted a certificate from the service CA (session rejected after auth)" ;;
+        ok "service listener accepted mTLS + per-caller key (session rejected after auth)" ;;
       *)
         die "authenticated /validate call returned 401 without session-invalid body: $msg" ;;
     esac
     ;;
   200)
-    ok "service listener accepted a certificate from the service CA (200)" ;;
+    ok "service listener accepted mTLS + per-caller key (200)" ;;
   *)
     die "authenticated /validate call returned $code" ;;
 esac

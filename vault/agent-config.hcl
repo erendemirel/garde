@@ -186,32 +186,46 @@ template {
   error_on_missing_key = false
 }
 
+# Whether /validate is also on the public listener (for external tenants with
+# per-caller keys). Leave unset when service_listener is on unless partners need
+# a public path.
 template {
   contents = "{{ with secret \"secret/data/garde/public_validate\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/public_validate"
   error_on_missing_key = false
 }
 
-# Whether the shared api_key authenticates /validate when that endpoint is
-# served on the public listener. garde will not start without it, because one
-# secret held by every caller, in front of an endpoint that can validate any
-# user's session, is not a posture to inherit by accident. Set it false and
-# issue per-caller keys instead; true keeps the older single-listener
-# behaviour. Leave the key unset when service_listener is on.
+# Required. Encrypts MFA TOTP secrets at rest (AES-256-GCM).
 template {
-  contents = "{{ with secret \"secret/data/garde/public_validate_shared_key\" }}{{ .Data.data.value }}{{ end }}"
-  destination = "/run/secrets/public_validate_shared_key"
+  contents = "{{ with secret \"secret/data/garde/mfa_encryption_key\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/mfa_encryption_key"
+}
+
+# --- Service-listener mTLS from Vault PKI (auto-renewed by Agent) -------------
+# Requires pki_int roles from init-vault-prod / vault-pki.sh enable.
+# Identical pkiCert args in cert+key templates share one cached issuance.
+# Set SERVICE_CERT_DOMAIN (+ NODE_WG_IP on mesh nodes) on the agent container.
+# Point secret/garde/service_tls_*_path at these files when service_listener=true.
+template {
+  source      = "/vault/config/templates/service_tls_cert.tpl"
+  destination = "/run/secrets/service_tls_cert.pem"
+  perms       = "0644"
+  error_on_missing_key = false
+  # Stamp so deploy/scripts/service-tls-reload.sh can restart garde after renew.
+  command     = ["sh", "-c", "date -u +%Y-%m-%dT%H:%M:%SZ > /run/secrets/service_tls_renewed_at"]
+}
+
+template {
+  source      = "/vault/config/templates/service_tls_key.tpl"
+  destination = "/run/secrets/service_tls_key.pem"
+  perms       = "0600"
   error_on_missing_key = false
 }
 
 template {
-  contents = "{{ with secret \"secret/data/garde/api_key\" }}{{ .Data.data.value }}{{ end }}"
-  destination = "/run/secrets/api_key"
-}
-
-template {
-  contents = "{{ with secret \"secret/data/garde/mfa_encryption_key\" }}{{ .Data.data.value }}{{ end }}"
-  destination = "/run/secrets/mfa_encryption_key"
+  source      = "/vault/config/templates/service_tls_ca.tpl"
+  destination = "/run/secrets/service_tls_ca.pem"
+  perms       = "0644"
   error_on_missing_key = false
 }
 

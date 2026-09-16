@@ -197,9 +197,15 @@ Terraform outputs `postgres_endpoint` and `redis_primary_endpoint` when you pass
 
 ## Service authentication (`/validate`)
 
-Unchanged in intent: mesh mTLS listener by default; optional
-`PUBLIC_VALIDATE=true` for external tenants with per-tenant API keys only.
-See INSTALLATION.md and `deploy/scripts/service-pki.sh`.
+Mesh mTLS listener by default; optional `PUBLIC_VALIDATE=true` for external
+tenants. Every caller presents an issued per-caller API key.
+
+**PKI automation:** `init-vault-prod.sh` enables the Vault PKI mounts/roles.
+Vault Agent renders and renews the server leaf into
+`/run/secrets/service_tls_*.pem` (`pkiCert` templates). Cron
+`deploy/scripts/service-tls-reload.sh` restarts garde after renew (TLS is
+bound at process start). Client certs: `vault-pki.sh issue-client <name>`.
+Offline openssl: `service-pki.sh`.
 
 ---
 
@@ -249,4 +255,6 @@ nodes. See vault/README.md Security Notes.
   Terraform creates them)
 - Registrar NS delegation
 - First Vault init ceremony and offline key custody
-- Issuing service client certificates to calling services
+- Issuing service **client** certificates to calling services (`vault-pki.sh issue-client`)
+- Issuing per-caller `/validate` API keys (`POST /admin/api-keys`) and distributing them to services
+- (Server leaf renew is Agent-automated; `service-tls-reload.sh` still needs cron or a manual run after renew)

@@ -11,9 +11,6 @@ import (
 
 func TestEncryptDecryptRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "api_key"), []byte("TestApiKey123!TestApiKey123!"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, "mfa_encryption_key"), []byte("dev-mfa-encryption-key-change-me"), 0o600); err != nil {
 		t.Fatal(err)
 	}

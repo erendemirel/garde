@@ -4,32 +4,16 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"garde/internal/models"
 	"garde/internal/repository"
 	"garde/internal/testutil"
-	"garde/pkg/config"
 	"garde/pkg/crypto"
 
 	"github.com/gin-gonic/gin"
 )
-
-const legacyTestKey = "TestApiKey123!TestApiKey123!"
-
-func withLegacyKey(t *testing.T, value string) {
-	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "api_key"), []byte(value), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := config.Init(dir); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func newKeyRepo(t *testing.T) *repository.RedisRepository {
 	t.Helper()
@@ -94,7 +78,6 @@ func runAPIKeyAuth(t *testing.T, opts APIKeyAuthOptions, presented string) authR
 }
 
 func TestAPIKeyAuthAcceptsTenantKey(t *testing.T) {
-	withLegacyKey(t, legacyTestKey)
 	repo := newKeyRepo(t)
 	presented := issueKey(t, repo, func(k *models.ServiceAPIKey) {
 		k.Name = "billing"
@@ -120,46 +103,24 @@ func TestAPIKeyAuthAcceptsTenantKey(t *testing.T) {
 	}
 }
 
-// The whole point of per-tenant keys: the shared secret must not open the
-// public listener, or nothing has been gained over the previous design.
-func TestAPIKeyAuthRejectsLegacyKeyWhenNotAllowed(t *testing.T) {
-	withLegacyKey(t, legacyTestKey)
+func TestAPIKeyAuthRejectsSharedSecretShape(t *testing.T) {
 	repo := newKeyRepo(t)
 
 	res := runAPIKeyAuth(t, APIKeyAuthOptions{
-		Repo:           repo,
-		AllowLegacyKey: false,
-		RequiredScope:  models.ScopeValidate,
-	}, legacyTestKey)
+		Repo:          repo,
+		RequiredScope: models.ScopeValidate,
+	}, "TestApiKey123!TestApiKey123!")
 
 	if res.reached || res.status != http.StatusUnauthorized {
-		t.Fatalf("status=%d reached=%v, want 401 for the shared key", res.status, res.reached)
-	}
-}
-
-func TestAPIKeyAuthAcceptsLegacyKeyWhenAllowed(t *testing.T) {
-	withLegacyKey(t, legacyTestKey)
-
-	// No repo: this is the single-listener and mesh-listener shape, where the
-	// shared key is the only credential.
-	res := runAPIKeyAuth(t, APIKeyAuthOptions{AllowLegacyKey: true}, legacyTestKey)
-
-	if !res.reached || res.status != http.StatusOK {
-		t.Fatalf("status=%d reached=%v, want the shared key to authenticate", res.status, res.reached)
-	}
-	if res.keyID != "" {
-		t.Fatal("the shared key must not claim a per-tenant identity")
+		t.Fatalf("status=%d reached=%v, want 401 for a non-issued credential", res.status, res.reached)
 	}
 }
 
 func TestAPIKeyAuthTenantKeyNeedsAStore(t *testing.T) {
-	withLegacyKey(t, legacyTestKey)
 	repo := newKeyRepo(t)
 	presented := issueKey(t, repo, nil)
 
-	// A listener with no key store must refuse a per-tenant key rather than
-	// fall through to comparing it against the shared secret.
-	res := runAPIKeyAuth(t, APIKeyAuthOptions{Repo: nil, AllowLegacyKey: true}, presented)
+	res := runAPIKeyAuth(t, APIKeyAuthOptions{Repo: nil}, presented)
 
 	if res.reached || res.status != http.StatusUnauthorized {
 		t.Fatalf("status=%d reached=%v, want 401", res.status, res.reached)
@@ -167,8 +128,6 @@ func TestAPIKeyAuthTenantKeyNeedsAStore(t *testing.T) {
 }
 
 func TestAPIKeyAuthRejectsUnusableAndUnknownKeys(t *testing.T) {
-	withLegacyKey(t, legacyTestKey)
-
 	revokedAt := time.Now().UTC().Add(-time.Minute)
 	expiredAt := time.Now().UTC().Add(-time.Minute)
 
@@ -235,31 +194,16 @@ func TestAPIKeyAuthRejectsUnusableAndUnknownKeys(t *testing.T) {
 }
 
 func TestAPIKeyAuthRejectsMissingHeader(t *testing.T) {
-	withLegacyKey(t, legacyTestKey)
 	repo := newKeyRepo(t)
 
-	res := runAPIKeyAuth(t, APIKeyAuthOptions{Repo: repo, AllowLegacyKey: true}, "")
+	res := runAPIKeyAuth(t, APIKeyAuthOptions{Repo: repo}, "")
 
 	if res.reached || res.status != http.StatusUnauthorized {
 		t.Fatalf("status=%d reached=%v, want 401", res.status, res.reached)
 	}
 }
 
-// An unset API_KEY must not let an empty or arbitrary header through, which a
-// naive constant-time compare of two empty strings would do.
-func TestAPIKeyAuthUnsetLegacyKeyNeverAuthenticates(t *testing.T) {
-	withLegacyKey(t, "")
-
-	for _, presented := range []string{"anything", legacyTestKey} {
-		res := runAPIKeyAuth(t, APIKeyAuthOptions{AllowLegacyKey: true}, presented)
-		if res.reached || res.status != http.StatusUnauthorized {
-			t.Fatalf("presented %q: status=%d reached=%v, want 401", presented, res.status, res.reached)
-		}
-	}
-}
-
 func TestAPIKeyAuthRecordsUse(t *testing.T) {
-	withLegacyKey(t, legacyTestKey)
 	repo := newKeyRepo(t)
 	presented := issueKey(t, repo, nil)
 

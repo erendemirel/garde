@@ -11,18 +11,18 @@ import (
 
 func validSecrets() map[string]string {
 	return map[string]string{
-		"postgres_host":              "localhost",
-		"postgres_port":              "5432",
-		"postgres_user":              "garde",
-		"postgres_password":          "garde",
-		"postgres_db":                "garde",
-		"redis_host":                 "localhost",
-		"redis_port":                 "6379",
-		"redis_password":             "redis",
-		"domain_name":                "example.com",
-		"superuser_email":            "root@example.com",
-		"superuser_password":         "DevAdminTest123!",
-		"public_validate_shared_key": "false",
+		"postgres_host":      "localhost",
+		"postgres_port":      "5432",
+		"postgres_user":      "garde",
+		"postgres_password":  "garde",
+		"postgres_db":        "garde",
+		"redis_host":         "localhost",
+		"redis_port":         "6379",
+		"redis_password":     "redis",
+		"domain_name":        "example.com",
+		"superuser_email":    "root@example.com",
+		"superuser_password": "DevAdminTest123!",
+		"mfa_encryption_key": "test-mfa-encryption-key",
 	}
 }
 
@@ -73,8 +73,7 @@ func TestValidateConfigTable(t *testing.T) {
 		{"missing domain", mk(nil, "domain_name"), true},
 		{"bad superuser email", mk(map[string]string{"superuser_email": "nope"}), true},
 		{"weak superuser password", mk(map[string]string{"superuser_password": "password"}), true},
-		{"missing shared-key decision", mk(nil, "public_validate_shared_key"), true},
-		{"bad shared-key value", mk(map[string]string{"public_validate_shared_key": "maybe"}), true},
+		{"missing mfa encryption key", mk(nil, "mfa_encryption_key"), true},
 		{"bad admin json", mk(map[string]string{"admin_users_json": ";;"}), true},
 		{"weak admin password", mk(map[string]string{"admin_users_json": `{"a@example.com":"weak"}`}), true},
 		{"valid admin json", mk(map[string]string{"admin_users_json": `{"a@example.com":"DevAdminTest123!"}`}), false},
@@ -88,23 +87,6 @@ func TestValidateConfigTable(t *testing.T) {
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestValidateAPIKeyTable(t *testing.T) {
-	if err := ValidateAPIKey("TestApiKey123!TestApiKey123!"); err != nil {
-		t.Fatalf("valid: %v", err)
-	}
-	for name, key := range map[string]string{
-		"short": "Ab1!", "no upper": "testapikey123!testapikey123!",
-		"no lower": "TESTAPIKEY123!TESTAPIKEY123!", "no number": "TestApiKey!!!TestApiKey!!!",
-		"no special": "TestApiKey123TestApiKey123",
-	} {
-		t.Run(name, func(t *testing.T) {
-			if err := ValidateAPIKey(key); err == nil {
-				t.Fatalf("ValidateAPIKey(%q) = nil", key)
 			}
 		})
 	}

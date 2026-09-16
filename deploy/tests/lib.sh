@@ -61,12 +61,21 @@ ha_login() {
   local node="$1"
   : "${SUPERUSER_EMAIL:?set SUPERUSER_EMAIL}"
   : "${SUPERUSER_PASSWORD:?set SUPERUSER_PASSWORD}"
-  local out sid
-  out="$(http_api "$node" POST /login \
-    "$(printf '{"email":"%s","password":"%s"}' "$SUPERUSER_EMAIL" "$SUPERUSER_PASSWORD")")"
-  [ "$(http_code "$out")" = "200" ] || die "login failed on $node: $out"
+  local remote_body="/tmp/ha-login-body.json" out sid
+  on_node "$node" "printf '%s' $(printf '%q' "$(printf '{"email":"%s","password":"%s"}' "$SUPERUSER_EMAIL" "$SUPERUSER_PASSWORD")") > $remote_body"
+  # Session ids are secrets: only returned when the caller opts in. Never log them.
+  out="$(on_node "$node" "
+    docker run --rm --network container:garde-api -v $remote_body:$remote_body:ro $HA_CURL_IMG \
+      curl -sS -w '\n%{http_code}' -X POST \
+        -H 'Content-Type: application/json' \
+        -H 'X-Return-Session: true' \
+        --data-binary @$remote_body \
+        'http://127.0.0.1:8443/login'
+  ")"
+  on_node "$node" "rm -f $remote_body" >/dev/null 2>&1 || true
+  [ "$(http_code "$out")" = "200" ] || die "login failed on $node: $(http_code "$out")"
   sid="$(http_body "$out" | sed -n 's/.*"session_id":"\([^"]*\)".*/\1/p')"
-  [ -n "$sid" ] || die "no session_id in login response"
+  [ -n "$sid" ] || die "no session_id in login response (send X-Return-Session: true)"
   printf '%s' "$sid"
 }
 
