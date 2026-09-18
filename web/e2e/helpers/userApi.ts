@@ -4,6 +4,7 @@ import { e2eAdmin, e2eAdmin2, e2eSuperuser, loginAs } from './auth';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from './catalog';
 import {
 	LOAD_TIMEOUT,
+	isFrameworkErrorPage,
 	matchUsersListRequest,
 	waitForPageShell,
 	waitForUserDetail,
@@ -275,42 +276,43 @@ export async function deleteUserByEmail(api: RequestLike, email: string) {
 	await deleteUserById(api, user.id);
 }
 
-/** True when Vite/SvelteKit served its framework error page instead of the app shell. */
-async function isFrameworkErrorPage(page: Page): Promise<boolean> {
-	return page.getByRole('heading', { name: '500' }).isVisible().catch(() => false);
-}
-
 /** Open user detail by id — skips users-list search (faster / less flaky under parallel Vite load). */
 export async function openUserDetailById(page: Page, userId: string, expectedEmail?: string) {
 	const path = `/admin/users/${userId}`;
+	let lastError: unknown;
 	for (let attempt = 0; attempt < 3; attempt++) {
-		const detailResponse = page.waitForResponse(
-			(res) => {
-				if (res.request().method() !== 'GET') return false;
-				try {
-					return new URL(res.url()).pathname === `/api/users/${userId}`;
-				} catch {
-					return false;
-				}
-			},
-			{ timeout: LOAD_TIMEOUT }
-		);
-		await page.goto(path);
-		if (await isFrameworkErrorPage(page)) {
-			void detailResponse.catch(() => undefined);
+		try {
+			const detailResponse = page.waitForResponse(
+				(res) => {
+					if (res.request().method() !== 'GET') return false;
+					try {
+						return new URL(res.url()).pathname === `/api/users/${userId}`;
+					} catch {
+						return false;
+					}
+				},
+				{ timeout: LOAD_TIMEOUT }
+			);
+			await page.goto(path);
+			if (await isFrameworkErrorPage(page)) {
+				void detailResponse.catch(() => undefined);
+				throw new Error(`SvelteKit 500 loading ${path}`);
+			}
+			await detailResponse;
+			await waitForUserDetail(page);
+			if (expectedEmail) {
+				await expect(page.getByTestId('user-detail-email')).toHaveText(expectedEmail);
+			}
+			return;
+		} catch (err) {
+			lastError = err;
 			if (attempt < 2) {
 				await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
 				continue;
 			}
-			throw new Error(`SvelteKit 500 loading ${path}`);
 		}
-		await detailResponse;
-		await waitForUserDetail(page);
-		if (expectedEmail) {
-			await expect(page.getByTestId('user-detail-email')).toHaveText(expectedEmail);
-		}
-		return;
 	}
+	throw lastError;
 }
 
 /** Open a user detail page from the admin users tab. */
