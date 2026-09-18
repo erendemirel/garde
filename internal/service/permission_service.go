@@ -16,7 +16,8 @@ var (
 )
 
 // InitPermissionRepository installs the permission catalogue on the pool the
-// Store already opened. Call it once at application startup.
+// Store already opened. Call it once at application startup; Store.Reconnect
+// rebinds the same instance when Postgres credentials rotate.
 func InitPermissionRepository(db *sql.DB) error {
 	permRepoOnce.Do(func() {
 		permRepo, permRepoErr = repository.InitPermissionRepository(db)

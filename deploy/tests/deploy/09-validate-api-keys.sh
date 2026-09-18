@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Impact: none — proves /validate credential rules on the live API process
-# (shared API_KEY and per-tenant keys), without needing the public edge or the
-# mesh service listener.
+# (issued per-caller keys only).
 #
-# Soft-skips when SUPERUSER_* / API_KEY are unset, or when the running image
+# Soft-skips when SUPERUSER_* are unset, or when the running image
 # does not yet expose POST /admin/api-keys.
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
@@ -16,11 +15,6 @@ TARGET="$(app_nodes | awk '{print $1}')"
 FAKE_SESSION_ID='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 
 ha_ensure_curl_image
-
-if [ -z "${API_KEY:-}" ]; then
-  warn "API_KEY unset — skipping validate credential checks"
-  exit 0
-fi
 
 # Probe /validate through the API container network (not the public edge).
 validate_local() {
@@ -37,16 +31,6 @@ validate_local() {
 parse_code() { printf '%s' "$1" | head -n1 | tr -d '\r'; }
 parse_body() { printf '%s' "$1" | tail -n +2; }
 
-out="$(validate_local "$API_KEY")"
-code="$(parse_code "$out")"
-body="$(parse_body "$out" | tr '[:upper:]' '[:lower:]')"
-case "$code:$body" in
-  401:*session\ invalid*)
-    ok "shared API_KEY authenticates /validate on the app listener (session rejected after auth)" ;;
-  *)
-    die "shared API_KEY probe returned code=$code body=$body (want 401 session invalid)" ;;
-esac
-
 out="$(validate_local 'not-a-real-key')"
 code="$(parse_code "$out")"
 body="$(parse_body "$out" | tr '[:upper:]' '[:lower:]')"
@@ -57,20 +41,27 @@ case "$code:$body" in
     die "garbage key probe returned code=$code body=$body (want 401 unauthorized)" ;;
 esac
 
-# --- per-tenant keys (requires superuser + the new admin routes) ------------
+out="$(validate_local 'TestApiKey123!TestApiKey123!')"
+code="$(parse_code "$out")"
+body="$(parse_body "$out" | tr '[:upper:]' '[:lower:]')"
+case "$code:$body" in
+  401:*unauthorized*)
+    ok "non-issued credential shape is refused on /validate" ;;
+  *)
+    die "non-issued key probe returned code=$code body=$body (want 401 unauthorized)" ;;
+esac
 
 if [ -z "${SUPERUSER_EMAIL:-}" ] || [ -z "${SUPERUSER_PASSWORD:-}" ]; then
-  warn "SUPERUSER_EMAIL/PASSWORD unset — skipping per-tenant API key checks"
+  warn "SUPERUSER_EMAIL/PASSWORD unset — skipping per-caller API key checks"
   exit 0
 fi
 
 token="$(ha_login "$TARGET")"
 
-# Does this image expose the admin API-key routes?
 probe="$(http_api "$TARGET" GET /admin/api-key-scopes "" "$token")"
 probe_code="$(http_code "$probe")"
 if [ "$probe_code" = "404" ]; then
-  warn "GET /admin/api-key-scopes -> 404 — running image has no per-tenant API key routes yet; skipping"
+  warn "GET /admin/api-key-scopes -> 404 — running image has no per-caller API key routes yet; skipping"
   exit 0
 fi
 [ "$probe_code" = "200" ] \
@@ -97,12 +88,11 @@ code="$(parse_code "$out")"
 body="$(parse_body "$out" | tr '[:upper:]' '[:lower:]')"
 case "$code:$body" in
   401:*session\ invalid*)
-    ok "per-tenant API key authenticates /validate" ;;
+    ok "per-caller API key authenticates /validate" ;;
   *)
-    die "per-tenant key probe returned code=$code body=$body (want 401 session invalid)" ;;
+    die "per-caller key probe returned code=$code body=$body (want 401 session invalid)" ;;
 esac
 
-# Revoke and confirm refusal.
 revoked="$(http_api "$TARGET" DELETE "/admin/api-keys/${key_id}" "" "$token")"
 [ "$(http_code "$revoked")" = "200" ] \
   || die "DELETE /admin/api-keys/$key_id failed: $revoked"
@@ -112,12 +102,11 @@ code="$(parse_code "$out")"
 body="$(parse_body "$out" | tr '[:upper:]' '[:lower:]')"
 case "$code:$body" in
   401:*unauthorized*)
-    ok "revoked per-tenant key is refused on /validate" ;;
+    ok "revoked per-caller key is refused on /validate" ;;
   *)
     die "revoked key probe returned code=$code body=$body (want 401 unauthorized)" ;;
 esac
 
-# Negative contract the UI depends on.
 bad="$(http_api "$TARGET" POST /admin/api-keys \
   "$(printf '{"tenant_id":"%s","name":"no-scopes"}' "$tenant_id")" "$token")"
 [ "$(http_code "$bad")" = "400" ] \

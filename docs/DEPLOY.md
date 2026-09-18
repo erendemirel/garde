@@ -175,7 +175,7 @@ Same shape as before (`DEPLOY_INVENTORY`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
 ./deploy/scripts/healthcheck.sh --all --public
 ```
 
-Compose health uses `http://127.0.0.1:8443/ready`.
+Compose health probes HTTPS then HTTP on `127.0.0.1:8443/ready` (works with or without built-in TLS).
 
 ---
 
@@ -186,6 +186,7 @@ Compose health uses `http://127.0.0.1:8443/ready`.
 | `redis_host` | ElastiCache primary endpoint (or external Redis hostname) | **Not** the old local compose service name on multi-node |
 | `redis_port` | `6379` | |
 | `redis_password` | AUTH token | Same as CI `REDIS_PASSWORD` when used for tooling |
+| `redis_tls` | `true` for ElastiCache in-transit encryption | Optional; also set when using a `rediss://` URL |
 | `database_url` **or** `postgres_host` + `postgres_*` | RDS / external Postgres | Required for durable state |
 | `postgres_sslmode` | `require` on RDS | Optional if using `database_url` |
 | other keys | as in `dev.secrets` / INSTALLATION.md | Unchanged |
@@ -197,9 +198,15 @@ Terraform outputs `postgres_endpoint` and `redis_primary_endpoint` when you pass
 
 ## Service authentication (`/validate`)
 
-Unchanged in intent: mesh mTLS listener by default; optional
-`PUBLIC_VALIDATE=true` for external tenants with per-tenant API keys only.
-See INSTALLATION.md and `deploy/scripts/service-pki.sh`.
+Mesh mTLS listener by default; optional `PUBLIC_VALIDATE=true` for external
+tenants. Every caller presents an issued per-caller API key.
+
+**PKI automation:** `init-vault-prod.sh` enables the Vault PKI mounts/roles.
+Vault Agent renders and renews the server leaf into
+`/run/secrets/service_tls_*.pem` (`pkiCert` templates). Cron
+`deploy/scripts/service-tls-reload.sh` restarts garde after renew (TLS is
+bound at process start). Client certs: `vault-pki.sh issue-client <name>`.
+Offline openssl: `service-pki.sh`.
 
 ---
 
@@ -249,4 +256,6 @@ nodes. See vault/README.md Security Notes.
   Terraform creates them)
 - Registrar NS delegation
 - First Vault init ceremony and offline key custody
-- Issuing service client certificates to calling services
+- Issuing service **client** certificates to calling services (`vault-pki.sh issue-client`)
+- Issuing per-caller `/validate` API keys (`POST /admin/api-keys`) and distributing them to services
+- (Server leaf renew is Agent-automated; `service-tls-reload.sh` still needs cron or a manual run after renew)

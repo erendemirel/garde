@@ -17,6 +17,29 @@ func newIsolatedPermRepo(t *testing.T) *PermissionRepository {
 	return repo
 }
 
+func TestPermissionRepositorySetDB(t *testing.T) {
+	if err := (*PermissionRepository)(nil).SetDB(nil); err == nil {
+		t.Fatal("nil receiver accepted")
+	}
+	repo, err := NewPermissionRepository(newTestDB(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+	if err := repo.SetDB(nil); err == nil {
+		t.Fatal("nil db accepted")
+	}
+
+	replacement := newTestDB(t)
+	if err := repo.SetDB(replacement); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := repo.CreatePermission(ctx, "after_rebind", "ok"); err != nil {
+		t.Fatalf("catalogue unusable after SetDB: %v", err)
+	}
+}
+
 func TestPermissionCRUD(t *testing.T) {
 	ctx := context.Background()
 	r := newIsolatedPermRepo(t)

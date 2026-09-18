@@ -241,7 +241,7 @@ if [ "$reachable" -gt 0 ]; then
   for node in $NODES; do
     is_app_node "$node" 2>/dev/null || continue
     on_node "$node" "true" 2>/dev/null || continue
-    if on_node "$node" "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready" 2>/dev/null; then
+    if on_node "$node" "docker exec garde-api sh -c 'wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8443/ready || wget -q -O /dev/null http://127.0.0.1:8443/ready'" 2>/dev/null; then
       have "$node /ready OK"
       app_ready=true
     else

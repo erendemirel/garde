@@ -171,6 +171,46 @@ export async function waitForPageShell(page: Page, testId: string, timeout = LOA
 	await expect(page.getByTestId(testId)).toBeVisible({ timeout });
 }
 
+/** True when Vite/SvelteKit served its framework error page instead of the app shell. */
+export async function isFrameworkErrorPage(page: Page): Promise<boolean> {
+	return page.getByRole('heading', { name: '500' }).isVisible().catch(() => false);
+}
+
+/**
+ * Navigate to a protected route with retries for transient Vite 500s / stuck session boots.
+ * Optional `expectUrl` covers client redirects (e.g. superuser visiting `/admin` → `/superuser`).
+ */
+export async function gotoProtected(
+	page: Page,
+	path: string,
+	opts: { shellTestId?: string; expectUrl?: RegExp; attempts?: number } = {}
+) {
+	const attempts = opts.attempts ?? 3;
+	let lastError: unknown;
+	for (let attempt = 0; attempt < attempts; attempt++) {
+		try {
+			await page.goto(path);
+			if (await isFrameworkErrorPage(page)) {
+				throw new Error(`SvelteKit 500 loading ${path}`);
+			}
+			if (opts.expectUrl) {
+				await expect(page).toHaveURL(opts.expectUrl, { timeout: LOAD_TIMEOUT });
+			}
+			if (opts.shellTestId) {
+				await waitForPageShell(page, opts.shellTestId);
+			} else {
+				await waitForSessionReady(page);
+			}
+			return;
+		} catch (err) {
+			lastError = err;
+			if (attempt + 1 >= attempts) break;
+			await page.waitForTimeout(300 * (attempt + 1));
+		}
+	}
+	throw lastError;
+}
+
 /** Request-update catalog fetch — form exposes data-ready once options are loaded. */
 export async function waitForRequestUpdateCatalog(page: Page, timeout = LOAD_TIMEOUT) {
 	await expect(page.getByTestId('request-update-form')).toBeVisible({ timeout });

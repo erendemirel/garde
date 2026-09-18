@@ -99,6 +99,7 @@ func main() {
 		slog.Error("Configuration validation failed", "error", err)
 		os.Exit(1)
 	}
+	applyGinMode()
 
 	slog.Info("Connecting to PostgreSQL and Redis...")
 	repo, err := repository.NewStore()
@@ -126,12 +127,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set up hot-reload: reconnect Redis when secrets change. Postgres needs no
-	// equivalent — database/sql re-dials from the pool on its own.
+	// Reject hot-reloads that would install invalid secrets (e.g. weak passwords),
+	// then re-dial storage and refresh bootstrap accounts.
+	config.SetReloadValidator(validation.ValidateConfig)
 	config.SetReloadHook(func() {
-		slog.Info("Secrets changed, reconnecting to Redis...")
+		applyGinMode()
+
+		slog.Info("Secrets changed, reconnecting storage backends...")
 		if err := repo.Reconnect(); err != nil {
-			slog.Error("Failed to reconnect to Redis after secret change", "error", err)
+			slog.Error("Failed to reconnect after secret change", "error", err)
 			return
 		}
 
@@ -164,27 +168,10 @@ func main() {
 	// is carrying it. A service endpoint that can validate any user's session
 	// does not belong on the hostname browsers reach.
 	if config.PublicValidateEnabled() {
-		opts := validateRouteOptions{
-			mtls:           config.PublicValidateMTLS(),
-			allowLegacyKey: config.PublicValidateLegacyKey(),
-		}
+		opts := validateRouteOptions{mtls: config.PublicValidateMTLS()}
 		mountValidateRoute(router, deps, opts)
-
-		if opts.allowLegacyKey {
-			// Reaching here takes an explicit acknowledgement, so this is not
-			// news to whoever configured it. It is logged as a warning anyway,
-			// for the people who did not: one long-lived secret, held by every
-			// caller, in front of an endpoint that can validate any user's
-			// session, on the hostname the internet reaches. An acknowledgement
-			// that bought silence too would just be a way to stop being told.
-			slog.Warn("/validate is public and accepts the shared API_KEY",
-				"mtls", opts.mtls.String(),
-				"acknowledged_by", config.PublicValidateSharedKeyKey,
-				"remedy", "issue per-caller keys with POST /admin/api-keys, then set "+config.PublicValidateSharedKeyKey+"=false to refuse the shared key here — or set service_listener=true to move /validate to the private listener")
-		} else {
-			slog.Info("/validate mounted on the public listener",
-				"mtls", opts.mtls.String(), "shared_api_key_accepted", false)
-		}
+		slog.Info("/validate mounted on the public listener",
+			"mtls", opts.mtls.String(), "credentials", "per-caller keys only")
 	} else {
 		slog.Info("/validate is not served on the public listener")
 	}
@@ -416,17 +403,13 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 type validateRouteOptions struct {
 	// mtls requires a verified client certificate when it is required.
 	mtls config.ClientCertPolicy
-
-	// allowLegacyKey accepts the single shared API_KEY alongside per-tenant
-	// keys. See config.PublicValidateLegacyKey for where that is appropriate.
-	allowLegacyKey bool
 }
 
 // mountValidateRoute registers the service session-validation endpoint.
 //
 // No cookie/Bearer AuthMiddleware — callers pass the session via X-Session-ID.
-// An API key is always required; the client certificate is required whenever
-// the listener carrying this route was built to verify one.
+// An issued per-caller API key is always required; the client certificate is
+// required whenever the listener carrying this route was built to verify one.
 func mountValidateRoute(router *gin.Engine, deps *routerDeps, opts validateRouteOptions) {
 	validateEndpoint := router.Group("/validate")
 
@@ -435,14 +418,12 @@ func mountValidateRoute(router *gin.Engine, deps *routerDeps, opts validateRoute
 	}
 
 	validateEndpoint.Use(middleware.APIKeyAuth(middleware.APIKeyAuthOptions{
-		Repo:           deps.repo,
-		AllowLegacyKey: opts.allowLegacyKey,
-		RequiredScope:  models.ScopeValidate,
+		Repo:          deps.repo,
+		RequiredScope: models.ScopeValidate,
 	}))
 
-	// Charges the request to the calling tenant rather than to its address,
-	// so that callers sharing one NAT do not share one budget. A no-op for the
-	// shared key, which carries no per-caller identity.
+	// Charges the request to the calling key rather than to its address,
+	// so that callers sharing one NAT do not share one budget.
 	validateEndpoint.Use(deps.rateLimiter.LimitByAPIKey())
 
 	validateEndpoint.GET("", deps.authHandler.ValidateSession)
@@ -482,9 +463,8 @@ func newPublicServer(handler http.Handler) (*http.Server, error) {
 func newServiceServer(deps *routerDeps) (*http.Server, error) {
 	policy := config.ServiceMTLS()
 	router := newEngine(deps)
-	// The shared key stays valid here: this listener is mesh-only, its callers
-	// are the operator's own services, and they authenticate by certificate too.
-	mountValidateRoute(router, deps, validateRouteOptions{mtls: policy, allowLegacyKey: true})
+	// Mesh callers present a client certificate and an issued per-caller key.
+	mountValidateRoute(router, deps, validateRouteOptions{mtls: policy})
 
 	tlsConfig, err := buildTLSConfig(
 		config.ServiceTLSCertPath(),
@@ -591,4 +571,23 @@ func serve(srv *http.Server) {
 		slog.Error("Failed to start server", "addr", srv.Addr, "error", err)
 		os.Exit(1)
 	}
+}
+
+// applyGinMode maps the GIN_MODE secret onto gin's runtime mode. Gin only
+// reads the GIN_MODE environment variable at import time, so secrets rendered
+// under /run/secrets would otherwise be ignored and leave the process in debug.
+func applyGinMode() {
+	mode := strings.ToLower(strings.TrimSpace(config.Get("GIN_MODE")))
+	switch mode {
+	case gin.ReleaseMode:
+		gin.SetMode(gin.ReleaseMode)
+	case gin.TestMode:
+		gin.SetMode(gin.TestMode)
+	case gin.DebugMode, "":
+		gin.SetMode(gin.DebugMode)
+	default:
+		slog.Warn("Invalid GIN_MODE, using release", "value", mode)
+		gin.SetMode(gin.ReleaseMode)
+	}
+	slog.Info("Gin mode applied", "mode", gin.Mode())
 }

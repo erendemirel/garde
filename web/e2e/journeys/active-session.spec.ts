@@ -3,7 +3,7 @@ import { loginAs, startUserSession, startUserSessionAt, submitLogin } from '../h
 import { totpCode } from '../helpers/totp';
 import {
 	createEphemeralUser,
-	openUserDetailFromAdmin,
+	openUserDetailById,
 	openUserDetailFromSuperuser
 } from '../helpers/userApi';
 import { waitForPageShell, waitForSignedOut, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast } from '../helpers/waits';
@@ -26,8 +26,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 			await startUserSession(userPage, ephemeralUser);
 			await expect(userPage.getByTestId('dashboard-page')).toBeVisible();
 
-			await adminPage.goto('/admin');
-			await openUserDetailFromAdmin(adminPage, ephemeralUser.email);
+			await openUserDetailById(adminPage, ephemeralUser.id, ephemeralUser.email);
 			const lockResponse = adminPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 			await adminPage.getByTestId('user-detail-lock-btn').click();
 			await adminPage.getByTestId('confirm-modal-confirm').click();
@@ -85,8 +84,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 			ephemeralUser,
 			suRequest
 		}) => {
-			await adminPage.goto('/admin');
-			await openUserDetailFromAdmin(adminPage, ephemeralUser.email);
+			await openUserDetailById(adminPage, ephemeralUser.id, ephemeralUser.email);
 			const enforceResponse = adminPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 			await adminPage.getByTestId('user-detail-mfa-enforce-btn').click();
 			await adminPage.getByTestId('confirm-modal-confirm').click();
@@ -123,8 +121,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await startUserSession(userPage, ephemeralUser);
 				await expect(userPage.getByTestId('dashboard-page')).toBeVisible();
 
-				await adminPage.goto('/admin');
-				await openUserDetailFromAdmin(adminPage, ephemeralUser.email);
+				await openUserDetailById(adminPage, ephemeralUser.id, ephemeralUser.email);
 				await adminPage.getByTestId('user-detail-mfa-enforce-btn').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('MFA enforcement enabled');
@@ -156,8 +153,7 @@ test.describe('Active session security', describeTags(TAG.journey, TAG.activeSes
 				await startUserSession(userPage, ephemeralUser);
 				await expect(userPage.getByTestId('dashboard-page')).toBeVisible();
 
-				await adminPage.goto('/admin');
-				await openUserDetailFromAdmin(adminPage, ephemeralUser.email);
+				await openUserDetailById(adminPage, ephemeralUser.id, ephemeralUser.email);
 				await adminPage.getByTestId('user-detail-mfa-enforce-btn').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();
 				await expect(adminPage.getByTestId('toast')).toContainText('MFA enforcement enabled');

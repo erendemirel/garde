@@ -44,8 +44,7 @@ func GenerateAPIKey() (plaintext, id, secretHash string, err error) {
 // ParseAPIKey splits a presented credential into its lookup id and secret.
 //
 // ok is false for anything that is not shaped like one of our keys, which is
-// how the middleware tells a per-tenant key apart from the legacy shared
-// secret without a round trip to Redis.
+// how the middleware rejects wrong-shaped credentials without a Redis round trip.
 func ParseAPIKey(presented string) (id, secret string, ok bool) {
 	rest, found := strings.CutPrefix(presented, apiKeyPrefix+"_")
 	if !found {

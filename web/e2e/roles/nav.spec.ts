@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { describeTags, TAG } from '../helpers/tags';
 import { e2eAdmin, e2eSuperuser } from '../helpers/auth';
-import { waitForPageShell, waitForUsersList } from '../helpers/waits';
+import { gotoProtected, waitForPageShell, waitForUsersList } from '../helpers/waits';
 
 test.describe('Navigation by role', describeTags(TAG.nav, TAG.focused), () => {
 	test('admin nav shows Admin but not Superuser', async ({ adminPage: page }) => {
@@ -25,9 +25,10 @@ test.describe('Navigation by role', describeTags(TAG.nav, TAG.focused), () => {
 	test('superuser visiting admin redirects to the superuser console', async ({
 		superuserPage: page
 	}) => {
-		await page.goto('/admin');
-		await expect(page).toHaveURL(/\/superuser/);
-		await waitForPageShell(page, 'superuser-page');
+		await gotoProtected(page, '/admin', {
+			expectUrl: /\/superuser/,
+			shellTestId: 'superuser-page'
+		});
 		await expect(page.getByTestId('superuser-users-panel')).toBeVisible();
 	});
 

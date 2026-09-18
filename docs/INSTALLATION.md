@@ -148,11 +148,11 @@ docker compose -f docker-compose.prod.yml up -d
 | `secret/garde/redis_host` | Redis server hostname (for single-VPS Docker Compose: use `redis`, the Compose service name) |
 | `secret/garde/redis_port` | Redis server port |
 | `secret/garde/redis_password` | Redis authentication password |
+| `secret/garde/redis_tls` | Optional. `true` to use TLS for Redis (also implied when `REDIS_URL` starts with `rediss://`). Default `false` for local Compose Redis. |
 | `secret/garde/domain_name` | Your domain (for cookies and TLS) |
 | `secret/garde/superuser_email` | Superuser account email (The user is auto-created) |
 | `secret/garde/superuser_password` | Superuser password (The user is auto-created) |
-| `secret/garde/api_key` | API key (20+ chars, mixed case/symbols) |
-| `secret/garde/mfa_encryption_key` | (Recommended) Key used to encrypt MFA TOTP secrets at rest. Any string (SHA-256'd to 32 bytes) or base64-encoded 32-byte key. If omitted, a key is derived from `api_key`. |
+| `secret/garde/mfa_encryption_key` | **Required.** Key used to encrypt MFA TOTP secrets at rest. Any string (SHA-256'd to 32 bytes) or base64-encoded 32-byte key. Changing it does not re-encrypt existing MFA secrets. |
 
 ### TLS and mTLS configuration
 
@@ -185,10 +185,21 @@ authenticate a service. So garde can run two listeners.
 | `service_tls_key_path` | `/app/certs/service-key.pem` |
 | `service_tls_ca_path` | `/app/certs/ca-cert.pem` |
 
-Publish that port on a private interface only — the multi-node compose file binds it to
-the WireGuard address. Generate the CA and the certificates with
-`deploy/scripts/service-pki.sh` (see
-[Service authentication](DEPLOY.md#service-authentication-validate)).
+Generate the CA and certificates with Vault PKI (preferred — Agent auto-renews
+the server leaf):
+
+```bash
+# First bring-up: init-vault-prod.sh already runs PKI enable when you seed Vault.
+# Or on the operator host:
+./deploy/scripts/vault-pki.sh enable
+# Client certs for calling services (server leaf comes from Vault Agent):
+./deploy/scripts/vault-pki.sh issue-client <service-name>
+# After Agent renews a leaf, restart garde if needed:
+./deploy/scripts/service-tls-reload.sh --remote
+```
+
+Offline openssl fallback: `deploy/scripts/service-pki.sh`.
+Each caller also needs an issued API key from `POST /admin/api-keys`.
 
 > [!IMPORTANT]
 > Terminating TLS at a proxy means client certificates never reach garde. If
@@ -203,11 +214,9 @@ them to install and renew a client certificate is how partner integrations
 break. For those, set `public_validate` = `true` and issue each caller its own
 key with `POST /admin/api-keys` (superuser only).
 
-On that listener garde **refuses the shared `api_key`** and accepts per-tenant
-keys only. That is the whole point — one long-lived secret held by every
-caller, in front of an endpoint that can validate any user's session, is what
-the private listener was introduced to avoid. The shared key stays valid on the
-service listener, where callers also present a certificate.
+On every `/validate` listener — public or private — garde accepts **per-caller
+keys only**. Internal services on the mesh still present mTLS client
+certificates **and** an issued key.
 
 Per-tenant keys are stored as a SHA-256 (the plaintext is shown once, at
 issue), expire after 90 days unless issued otherwise, carry a per-key rate
@@ -220,35 +229,13 @@ In a deployment fronted by the multi-node Caddy config, the edge blocks `/valida
 independently, so publishing it also takes `PUBLIC_VALIDATE=true` in the
 inventory. Two switches, so that one mistaken value cannot expose the endpoint.
 
-#### Single-listener deployments (the older layout)
+#### Single-listener deployments
 
-Without `service_listener`, `/validate` stays on the main listener:
-
-- `use_tls` **true** with `tls_ca_path` set → garde asks for client certificates but does not require them at the handshake (`VerifyClientCertIfGiven`), and `/validate` requires a verified certificate plus `X-API-Key`. Browsers still log in without one.
-- `use_tls` **false** → `/validate` is protected by an API key alone. Keep it on a private network, or move it to the service listener.
-
-Which API key that is, is now a decision you have to make. Set
-`public_validate_shared_key`:
-
-| Value | `/validate` on the public listener accepts |
-|---|---|
-| `true` | the shared `api_key`, as single-listener deployments have always done |
-| `false` | per-caller keys from `POST /admin/api-keys` only; the shared key is refused |
-
-**There is no default, and garde will not start without one.** The shared key
-is one long-lived secret, held by every caller, in front of an endpoint that
-can validate any user's session — fine while you are the only caller, and the
-wrong answer the moment anyone else is. That is not a posture to arrive at by
-leaving a field blank, so garde asks instead of assuming. Whichever you pick,
-the startup log says which one is in force.
-
-`false` is also the only way to refuse the shared key without standing up the
-service listener and its PKI, so a single-node deployment with a couple of
-callers can harden `/validate` by issuing them keys and flipping one value.
-
-Leave the key unset when `service_listener` is `true`: `/validate` is private
-then, and its public copy accepts per-caller keys only. Setting it to `true`
-there is a startup error rather than something quietly ignored.
+When `service_listener` is unset (the default), `/validate` stays on the main
+listener and still requires an issued per-caller key (`POST /admin/api-keys`).
+Optional mTLS on that path follows `use_tls` + `tls_ca_path` / `browser_mtls`.
+Prefer the dual-listener layout above when browsers and service callers share
+a host, or when TLS terminates at a proxy that cannot forward client certificates.
 
 #### Browser client certificates
 
@@ -315,7 +302,7 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/service_port` | Port for that listener. Default `8444`; must differ from `port`. |
 | `secret/garde/service_mtls` | `required` (default) or `off`. `off` leaves `/validate` on the API key and the network alone. |
 | `secret/garde/service_tls_cert_path`, `…_key_path`, `…_ca_path` | The listener's keypair and the CA that signs callers. Required when `service_listener` is `true`. |
-| `secret/garde/public_validate` | Also serve `/validate` on the public listener, for external callers. Defaults to the opposite of `service_listener`. On this path the shared `api_key` is refused and each caller presents a per-tenant key. |
+| `secret/garde/public_validate` | Also serve `/validate` on the public listener, for external callers. Defaults to the opposite of `service_listener`. Callers present issued per-tenant keys (`POST /admin/api-keys`). |
 
 **Admin Configuration**:
 | Secret Path | Description |
@@ -344,7 +331,6 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 
 | Secret / key | Behavior |
 |--------------|----------|
-| `api_key` | Checked on each `/validate` (and other API-key uses) |
 | Per-tenant API keys | Issued, revoked and rate-limited through the admin API, not through Vault; changes take effect on the caller's next request |
 | `cors_allow_origins` | Read on each request |
 | `cookie_same_site`, `cookie_secure` | Applied when setting/clearing session cookies |
@@ -352,26 +338,25 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `enforce_mfa`, `testing_mode` | Read on relevant auth/mTLS paths |
 | `disable_user_agent_check`, `disable_ip_blacklisting`, `disable_multiple_ip_check` | Read when those checks run |
 | `smtp_*` | Read when sending mail |
-| `mfa_encryption_key` | Used for new encrypt/decrypt calls (**does not** re-encrypt existing MFA secrets) |
+| `mfa_encryption_key` | Used for new encrypt/decrypt calls (**does not** re-encrypt existing MFA secrets). **Required** at startup |
 | `redis_*` | Reload hook reconnects the Redis client |
-| `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply) |
+| `database_url`, `postgres_*` | Reload hook rebuilds the Postgres pool so rotated credentials take effect |
+| `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply). Reloads that fail `ValidateConfig` (weak password, missing required keys, …) are **rejected** and the previous secret map is kept |
 | `admin_scopes_json` | Resolved per request, so scope changes apply to the admin's next call. A reload that leaves it unparseable denies every scoped admin route until it is fixed, rather than restoring full admin access |
+| `gin_mode` | Reload (and startup) call `gin.SetMode` from the secret — Gin does not read `/run/secrets` on its own |
 
 #### Requires process restart
 
 | Secret / key | Why |
 |--------------|-----|
 | `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
-| `database_url`, `postgres_*` | DSN / pool are opened at startup; changing them needs a restart (dropped connections recover from the existing pool) |
 | `browser_mtls`, `service_mtls`, `public_validate` | The client-certificate policy is part of the handshake configuration, and which routes exist is decided when the listeners are built |
-| `public_validate_shared_key` | Which credentials `/validate` accepts is fixed when the route is mounted. A reload that empties or mistypes it does not weaken the running process, but the next restart will refuse to start |
 | `service_listener`, `service_port`, `service_tls_*` | Same: a second listener is opened, or not, at startup |
 | `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
 | `rate_limit` | Numeric thresholds are parsed into the rate-limiter struct at startup |
 | `rapid_request_config` | Parsed once into package-level thresholds at startup |
 | `enable_swagger` | Swagger routes are registered only at startup |
 | `log_level` | Logger level is configured at startup |
-| `gin_mode` | Not re-applied after process start |
 
 **Ops tip:** After rotating TLS material, trusted proxies, rate limits, rapid-request thresholds, or log level, restart the `garde` container/process. After rotating only API keys, CORS, cookies, SMTP, feature flags, or admin passwords, a Vault Agent rewrite of `/run/secrets` is enough.
 

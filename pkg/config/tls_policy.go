@@ -67,14 +67,15 @@ func BrowserMTLS() ClientCertPolicy {
 
 // ServiceMTLS governs client certificates on the private service listener.
 // Required is the default: the listener exists to carry machine traffic, and
-// "optional" would leave the API key as the only barrier on the one endpoint
-// that can validate any user's session.
+// "optional" would leave the issued API key as the only barrier on the one
+// endpoint that can validate any user's session.
 func ServiceMTLS() ClientCertPolicy {
 	return parseClientCertPolicy("SERVICE_MTLS", ClientCertRequired, false)
 }
 
 // ServiceListenerEnabled turns on the second listener that carries /validate.
-// Off by default so existing single-listener deployments keep working.
+// Off by default: /validate stays on the public listener until a private
+// service listener is enabled.
 func ServiceListenerEnabled() bool {
 	return GetBool("SERVICE_LISTENER")
 }
@@ -123,55 +124,4 @@ func PublicValidateMTLS() ClientCertPolicy {
 		return ClientCertRequired
 	}
 	return ClientCertOff
-}
-
-// PublicValidateSharedKeyKey decides whether the shared API_KEY authenticates
-// /validate when that endpoint is served on the public listener.
-//
-// There is no default. Accepting one long-lived secret, held by every caller,
-// in front of an endpoint that can validate any user's session, is the weakest
-// posture garde can serve, and it used to be the one an operator got by doing
-// nothing at all. ValidateConfig refuses to start until the deployment says
-// which way it wants, so the weak posture is at least a decision someone made.
-const PublicValidateSharedKeyKey = "PUBLIC_VALIDATE_SHARED_KEY"
-
-// PublicValidateSharedKey reports the operator's decision: whether the shared
-// key is allowed, whether the key was set at all, and whether its value parsed.
-//
-// Unlike GetBool, an unrecognised value is reported rather than read as false.
-// Guessing here would mean a typo silently choosing a posture, and both
-// postures are wrong to choose by accident: one exposes the endpoint, the other
-// breaks every caller.
-func PublicValidateSharedKey() (allow, configured, valid bool) {
-	switch strings.ToLower(strings.TrimSpace(Get(PublicValidateSharedKeyKey))) {
-	case "":
-		return false, false, true
-	case "true", "1", "yes", "on":
-		return true, true, true
-	case "false", "0", "no", "off":
-		return false, true, true
-	default:
-		return false, true, false
-	}
-}
-
-// PublicValidateLegacyKey reports whether the shared API_KEY authenticates
-// /validate on the public listener.
-//
-// Once the private service listener is carrying internal callers, the public
-// copy exists for external tenants, and one secret shared by all of them is
-// precisely the exposure the split was made to remove. There it accepts
-// per-tenant keys only, whatever the setting says — which is why setting it
-// there is a startup error rather than something quietly ignored.
-//
-// Otherwise the answer is the operator's. An unset or unparseable value is
-// refused at startup, so reaching it here means something skipped validation;
-// returning false then keeps the accident on the safe side, where callers get
-// 401s instead of the internet getting a session validator.
-func PublicValidateLegacyKey() bool {
-	if ServiceListenerEnabled() {
-		return false
-	}
-	allow, configured, valid := PublicValidateSharedKey()
-	return configured && valid && allow
 }

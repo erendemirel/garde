@@ -27,5 +27,5 @@ export API_KEY=... \
 | `03-traffic-location.sh` | Provider traffic location is an app node |
 | `06-auth-smoke.sh` | Login + `/users/me` (skipped if no superuser env) |
 | `07-public-https.sh` | Real `API_DOMAIN`/`APP_DOMAIN` HTTPS (skipped for example.com) |
-| `08-service-listener.sh` | `/validate` unpublished on the public edge (or published but closed to the shared key); mesh listener mTLS checks soft-skip when `:SERVICE_PORT` is not listening |
-| `09-validate-api-keys.sh` | Shared + per-tenant API keys against in-process `/validate` (skips if SUPERUSER/API_KEY unset or image lacks the routes) |
+| `08-service-listener.sh` | `/validate` unpublished on the public edge (or published but refuses non-issued credentials); mesh listener mTLS checks soft-skip when `:SERVICE_PORT` is not listening |
+| `09-validate-api-keys.sh` | Per-caller API keys against in-process `/validate` (skips if SUPERUSER unset or image lacks the routes) |

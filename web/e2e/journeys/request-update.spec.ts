@@ -97,10 +97,14 @@ async function submitRequestUpdate(page: Page) {
 	await waitForPageShell(page, 'dashboard-page');
 }
 
-async function adminApproveUpdate(adminPage: Page, email: string) {
-	await adminPage.goto('/admin');
-	await waitForPageShell(adminPage, 'admin-page');
-	await openUserDetailFromAdmin(adminPage, email);
+async function adminApproveUpdate(adminPage: Page, email: string, userId?: string) {
+	if (userId) {
+		await openUserDetailById(adminPage, userId, email);
+	} else {
+		await adminPage.goto('/admin');
+		await waitForPageShell(adminPage, 'admin-page');
+		await openUserDetailFromAdmin(adminPage, email);
+	}
 	await expect(adminPage.getByTestId('user-detail-pending-update')).toBeVisible();
 	const updateResponse = adminPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 	await adminPage.getByTestId('user-detail-approve-update').click();
@@ -549,7 +553,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await submitRequestUpdate(userPage);
 				await userContext.close();
 
-				await adminApproveUpdate(adminPage, ephemeralUser.email);
+				await adminApproveUpdate(adminPage, ephemeralUser.email, ephemeralUser.id);
 
 				const verifyContext = await browser.newContext();
 				const verifyPage = await verifyContext.newPage();
@@ -709,7 +713,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 			await submitRequestUpdate(userPage);
 			await userContext.close();
 
-			await adminApproveUpdate(adminPage, ephemeralUser.email);
+			await adminApproveUpdate(adminPage, ephemeralUser.email, ephemeralUser.id);
 
 			const verifyContext = await browser.newContext();
 			const verifyPage = await verifyContext.newPage();
@@ -767,7 +771,7 @@ test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), ()
 				await submitRequestUpdate(userPage);
 				await userContext.close();
 
-				await adminApproveUpdate(adminPage, ephemeralUser.email);
+				await adminApproveUpdate(adminPage, ephemeralUser.email, ephemeralUser.id);
 
 				const verifyContext = await browser.newContext();
 				const verifyPage = await verifyContext.newPage();

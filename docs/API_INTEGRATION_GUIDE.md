@@ -181,14 +181,13 @@ GET /users/me
 Authorization: Bearer garde_pat_…
 ```
 
-PATs are refused on `/validate` (that endpoint accepts tenant keys or the
-shared internal key only).
+PATs are refused on `/validate` (that endpoint accepts issued per-caller keys only).
 
 ### 3. Internal Service Authentication (mTLS + API Key)
 For internal services communicating within your infrastructure.
 
 **Requirements:**
-- API key from configuration (`X-API-Key`), always
+- An issued per-caller API key (`POST /admin/api-keys`) in `X-API-Key`, always
 - A client certificate from the deployment's service CA, whenever the listener you are calling was built to verify one
 - The certificate must carry the auth service's registrable domain: garde checks the CN (or its suffix) and the SANs against `domain_name`
 
@@ -197,17 +196,17 @@ recommended production layout does **not** serve it on the public hostname:
 
 | Layout | Address | Auth |
 |--------|---------|------|
-| `service_listener=true` (recommended) | private listener, e.g. `https://10.10.0.1:8444/validate` | client certificate + shared API key |
+| `service_listener=true` (recommended) | private listener, e.g. `https://10.10.0.1:8444/validate` | client certificate + issued API key |
 | `service_listener=true` + `public_validate=true` | the API host | **per-tenant API key only** (see below) |
-| single listener, `use_tls=true` + `tls_ca_path` | the API host | client certificate + shared API key |
-| single listener, edge terminates TLS | the API host | **shared API key only** — keep it off the public internet |
+| single listener, `use_tls=true` + `tls_ca_path` | the API host | client certificate + issued API key |
+| single listener, edge terminates TLS | the API host | **issued API key only** — keep it off the public internet |
 
 The third row is why the service listener exists: a proxy that terminates TLS
 strips the client certificate, so there is nothing left to verify.
 
-The second row exists for callers who are not on your network. There the shared
-`api_key` is **refused**, and each caller presents a key issued to it alone —
-see [External callers](#4-external-callers-per-tenant-api-keys).
+The second row exists for callers who are not on your network. Every `/validate`
+path accepts **issued keys only** — see
+[External callers](#4-external-callers-per-tenant-api-keys).
 
 **Topology:** Call `/validate` only from trusted services over a private
 network. Pass the end-user session ID with the **`X-Session-ID`** header
@@ -217,8 +216,8 @@ Example request:
 ```http
 GET /validate
 Host: 10.10.0.1:8444
-X-API-Key: your_api_key
-X-Session-ID: 8e8217f1-4f...
+X-API-Key: garde_<id>_<secret>
+X-Session-ID: <session-id>
 // plus the TLS client certificate, when the listener requires one
 ```
 
@@ -251,12 +250,10 @@ For callers outside your network, who can neither join the private mesh nor
 maintain a client certificate.
 
 These callers reach `/validate` on the public API hostname over ordinary server
-TLS, and authenticate with a key issued to them alone. Wherever the private
-service listener is carrying internal traffic, the shared `api_key` from
-configuration is **refused** on the public one — it remains valid only on the
-service listener. Single-listener deployments decide for themselves with
-`public_validate_shared_key`, and there is no default: see
-[the older layout](INSTALLATION.md#single-listener-deployments-the-older-layout).
+TLS, and authenticate with a key issued to them alone. Every `/validate`
+listener accepts **issued keys only**. See
+[single-listener deployments](INSTALLATION.md#single-listener-deployments)
+for notes on that layout.
 
 Keys look like `garde_<id>_<secret>`. Present the whole string:
 
@@ -542,7 +539,7 @@ Authorization: Bearer bccf1b28-fd...
 
 Important Notes:
 - Setup must be completed within 5 minutes (temp secret TTL in Redis)
-- Temporary MFA secrets live in Redis (`temp_mfa:{id}`, short TTL). Confirmed MFA secrets are stored **encrypted at rest in PostgreSQL** using AES-256-GCM (`MFA_ENCRYPTION_KEY`, or a key derived from `API_KEY` if unset)
+- Temporary MFA secrets live in Redis (`temp_mfa:{id}`, short TTL). Confirmed MFA secrets are stored **encrypted at rest in PostgreSQL** using AES-256-GCM (`MFA_ENCRYPTION_KEY` is required)
 - If MFA is enforced but not set up:
   - Login succeeds without MFA code
   - All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, and `/logout` return 403
@@ -1160,11 +1157,11 @@ Response:
 ```
 
 Notes:
-- Always requires an API key; also requires a client certificate on the private service listener (and on a single listener with built-in TLS + a client CA)
+- Always requires an issued per-caller API key; also requires a client certificate on the private service listener (and on a single listener with built-in TLS + a client CA)
 - Used by internal services to verify sessions
 - Returns simple valid/invalid response
 - Can validate any session, not just own sessions — which is why it is kept off the public hostname
-- Where the endpoint is published alongside the private service listener, the shared `api_key` is refused and each caller presents a [per-tenant key](#4-external-callers-per-tenant-api-keys). A single-listener deployment states which of the two it accepts through `public_validate_shared_key`, and will not start until it does
+- External tenants use the same issued-key model on a public `/validate` when `public_validate=true` — see [per-tenant keys](#4-external-callers-per-tenant-api-keys)
 - Cookie and Bearer authentication are not accepted here
 
 #### C. User Details

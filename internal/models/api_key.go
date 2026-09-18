@@ -31,8 +31,8 @@ func AllAPIKeyScopes() []APIKeyScopeInfo {
 	}
 }
 
-// ServiceAPIKey is a credential issued to a single external tenant,
-// as opposed to the one shared API_KEY that comes from configuration.
+// ServiceAPIKey is a credential issued to a single external tenant or
+// internal service, for calling /validate.
 //
 // The plaintext key is returned once, at creation. Only SecretHash is stored,
 // so a key the caller has lost is replaced rather than recovered.

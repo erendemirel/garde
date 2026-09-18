@@ -51,6 +51,19 @@ path "secret/data/garde/*" {
 path "database/creds/garde-redis" {
   capabilities = ["read"]
 }
+# Service-listener mTLS material from Vault PKI (see deploy/scripts/vault-pki.sh).
+path "pki_int/issue/garde-service" {
+  capabilities = ["create", "update"]
+}
+path "pki_int/issue/garde-client" {
+  capabilities = ["create", "update"]
+}
+path "pki_int/cert/ca" {
+  capabilities = ["read"]
+}
+path "pki_int/ca/pem" {
+  capabilities = ["read"]
+}
 EOF
 
 vault write auth/approle/role/garde \
@@ -86,5 +99,72 @@ else
   echo "No /prod.secrets found; skipping seed. Add secrets manually or mount a file at /prod.secrets."
 fi
 
+# --- Vault PKI for the service listener (Agent auto-renews leaves) ------------
+echo "Enabling Vault PKI for service-listener mTLS..."
+ROOT_PATH=pki
+INT_PATH=pki_int
+SERVER_ROLE=garde-service
+CLIENT_ROLE=garde-client
+LEAF_TTL="${VAULT_PKI_LEAF_TTL:-7680h}"
+
+vault secrets enable -path="$ROOT_PATH" pki 2>/dev/null || true
+vault secrets tune -max-lease-ttl=87600h "$ROOT_PATH" 2>/dev/null || true
+vault secrets enable -path="$INT_PATH" pki 2>/dev/null || true
+vault secrets tune -max-lease-ttl=43800h "$INT_PATH" 2>/dev/null || true
+
+if ! vault read -format=json "$ROOT_PATH/cert/ca" >/dev/null 2>&1; then
+  vault write -field=certificate "$ROOT_PATH/root/generate/internal" \
+    common_name="garde service root" ttl=87600h key_bits=4096 >/dev/null
+fi
+vault write "$ROOT_PATH/config/urls" \
+  issuing_certificates="$VAULT_ADDR/v1/$ROOT_PATH" \
+  crl_distribution_points="$VAULT_ADDR/v1/$ROOT_PATH/crl" >/dev/null 2>&1 || true
+
+if ! vault read -format=json "$INT_PATH/cert/ca" >/dev/null 2>&1; then
+  csr=$(vault write -field=csr "$INT_PATH/intermediate/generate/internal" \
+    common_name="garde service intermediate" ttl=43800h key_bits=4096)
+  cert=$(vault write -field=certificate "$ROOT_PATH/root/sign-intermediate" \
+    csr="$csr" format=pem_bundle ttl=43800h)
+  vault write "$INT_PATH/intermediate/set-signed" certificate="$cert" >/dev/null
+fi
+vault write "$INT_PATH/config/urls" \
+  issuing_certificates="$VAULT_ADDR/v1/$INT_PATH" \
+  crl_distribution_points="$VAULT_ADDR/v1/$INT_PATH/crl" >/dev/null 2>&1 || true
+
+DOMAIN="$(vault kv get -field=value secret/garde/domain_name 2>/dev/null || true)"
+DOMAIN="${DOMAIN:-localhost}"
+vault write "$INT_PATH/roles/$SERVER_ROLE" \
+  allowed_domains="$DOMAIN,garde-api,localhost" \
+  allow_subdomains=true \
+  allow_bare_domains=true \
+  allow_localhost=true \
+  allow_ip_sans=true \
+  server_flag=true \
+  client_flag=false \
+  key_bits=4096 \
+  max_ttl="$LEAF_TTL" \
+  ttl="$LEAF_TTL" >/dev/null
+
+vault write "$INT_PATH/roles/$CLIENT_ROLE" \
+  allowed_domains="$DOMAIN" \
+  allow_bare_domains=true \
+  allow_subdomains=false \
+  server_flag=false \
+  client_flag=true \
+  key_bits=4096 \
+  max_ttl="$LEAF_TTL" \
+  ttl="$LEAF_TTL" >/dev/null
+
+# Prefer Agent-rendered PEMs when the service listener is enabled.
+if [ "$(vault kv get -field=value secret/garde/service_listener 2>/dev/null || true)" = "true" ]; then
+  vault kv put secret/garde/service_tls_cert_path value="/run/secrets/service_tls_cert.pem" >/dev/null
+  vault kv put secret/garde/service_tls_key_path value="/run/secrets/service_tls_key.pem" >/dev/null
+  vault kv put secret/garde/service_tls_ca_path value="/run/secrets/service_tls_ca.pem" >/dev/null
+  echo "service_tls_*_path set to /run/secrets/service_tls_{cert,key,ca}.pem"
+fi
+
+echo "Vault PKI ready (roles $SERVER_ROLE / $CLIENT_ROLE for domain $DOMAIN)."
+
 echo "Vault AppRole init complete. Vault Agent can authenticate with role-id/secret-id."
 echo "You can leave VAULT_TOKEN in .env for future reseeds, or remove it and use AppRole only."
+echo "Set secret/garde/mfa_encryption_key and issue /validate keys with POST /admin/api-keys."

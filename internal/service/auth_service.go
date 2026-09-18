@@ -303,7 +303,7 @@ func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
 			return fmt.Errorf("%s", errors.ErrAuthFailed)
 		}
 		// Log that we fell back to blacklisting
-		slog.Warn("Session deletion failed, added to blacklist", "error", err, "session_id", sessionID)
+		slog.Warn("Session deletion failed, added to blacklist", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 	}
 
 	// Clean up all security records
@@ -365,12 +365,12 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 
 		// Blacklist this specific session
 		if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-			slog.Warn("Failed to blacklist suspicious session", "error", err, "session_id", sessionID)
+			slog.Warn("Failed to blacklist suspicious session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 		}
 
 		// Then try to delete it
 		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			slog.Warn("Failed to delete suspicious session", "error", err, "session_id", sessionID)
+			slog.Warn("Failed to delete suspicious session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 		}
 
 		slog.Info("Suspicious patterns detected for session", "session_id_prefix", session.IDPrefix(sessionID), "patterns", patterns)
@@ -855,10 +855,10 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 			// Blacklist and delete each session
 			for _, sessionID := range sessions {
 				if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-					slog.Warn("Failed to blacklist session", "error", err, "session_id", sessionID)
+					slog.Warn("Failed to blacklist session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 				}
 				if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-					slog.Warn("Failed to delete session", "error", err, "session_id", sessionID)
+					slog.Warn("Failed to delete session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 				}
 			}
 		}
@@ -990,10 +990,10 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 
 		for _, sessionID := range sessions {
 			if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-				slog.Warn("Failed to blacklist session", "error", err, "session_id", sessionID)
+				slog.Warn("Failed to blacklist session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 			}
 			if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-				slog.Warn("Failed to delete session", "error", err, "session_id", sessionID)
+				slog.Warn("Failed to delete session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 			}
 		}
 		return nil
@@ -1009,10 +1009,10 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 
 		for _, sessionID := range sessions {
 			if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-				slog.Warn("Failed to blacklist session", "error", err, "session_id", sessionID)
+				slog.Warn("Failed to blacklist session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 			}
 			if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-				slog.Warn("Failed to delete session", "error", err, "session_id", sessionID)
+				slog.Warn("Failed to delete session", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 			}
 		}
 		return nil
@@ -1067,10 +1067,10 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 	} else {
 		for _, sessionID := range sessions {
 			if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-				slog.Warn("Failed to blacklist session during user deletion", "error", err, "session_id", sessionID)
+				slog.Warn("Failed to blacklist session during user deletion", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 			}
 			if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-				slog.Warn("Failed to delete session during user deletion", "error", err, "session_id", sessionID)
+				slog.Warn("Failed to delete session during user deletion", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 			}
 		}
 	}
@@ -1198,12 +1198,16 @@ func (s *AuthService) DisableMFA(ctx context.Context, userID string, code string
 		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 	}
 
-	// Disable MFA
+	// Disable MFA. Empty MFASecret on StoreUser is preserved; ClearUserMFASecret
+	// wipes the ciphertext after MFAEnabled is flipped off.
 	user.MFAEnabled = false
-	user.MFASecret = "" // Clear the secret
+	user.MFASecret = ""
 	user.UpdatedAt = time.Now()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	if err := s.repo.ClearUserMFASecret(ctx, user.ID); err != nil {
 		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 
@@ -1279,10 +1283,10 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, sessions []string) error {
 	for _, sessionID := range sessions {
 		if err := s.repo.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
-			slog.Warn("Failed to blacklist session during credential revoke", "error", err, "session_id", sessionID, "user_id", userID)
+			slog.Warn("Failed to blacklist session during credential revoke", "error", err, "session_id_prefix", session.IDPrefix(sessionID), "user_id", userID)
 		}
 		if err := s.repo.DeleteSession(ctx, sessionID); err != nil {
-			slog.Error("Failed to delete session during credential revoke", "error", err, "session_id", sessionID, "user_id", userID)
+			slog.Error("Failed to delete session during credential revoke", "error", err, "session_id_prefix", session.IDPrefix(sessionID), "user_id", userID)
 			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
 	}

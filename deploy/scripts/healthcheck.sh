@@ -61,7 +61,7 @@ for node in $TARGETS; do
   # --- App nodes -----------------------------------------------------------
   case "$role" in
     app)
-      if on_node "$node" "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready"; then
+      if on_node "$node" "docker exec garde-api sh -c 'wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8443/ready || wget -q -O /dev/null http://127.0.0.1:8443/ready'"; then
         ok "garde /ready responding"
       else
         fail "$node: garde /ready failed"
@@ -110,26 +110,22 @@ if [ "$CHECK_PUBLIC" = "true" ]; then
       *)   fail "https://${API_DOMAIN}/validate -> $validate_code; an unauthenticated call must be refused" ;;
     esac
 
-    if [ -n "${API_KEY:-}" ]; then
-      fake_sid='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-      shared_body="$(mktemp)"
-      shared_code="$(curl -sS -o "$shared_body" -w '%{http_code}' --max-time 15 \
-        -H "X-API-Key: ${API_KEY}" \
-        -H "X-Session-ID: ${fake_sid}" \
-        "https://${API_DOMAIN}/validate" || echo 000)"
-      shared_msg="$(tr '[:upper:]' '[:lower:]' < "$shared_body")"
-      rm -f "$shared_body"
-      if [ "$shared_code" != "401" ]; then
-        fail "shared API_KEY on public /validate -> $shared_code (must be refused with 401)"
-      elif printf '%s' "$shared_msg" | grep -q 'session invalid'; then
-        fail "shared API_KEY authenticated on the public edge (session invalid) — refuse it there"
-      elif printf '%s' "$shared_msg" | grep -q 'unauthorized'; then
-        ok "https://${API_DOMAIN}/validate refuses the shared API_KEY"
-      else
-        fail "shared API_KEY on public /validate -> 401 with unexpected body"
-      fi
+    fake_sid='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+    bad_key_body="$(mktemp)"
+    bad_key_code="$(curl -sS -o "$bad_key_body" -w '%{http_code}' --max-time 15 \
+      -H 'X-API-Key: TestApiKey123!TestApiKey123!' \
+      -H "X-Session-ID: ${fake_sid}" \
+      "https://${API_DOMAIN}/validate" || echo 000)"
+    bad_key_msg="$(tr '[:upper:]' '[:lower:]' < "$bad_key_body")"
+    rm -f "$bad_key_body"
+    if [ "$bad_key_code" != "401" ]; then
+      fail "non-issued key on public /validate -> $bad_key_code (must be refused with 401)"
+    elif printf '%s' "$bad_key_msg" | grep -q 'session invalid'; then
+      fail "non-issued key authenticated on the public edge (session invalid)"
+    elif printf '%s' "$bad_key_msg" | grep -q 'unauthorized'; then
+      ok "https://${API_DOMAIN}/validate refuses non-issued credentials"
     else
-      warn "API_KEY unset — skipping shared-key refusal check on public /validate"
+      fail "non-issued key on public /validate -> 401 with unexpected body"
     fi
   else
     case "$validate_code" in

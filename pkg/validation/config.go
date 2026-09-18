@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"garde/pkg/config"
 	"strings"
-	"unicode"
 )
 
 const (
@@ -77,11 +76,8 @@ func ValidateConfig() error {
 		return fmt.Errorf("SUPERUSER_PASSWORD validation failed")
 	}
 
-	// Validate API key if present
-	if apiKey := config.Get("API_KEY"); apiKey != "" {
-		if err := ValidateAPIKey(apiKey); err != nil {
-			return fmt.Errorf("API_KEY validation failed")
-		}
+	if strings.TrimSpace(config.Get("MFA_ENCRYPTION_KEY")) == "" {
+		return fmt.Errorf("MFA_ENCRYPTION_KEY is required")
 	}
 
 	// Validate admin users JSON if provided
@@ -165,11 +161,10 @@ func validateAdminScopes() error {
 	return nil
 }
 
-// Checks the client-certificate policies against the material they need, and
-// what /validate accepts against what the deployment said it wants. These fail
-// the process at startup rather than at the first request: a listener that
-// silently downgrades to "no certificate required", or to "one shared secret
-// is enough", is the exact failure this split exists to prevent.
+// Checks the client-certificate policies against the material they need.
+// These fail the process at startup rather than at the first request: a
+// listener that silently downgrades to "no certificate required" is the
+// failure this split exists to prevent.
 func validateListenerPolicy() error {
 	if config.BrowserMTLS() != config.ClientCertOff {
 		if !config.GetBool("USE_TLS") {
@@ -178,10 +173,6 @@ func validateListenerPolicy() error {
 		if config.Get("TLS_CA_PATH") == "" {
 			return fmt.Errorf("TLS_CA_PATH is required when BROWSER_MTLS is %s", config.BrowserMTLS())
 		}
-	}
-
-	if err := validatePublicValidateSharedKey(); err != nil {
-		return err
 	}
 
 	if !config.ServiceListenerEnabled() {
@@ -196,70 +187,6 @@ func validateListenerPolicy() error {
 	}
 	if config.ServicePort() == config.GetWithDefault("PORT", "8443") {
 		return fmt.Errorf("SERVICE_PORT must differ from PORT (both are %s)", config.ServicePort())
-	}
-
-	return nil
-}
-
-// The shared API_KEY authenticating a public /validate has no safe default, so
-// it gets no default: the deployment states which posture it wants or the
-// process does not start. Requiring the statement only where it changes
-// something keeps it from becoming boilerplate — a deployment whose /validate
-// is private, or not served at all, is never asked.
-func validatePublicValidateSharedKey() error {
-	allow, configured, valid := config.PublicValidateSharedKey()
-
-	if configured && !valid {
-		return fmt.Errorf("%s must be true or false", config.PublicValidateSharedKeyKey)
-	}
-
-	// The split already refuses the shared key on the public copy of /validate,
-	// so there is nothing here to decide. Saying otherwise is refused instead
-	// of ignored: a security setting that reads as honoured and is not is worse
-	// than one that fails.
-	if config.ServiceListenerEnabled() {
-		if configured && allow {
-			return fmt.Errorf("%s=true cannot be honoured while SERVICE_LISTENER is true: the public /validate then exists for external callers and accepts per-caller keys only. Remove the setting, or turn the service listener off", config.PublicValidateSharedKeyKey)
-		}
-		return nil
-	}
-
-	if !config.PublicValidateEnabled() || configured {
-		return nil
-	}
-
-	return fmt.Errorf("%s must be set: /validate is served on the public listener, where the shared API_KEY would authenticate it — one long-lived secret, held by every caller, in front of an endpoint that can validate any user's session. "+
-		"Set it to false to refuse the shared key there and require per-caller keys from POST /admin/api-keys, set SERVICE_LISTENER=true to move /validate to a private listener instead, or set it to true to keep accepting the shared key",
-		config.PublicValidateSharedKeyKey)
-}
-
-func ValidateAPIKey(key string) error {
-	if len(key) < 20 {
-		return fmt.Errorf("API_KEY must be at least 20 characters long")
-	}
-
-	var (
-		hasUpper   bool
-		hasLower   bool
-		hasNumber  bool
-		hasSpecial bool
-	)
-
-	for _, char := range key {
-		switch {
-		case unicode.IsUpper(char):
-			hasUpper = true
-		case unicode.IsLower(char):
-			hasLower = true
-		case unicode.IsNumber(char):
-			hasNumber = true
-		case unicode.IsPunct(char) || unicode.IsSymbol(char):
-			hasSpecial = true
-		}
-	}
-
-	if !hasUpper || !hasLower || !hasNumber || !hasSpecial {
-		return fmt.Errorf("API_KEY must contain at least one uppercase letter, one lowercase letter, one number and one special character")
 	}
 
 	return nil

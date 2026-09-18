@@ -100,6 +100,53 @@ func TestUserMFASecretRoundTrip(t *testing.T) {
 	if enc == "JBSWY3DPEHPK3PXP" || enc == "" {
 		t.Fatalf("stored mfa = %q", enc)
 	}
+
+	// Empty MFASecret on StoreUser must not wipe enrollment.
+	got.MFASecret = ""
+	got.Email = "mfa-renamed@example.com"
+	got.UpdatedAt = time.Now()
+	if err := r.StoreUser(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	again, err := r.GetUserByID(ctx, "u-mfa")
+	if err != nil || again.MFASecret != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("empty MFASecret wiped enrollment: %+v, %v", again, err)
+	}
+	if again.Email != "mfa-renamed@example.com" {
+		t.Fatalf("email = %q", again.Email)
+	}
+
+	if err := r.ClearUserMFASecret(ctx, "u-mfa"); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := r.GetUserByID(ctx, "u-mfa")
+	if err != nil || cleared.MFASecret != "" {
+		t.Fatalf("ClearUserMFASecret = %+v, %v", cleared, err)
+	}
+}
+
+func TestDeleteUserBlacklistsLiveSessions(t *testing.T) {
+	ctx := context.Background()
+	r := newUserRepo(t)
+	u := &models.User{ID: "u-del", Email: "del@example.com", Status: models.UserStatusOk}
+	if err := r.StoreUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	data := &session.SessionData{UserID: "u-del", IP: "h", UserAgent: "ua", CreatedAt: time.Now()}
+	if err := r.StoreSessionData(ctx, "sess-del", data, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.DeleteUser(ctx, "u-del"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.GetSessionData(ctx, "sess-del"); err == nil {
+		t.Fatal("session key still readable after DeleteUser")
+	}
+	banned, err := r.IsSessionBlacklisted(ctx, "sess-del")
+	if err != nil || !banned {
+		t.Fatalf("blacklist after DeleteUser = %v, %v", banned, err)
+	}
 }
 
 func TestSessionStoreGetDelete(t *testing.T) {

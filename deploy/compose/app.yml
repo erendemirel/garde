@@ -13,12 +13,18 @@ services:
   # Vault Agent renders secrets to a tmpfs volume that garde watches.
   # `vault` resolves to this node's own Raft member; followers forward writes
   # to the leader transparently.
+  # Root uid keeps host AppRole files (mode 600) readable; gid 1000 owns
+  # rendered secrets so garde (group_add 1000) can read 0640 without world-read.
   vault-agent:
     image: hashicorp/vault:1.15
     container_name: garde-vault-agent
+    user: "0:1000"
     command: vault agent -config=/vault/config/agent.hcl
     environment:
       VAULT_ADDR: http://vault:8200
+      # Used by vault/templates/service_tls_*.tpl (Agent pkiCert auto-renew).
+      SERVICE_CERT_DOMAIN: "${COOKIE_DOMAIN:-}"
+      NODE_WG_IP: "${NODE_WG_IP:?NODE_WG_IP is required}"
     extra_hosts:
       - "vault:${NODE_WG_IP:?NODE_WG_IP is required}"
     volumes:
@@ -40,6 +46,8 @@ services:
   garde:
     image: "${GARDE_IMAGE:?GARDE_IMAGE is required}:${IMAGE_TAG:-latest}"
     container_name: garde-api
+    group_add:
+      - "1000"
     ports:
       # The service listener carrying /validate. Published on the mesh address
       # only: calling services reach it over WireGuard and present a client
@@ -55,7 +63,7 @@ services:
       vault-agent:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8443/ready"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8443/ready || wget -q -O /dev/null http://127.0.0.1:8443/ready"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -130,8 +138,8 @@ volumes:
     driver_opts:
       type: tmpfs
       device: tmpfs
-      # uid 100 is the Vault image user (writer); world-readable for garde.
-      o: size=2m,uid=100,gid=1000,mode=0755
+      # Agent runs as 0:1000; garde joins group 1000 — not world-readable.
+      o: size=2m,uid=100,gid=1000,mode=0750
 
 networks:
   app_net:

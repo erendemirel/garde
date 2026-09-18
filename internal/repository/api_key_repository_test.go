@@ -215,6 +215,36 @@ func TestServiceAPIKeyRevokeIsIdempotentAndKeepsRecord(t *testing.T) {
 	}
 }
 
+func TestServiceAPIKeyTenantIDImmutableOnUpsert(t *testing.T) {
+	repo := newAPIKeyRepo(t)
+	ctx := context.Background()
+
+	storeTenantKey(t, repo, "abcd", "tenant-a", "original")
+
+	moved := &models.ServiceAPIKey{
+		ID:         "abcd",
+		TenantID:   "tenant-b",
+		Name:       "renamed",
+		SecretHash: "hash-new",
+		Scopes:     []string{models.ScopeValidate},
+		CreatedAt:  time.Now().UTC(),
+	}
+	if err := repo.StoreServiceAPIKey(ctx, moved); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	got, err := repo.GetServiceAPIKey(ctx, "abcd")
+	if err != nil {
+		t.Fatalf("GetServiceAPIKey: %v", err)
+	}
+	if got.TenantID != "tenant-a" {
+		t.Fatalf("tenant_id = %q, want tenant-a (immutable)", got.TenantID)
+	}
+	if got.Name != "renamed" || got.SecretHash != "hash-new" {
+		t.Fatalf("other fields not updated: name=%q hash=%q", got.Name, got.SecretHash)
+	}
+}
+
 func TestServiceAPIKeyRevokeUnknownID(t *testing.T) {
 	repo := newAPIKeyRepo(t)
 

@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# The private CA behind garde's service listener.
+# Offline openssl CA for garde's service listener (fallback).
+#
+# Prefer Vault PKI in production:
+#   ./deploy/scripts/vault-pki.sh enable
+#   ./deploy/scripts/vault-pki.sh issue-server
+#   ./deploy/scripts/vault-pki.sh issue-client <name>
+#   ./deploy/scripts/vault-pki.sh push
+#
+# This script remains for air-gapped bring-up when Vault is unavailable:
 #
 #   ./deploy/scripts/service-pki.sh init             # create the CA (once)
 #   ./deploy/scripts/service-pki.sh server           # issue the listener cert
@@ -27,6 +35,7 @@
 # (or its registrable suffix) and the SANs against DOMAIN_NAME before accepting
 # a call, so a certificate from this CA issued for someone else's domain is
 # still refused.
+# Callers also need an issued API key from POST /admin/api-keys.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -117,7 +126,7 @@ case "$ACTION" in
     rm -f "$PKI_DIR/client-$name-req.pem"
     chmod 600 "$PKI_DIR/client-$name-key.pem"
     ok "client-$name-cert.pem / client-$name-key.pem written to $PKI_DIR"
-    log "give the caller both files plus ca-cert.pem, and an API key"
+    log "give the caller both files plus ca-cert.pem, and an issued API key from POST /admin/api-keys"
     ;;
 
   push)

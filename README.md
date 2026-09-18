@@ -20,7 +20,7 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 ## Features
 
 - **Security**: Rate limiting (IP-based for public endpoints, user-based with role-aware thresholds for authenticated endpoints), behavior detection, session security, input sanitization, request size limiting, Vault-managed secret rotation, mTLS for internal `/validate`, MFA<br>
-- **Authentication**: Browser sessions, API sessions, personal access tokens, internal service mTLS + shared key, and per-tenant API keys for external `/validate` callers<br>
+- **Authentication**: Browser sessions, API sessions, personal access tokens, internal service mTLS + per-caller API keys, and per-tenant API keys for external `/validate` callers<br>
 - **Permissions**: Named permissions + groups with visibility controls (not OAuth scopes), plus a request/approval workflow. Superuser/Admin/User are bootstrap privilege tiers, separate from app permissions<br>
 - **Implementation**: Vault secrets, Argon2 password hashing, MFA secrets encrypted at rest, secure error handling, privacy protection<br>
 - **Hot Reload**: Selected secrets and credentials reload without restart (see below)<br>
@@ -37,8 +37,8 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 - **Browser**: Traditional web login with secure HTTP-only cookies
 - **API session**: Same session model with `Authorization: Bearer <session_id>`
 - **Personal access token (PAT)**: Long-lived `garde_pat_…` credential a user issues for scripts/CI; acts as that user with live permissions and groups. Managed under **Access tokens** in the UI (`POST /users/me/tokens`). Creating or revoking PATs requires a browser **cookie** session — Bearer sessions and other PATs cannot mint PATs. PATs are refused on `/validate`.
-- **Internal `/validate`**: Private service listener with **client certificate + shared API key** (mesh / not on the public hostname)
-- **External `/validate`**: Per-tenant API key (`garde_…`) over ordinary HTTPS; keyed by `tenant_id`, issued by superuser, shared operator key refused on that path
+- **Internal `/validate`**: Private service listener with **client certificate + issued API key** (mesh / not on the public hostname)
+- **External `/validate`**: Per-tenant API key (`garde_…`) over ordinary HTTPS; keyed by `tenant_id`, issued by superuser; non-issued credentials are refused
 
 #### Hierarchical Admin System:
 - **Superuser**: Single privileged user with unlimited access (defined by email)
@@ -76,10 +76,10 @@ garde separates the two audiences it serves, because one TLS switch cannot make
 both of them secure and usable:
 
 - **Browsers** get server TLS only — from a reverse proxy, a cloud load balancer, or garde's own `USE_TLS`. They are never asked for a client certificate, which would lock out every normal user.
-- **Your services** calling `/validate` get a private listener that requires a **client certificate plus the shared API key**. It is published on a private network, not on the hostname browsers use.
-- **External tenants**, who cannot join that network or maintain a certificate, get a **per-tenant API key** (`tenant_id` holder) over ordinary HTTPS: issued and revoked one caller at a time, rate-limited per key, stored as a hash. The shared API key is refused on that path.
+- **Your services** calling `/validate` get a private listener that requires a **client certificate plus an issued API key**. It is published on a private network, not on the hostname browsers use.
+- **External tenants**, who cannot join that network or maintain a certificate, get a **per-tenant API key** (`tenant_id` holder) over ordinary HTTPS: issued and revoked one caller at a time, rate-limited per key, stored as a hash.
 - **Human automation** against garde's own REST API uses a **PAT**, not a tenant key — different prefix, different audience, no `/validate` access.
-- **The switches are independent** (`browser_mtls`, `service_mtls`, `public_validate`, `public_validate_shared_key`), so enabling certificates for services does not affect browsers, and publishing `/validate` for tenants does not re-open the shared key unless the operator opts in.
+- **The switches are independent** (`browser_mtls`, `service_mtls`, `public_validate`), so enabling certificates for services does not affect browsers, and publishing `/validate` for tenants does not change the mesh listener.
 
 For the production layouts and how to issue the certificates, see [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration). For PAT and tenant-key request shapes, see the [Integration Guide](docs/API_INTEGRATION_GUIDE.md).
 

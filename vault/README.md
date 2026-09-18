@@ -53,11 +53,8 @@ vault kv put secret/garde/database_url value='postgres://garde:SECRET@db.xxxxx.r
 vault kv put secret/garde/domain_name value=your-domain.com
 vault kv put secret/garde/superuser_email value=admin@example.com
 vault kv put secret/garde/superuser_password value=YourSecurePassword
-vault kv put secret/garde/api_key value=YourApiKey20CharsMin!
-# Whether that shared api_key authenticates /validate on the public listener.
-# No default — garde refuses to start until this says which way you want it.
-# Set false and issue per-caller keys once anyone but you is calling.
-vault kv put secret/garde/public_validate_shared_key value=false
+vault kv put secret/garde/mfa_encryption_key value=your-dedicated-mfa-key
+# Issue /validate callers with POST /admin/api-keys (issued per-caller keys only).
 # ... and other keys (see dev.secrets or Required Mandatory Secrets in docs/INSTALLATION.md).
 
 # Optional: use dynamic Redis credentials from the database secrets engine instead of static redis_password.
@@ -76,6 +73,18 @@ path "secret/data/garde/*" {
   capabilities = ["read"]
 }
 path "database/creds/garde-redis" {
+  capabilities = ["read"]
+}
+path "pki_int/issue/garde-service" {
+  capabilities = ["create", "update"]
+}
+path "pki_int/issue/garde-client" {
+  capabilities = ["create", "update"]
+}
+path "pki_int/cert/ca" {
+  capabilities = ["read"]
+}
+path "pki_int/ca/pem" {
   capabilities = ["read"]
 }
 EOF
@@ -164,7 +173,7 @@ Full step-by-step: [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-v
 - On the host, keep `vault/` at `0700` and `role-id` / `secret-id` at `600` (init scripts enforce this). Do not copy them onto shared volumes or world-readable paths.
 - AppRole uses a long-lived `secret_id` (`secret_id_ttl=0`) so agents survive reboot without re-init. That is intentional: the **node** is the trust boundary. Agent keeps the secret-id file after reading so restarts work.
 - **Rotate on compromise** (leaked `secret-id`, departed operator with host access): mint a new secret-id, write it to each app node’s `vault/secret-id` (`chmod 600`), restart `vault-agent`, then invalidate old secret-ids if your Vault version supports it (`vault list auth/approle/role/garde/secret-id` / destroy). Re-running `vault-init` / `vault-cluster-init.sh` also issues a fresh secret-id.
-- Secrets are written to tmpfs (`/run/secrets`) only — not persisted on the host data volume. Compose uses a tmpfs volume for that path.
+- Secrets are written to tmpfs (`/run/secrets`) only — not persisted on the host data volume. Compose mounts that path `mode=0750` with shared gid `1000` (agent `user: 0:1000`, garde `group_add: ["1000"]`) so secret files are not world-readable.
 - Vault Agent authenticates with AppRole and auto-renews tokens
 - Templates rerender when secrets rotate
 - Prod Vault listens on `127.0.0.1:8200` only in single-VPS Compose; HA Vault speaks on the WireGuard mesh only. Never publish `:8200` on a public interface.

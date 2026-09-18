@@ -37,7 +37,7 @@ func GeneratePAT() (plaintext, id, secretHash string, err error) {
 // ParsePAT splits a presented PAT into its lookup id and secret.
 //
 // ok is false for anything that is not shaped like a PAT — including tenant
-// API keys and the legacy shared secret.
+// API keys and other wrong-shaped credentials.
 func ParsePAT(presented string) (id, secret string, ok bool) {
 	rest, found := strings.CutPrefix(presented, patPrefix+"_")
 	if !found {

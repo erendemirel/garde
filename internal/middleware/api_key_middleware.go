@@ -1,11 +1,9 @@
 package middleware
 
 import (
-	"crypto/subtle"
 	stderrors "errors"
 	"garde/internal/models"
 	"garde/internal/repository"
-	"garde/pkg/config"
 	"garde/pkg/crypto"
 	"garde/pkg/errors"
 	"log/slog"
@@ -17,7 +15,7 @@ import (
 
 const APIKeyHeader = "X-API-Key"
 
-// Context keys set once a per-tenant key authenticates, so that downstream
+// Context keys set once a per-caller key authenticates, so that downstream
 // middleware can attribute the request to the caller instead of to its IP.
 const (
 	ContextAPIKeyID   = "api_key_id"
@@ -27,29 +25,19 @@ const (
 )
 
 type APIKeyAuthOptions struct {
-	// Repo resolves per-tenant keys. A nil Repo disables them, leaving only
-	// the legacy shared key.
+	// Repo resolves issued per-caller keys. Required: /validate no longer
+	// accepts a shared configuration secret.
 	Repo *repository.RedisRepository
 
-	// AllowLegacyKey accepts the single shared API_KEY from configuration.
-	//
-	// It belongs on the private service listener and in single-listener
-	// deployments. It does not belong on a public listener: one long-lived
-	// secret shared by every caller, in front of an endpoint that can validate
-	// any user's session, is what per-tenant keys exist to replace.
-	AllowLegacyKey bool
-
-	// RequiredScope, when set, must be carried by the presented per-tenant
-	// key. The legacy shared key is not scoped and is not checked against it.
+	// RequiredScope, when set, must be carried by the presented key.
 	RequiredScope string
 }
 
 // APIKeyAuth authenticates a caller from the X-API-Key header.
 //
-// Two kinds of credential arrive on that header, and which are accepted
-// depends on the listener. A per-tenant key is recognised by its shape and
-// resolved against Redis; anything else is compared against the single shared
-// API_KEY from configuration, and only where AllowLegacyKey says so.
+// Only issued per-caller keys (garde_<id>_<secret>) are accepted — for both
+// internal services on the private listener and external tenants on a public
+// /validate. Wrong-shaped or non-issued credentials are refused.
 func APIKeyAuth(opts APIKeyAuthOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		presented := c.GetHeader(APIKeyHeader)
@@ -58,29 +46,16 @@ func APIKeyAuth(opts APIKeyAuthOptions) gin.HandlerFunc {
 			return
 		}
 
-		if id, secret, ok := crypto.ParseAPIKey(presented); ok {
-			if opts.Repo == nil {
-				rejectAPIKey(c, "per-tenant key presented on a listener that cannot resolve one")
-				return
-			}
-			authenticateServiceAPIKey(c, opts, id, secret)
+		id, secret, ok := crypto.ParseAPIKey(presented)
+		if !ok {
+			rejectAPIKey(c, "credential is not an issued per-caller key")
 			return
 		}
-
-		if !opts.AllowLegacyKey {
-			rejectAPIKey(c, "the shared API key is not accepted here")
+		if opts.Repo == nil {
+			rejectAPIKey(c, "per-caller key presented on a listener that cannot resolve one")
 			return
 		}
-
-		expected := config.Get("API_KEY")
-		// Empty configured key must never authenticate (ConstantTimeCompare("","")==1).
-		if expected == "" || subtle.ConstantTimeCompare([]byte(presented), []byte(expected)) != 1 {
-			rejectAPIKey(c, "invalid shared API key")
-			return
-		}
-
-		c.Set("is_api_request", true)
-		c.Next()
+		authenticateServiceAPIKey(c, opts, id, secret)
 	}
 }
 
