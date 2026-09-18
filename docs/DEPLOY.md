@@ -175,7 +175,7 @@ Same shape as before (`DEPLOY_INVENTORY`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
 ./deploy/scripts/healthcheck.sh --all --public
 ```
 
-Compose health uses `http://127.0.0.1:8443/ready`.
+Compose health probes HTTPS then HTTP on `127.0.0.1:8443/ready` (works with or without built-in TLS).
 
 ---
 
@@ -186,6 +186,7 @@ Compose health uses `http://127.0.0.1:8443/ready`.
 | `redis_host` | ElastiCache primary endpoint (or external Redis hostname) | **Not** the old local compose service name on multi-node |
 | `redis_port` | `6379` | |
 | `redis_password` | AUTH token | Same as CI `REDIS_PASSWORD` when used for tooling |
+| `redis_tls` | `true` for ElastiCache in-transit encryption | Optional; also set when using a `rediss://` URL |
 | `database_url` **or** `postgres_host` + `postgres_*` | RDS / external Postgres | Required for durable state |
 | `postgres_sslmode` | `require` on RDS | Optional if using `database_url` |
 | other keys | as in `dev.secrets` / INSTALLATION.md | Unchanged |

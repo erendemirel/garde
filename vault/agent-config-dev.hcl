@@ -44,6 +44,12 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/redis_tls\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/redis_tls"
+  error_on_missing_key = false
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/database_url\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/database_url"
 }

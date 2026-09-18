@@ -56,6 +56,12 @@ template {
   destination = "/run/secrets/redis_db"
 }
 
+template {
+  contents = "{{ with secret \"secret/data/garde/redis_tls\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/redis_tls"
+  error_on_missing_key = false
+}
+
 # Shared PostgreSQL (required for durable catalog). Prefer DATABASE_URL, or the
 # discrete POSTGRES_* keys — same shape as config.Get / postgresDSN().
 template {
@@ -218,7 +224,8 @@ template {
 template {
   source      = "/vault/config/templates/service_tls_key.tpl"
   destination = "/run/secrets/service_tls_key.pem"
-  perms       = "0600"
+  # 0640 (not 0600): agent runs as 0:1000 and garde joins group 1000.
+  perms       = "0640"
   error_on_missing_key = false
 }
 

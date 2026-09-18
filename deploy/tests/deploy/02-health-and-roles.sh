@@ -13,7 +13,7 @@ apps="$(app_nodes)"
 ok "app nodes: $apps"
 
 for node in $apps; do
-  on_node "$node" "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready" \
+  on_node "$node" "docker exec garde-api sh -c 'wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8443/ready || wget -q -O /dev/null http://127.0.0.1:8443/ready'" \
     || die "$node /ready failed"
   ok "$node /ready"
 done

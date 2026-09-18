@@ -127,7 +127,7 @@ deploy_app() {
   [ "$DRY_RUN" = "true" ] && return 0
 
   if retry_until 20 5 on_node "$node" \
-      "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready"; then
+      "docker exec garde-api sh -c 'wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8443/ready || wget -q -O /dev/null http://127.0.0.1:8443/ready'"; then
     ok "$node garde is ready"
   else
     on_node "$node" "cd '$REMOTE_ROOT' && docker compose -f compose/app.yml -p garde-app logs --tail 40 garde" || true

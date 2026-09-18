@@ -61,7 +61,7 @@ for node in $TARGETS; do
   # --- App nodes -----------------------------------------------------------
   case "$role" in
     app)
-      if on_node "$node" "docker exec garde-api wget -q -O /dev/null http://127.0.0.1:8443/ready"; then
+      if on_node "$node" "docker exec garde-api sh -c 'wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8443/ready || wget -q -O /dev/null http://127.0.0.1:8443/ready'"; then
         ok "garde /ready responding"
       else
         fail "$node: garde /ready failed"

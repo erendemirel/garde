@@ -77,9 +77,12 @@ openssl x509 -req -in certs/client-req.pem -days 60 -CA certs/ca-cert.pem -CAkey
 # Clean up config files
 rm -f certs/ca.cnf certs/server.cnf certs/client.cnf
 
-# Set permissions (this is primarily for Unix-like systems)
+# Set permissions (this is primarily for Unix-like systems).
+# Directory owner-only; private keys owner-read/write; certs world-readable.
 if [[ "$OSTYPE" != "msys"* && "$OSTYPE" != "cygwin"* && "$OSTYPE" != "win"* ]]; then
-    chmod -R 755 certs
+    chmod 700 certs
+    chmod 600 certs/*-key.pem
+    chmod 644 certs/*-cert.pem certs/ca-cert.pem 2>/dev/null || true
 fi
 
 log "Certificate generation completed successfully"

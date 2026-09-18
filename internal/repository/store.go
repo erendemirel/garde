@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
+	"strings"
 	"sync"
 
 	"garde/pkg/config"
@@ -99,11 +102,8 @@ func (s *Store) connect() error {
 		s.client.Close()
 	}
 
-	s.client = redis.NewClient(&redis.Options{
-		Addr:     s.host + ":" + s.port,
-		Password: config.Get("REDIS_PASSWORD"),
-		DB:       s.dbNum,
-	})
+	opts := redisClientOptions(s.host, s.port, s.dbNum)
+	s.client = redis.NewClient(opts)
 
 	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
 	defer cancel()
@@ -112,8 +112,33 @@ func (s *Store) connect() error {
 		return err
 	}
 
-	slog.Info("Successfully connected to Redis", "host", s.host, "port", s.port)
+	slog.Info("Successfully connected to Redis",
+		"host", s.host, "port", s.port, "tls", opts.TLSConfig != nil)
 	return nil
+}
+
+// redisClientOptions builds go-redis options from the current secrets.
+// TLS is off by default; set REDIS_TLS=true or REDIS_URL=rediss://… to enable.
+func redisClientOptions(host, port string, dbNum int) *redis.Options {
+	opts := &redis.Options{
+		Addr:     net.JoinHostPort(host, port),
+		Password: config.Get("REDIS_PASSWORD"),
+		DB:       dbNum,
+	}
+	if redisTLSEnabled() {
+		opts.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ServerName: host,
+		}
+	}
+	return opts
+}
+
+func redisTLSEnabled() bool {
+	if config.GetBool("REDIS_TLS") {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(config.Get("REDIS_URL"))), "rediss://")
 }
 
 // Reconnect re-dials Redis and rebuilds the Postgres pool from the current

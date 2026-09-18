@@ -148,6 +148,7 @@ docker compose -f docker-compose.prod.yml up -d
 | `secret/garde/redis_host` | Redis server hostname (for single-VPS Docker Compose: use `redis`, the Compose service name) |
 | `secret/garde/redis_port` | Redis server port |
 | `secret/garde/redis_password` | Redis authentication password |
+| `secret/garde/redis_tls` | Optional. `true` to use TLS for Redis (also implied when `REDIS_URL` starts with `rediss://`). Default `false` for local Compose Redis. |
 | `secret/garde/domain_name` | Your domain (for cookies and TLS) |
 | `secret/garde/superuser_email` | Superuser account email (The user is auto-created) |
 | `secret/garde/superuser_password` | Superuser password (The user is auto-created) |
