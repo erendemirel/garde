@@ -1198,12 +1198,16 @@ func (s *AuthService) DisableMFA(ctx context.Context, userID string, code string
 		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 	}
 
-	// Disable MFA
+	// Disable MFA. Empty MFASecret on StoreUser is preserved; ClearUserMFASecret
+	// wipes the ciphertext after MFAEnabled is flipped off.
 	user.MFAEnabled = false
-	user.MFASecret = "" // Clear the secret
+	user.MFASecret = ""
 	user.UpdatedAt = time.Now()
 
 	if err := s.repo.StoreUser(ctx, user); err != nil {
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	if err := s.repo.ClearUserMFASecret(ctx, user.ID); err != nil {
 		return fmt.Errorf("%s", errors.ErrOperationFailed)
 	}
 

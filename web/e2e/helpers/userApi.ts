@@ -275,24 +275,41 @@ export async function deleteUserByEmail(api: RequestLike, email: string) {
 	await deleteUserById(api, user.id);
 }
 
-/** Open user detail by id — skips users-list search (faster under parallel load). */
+/** True when Vite/SvelteKit served its framework error page instead of the app shell. */
+async function isFrameworkErrorPage(page: Page): Promise<boolean> {
+	return page.getByRole('heading', { name: '500' }).isVisible().catch(() => false);
+}
+
+/** Open user detail by id — skips users-list search (faster / less flaky under parallel Vite load). */
 export async function openUserDetailById(page: Page, userId: string, expectedEmail?: string) {
-	const detailResponse = page.waitForResponse(
-		(res) => {
-			if (res.request().method() !== 'GET') return false;
-			try {
-				return new URL(res.url()).pathname === `/api/users/${userId}`;
-			} catch {
-				return false;
+	const path = `/admin/users/${userId}`;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const detailResponse = page.waitForResponse(
+			(res) => {
+				if (res.request().method() !== 'GET') return false;
+				try {
+					return new URL(res.url()).pathname === `/api/users/${userId}`;
+				} catch {
+					return false;
+				}
+			},
+			{ timeout: LOAD_TIMEOUT }
+		);
+		await page.goto(path);
+		if (await isFrameworkErrorPage(page)) {
+			void detailResponse.catch(() => undefined);
+			if (attempt < 2) {
+				await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+				continue;
 			}
-		},
-		{ timeout: LOAD_TIMEOUT }
-	);
-	await page.goto(`/admin/users/${userId}`);
-	await detailResponse;
-	await waitForUserDetail(page);
-	if (expectedEmail) {
-		await expect(page.getByTestId('user-detail-email')).toHaveText(expectedEmail);
+			throw new Error(`SvelteKit 500 loading ${path}`);
+		}
+		await detailResponse;
+		await waitForUserDetail(page);
+		if (expectedEmail) {
+			await expect(page.getByTestId('user-detail-email')).toHaveText(expectedEmail);
+		}
+		return;
 	}
 }
 

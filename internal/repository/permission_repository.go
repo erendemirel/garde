@@ -35,7 +35,9 @@ func NewPermissionRepository(db *sql.DB) (*PermissionRepository, error) {
 }
 
 // InitPermissionRepository installs the process-wide catalogue. Call it once,
-// at startup, with the pool the Store opened.
+// at startup, with the pool the Store opened. After a Postgres reconnect the
+// Store rebinds this instance via SetDB so the catalogue does not keep a
+// closed pool.
 func InitPermissionRepository(db *sql.DB) (*PermissionRepository, error) {
 	repo, err := NewPermissionRepository(db)
 	if err != nil {
@@ -56,6 +58,33 @@ func GetPermissionRepository() (*PermissionRepository, error) {
 		return nil, fmt.Errorf("permission repository is not initialized")
 	}
 	return permissionRepo, nil
+}
+
+// SetDB points the catalogue at a new pool. Used after Store rebuilds Postgres
+// on secret rotation so catalogue queries do not hit a closed *sql.DB.
+func (r *PermissionRepository) SetDB(db *sql.DB) error {
+	if r == nil {
+		return fmt.Errorf("permission repository is not initialized")
+	}
+	if db == nil {
+		return errPostgresUnavailable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.db = db
+	return nil
+}
+
+// rebindPermissionRepository updates the process-wide catalogue when the
+// Store swaps its Postgres pool. No-op if the catalogue was never installed.
+func rebindPermissionRepository(db *sql.DB) error {
+	permissionRepoMu.RLock()
+	repo := permissionRepo
+	permissionRepoMu.RUnlock()
+	if repo == nil {
+		return nil
+	}
+	return repo.SetDB(db)
 }
 
 func (r *PermissionRepository) GetPermissionByID(ctx context.Context, id int64) (*entities.PermissionEntity, error) {

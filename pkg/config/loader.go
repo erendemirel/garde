@@ -19,14 +19,15 @@ const (
 )
 
 var (
-	secretsDir     string
-	secrets        = make(map[string]string)
-	secretsMu      sync.RWMutex
-	initialized    bool
-	watcher        *fsnotify.Watcher
-	configWatcher  *fsnotify.Watcher
-	onReloadHook   func()                  // Called when secrets are reloaded
-	onConfigReload func(configFile string) // Called when config files change
+	secretsDir       string
+	secrets          = make(map[string]string)
+	secretsMu        sync.RWMutex
+	initialized      bool
+	watcher          *fsnotify.Watcher
+	configWatcher    *fsnotify.Watcher
+	onReloadHook     func()                  // Called when secrets are reloaded
+	onReloadValidate func() error            // Optional: reject a reload and restore prior secrets
+	onConfigReload   func(configFile string) // Called when config files change
 )
 
 // Initialize the config loader with the secrets directory
@@ -108,6 +109,14 @@ func SetReloadHook(hook func()) {
 	onReloadHook = hook
 }
 
+// SetReloadValidator runs after a hot-reload swaps in new secret files and
+// before the reload hook. If it returns an error, the previous secret map is
+// restored and the reload hook is not called — so a weak password or missing
+// required key cannot take effect mid-flight.
+func SetReloadValidator(fn func() error) {
+	onReloadValidate = fn
+}
+
 func StopWatcher() {
 	if watcher != nil {
 		watcher.Close()
@@ -147,8 +156,20 @@ func loadAllSecrets() error {
 	}
 
 	secretsMu.Lock()
+	previous := secrets
 	secrets = newSecrets
 	secretsMu.Unlock()
+
+	// First Init has an empty prior map — skip validation there. Later reloads
+	// must pass the operator-installed validator or the prior map is restored.
+	if onReloadValidate != nil && len(previous) > 0 {
+		if err := onReloadValidate(); err != nil {
+			secretsMu.Lock()
+			secrets = previous
+			secretsMu.Unlock()
+			return fmt.Errorf("secret reload rejected by validation: %w", err)
+		}
+	}
 
 	slog.Debug("Config: Loaded secrets", "count", len(newSecrets))
 	return nil

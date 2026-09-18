@@ -99,6 +99,7 @@ func main() {
 		slog.Error("Configuration validation failed", "error", err)
 		os.Exit(1)
 	}
+	applyGinMode()
 
 	slog.Info("Connecting to PostgreSQL and Redis...")
 	repo, err := repository.NewStore()
@@ -126,12 +127,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set up hot-reload: reconnect Redis when secrets change. Postgres needs no
-	// equivalent — database/sql re-dials from the pool on its own.
+	// Reject hot-reloads that would install invalid secrets (e.g. weak passwords),
+	// then re-dial storage and refresh bootstrap accounts.
+	config.SetReloadValidator(validation.ValidateConfig)
 	config.SetReloadHook(func() {
-		slog.Info("Secrets changed, reconnecting to Redis...")
+		applyGinMode()
+
+		slog.Info("Secrets changed, reconnecting storage backends...")
 		if err := repo.Reconnect(); err != nil {
-			slog.Error("Failed to reconnect to Redis after secret change", "error", err)
+			slog.Error("Failed to reconnect after secret change", "error", err)
 			return
 		}
 
@@ -568,4 +572,23 @@ func serve(srv *http.Server) {
 		slog.Error("Failed to start server", "addr", srv.Addr, "error", err)
 		os.Exit(1)
 	}
+}
+
+// applyGinMode maps the GIN_MODE secret onto gin's runtime mode. Gin only
+// reads the GIN_MODE environment variable at import time, so secrets rendered
+// under /run/secrets would otherwise be ignored and leave the process in debug.
+func applyGinMode() {
+	mode := strings.ToLower(strings.TrimSpace(config.Get("GIN_MODE")))
+	switch mode {
+	case gin.ReleaseMode:
+		gin.SetMode(gin.ReleaseMode)
+	case gin.TestMode:
+		gin.SetMode(gin.TestMode)
+	case gin.DebugMode, "":
+		gin.SetMode(gin.DebugMode)
+	default:
+		slog.Warn("Invalid GIN_MODE, using release", "value", mode)
+		gin.SetMode(gin.ReleaseMode)
+	}
+	slog.Info("Gin mode applied", "mode", gin.Mode())
 }

@@ -10,6 +10,7 @@ import (
 
 	"garde/internal/models"
 	"garde/pkg/crypto"
+	"garde/pkg/session"
 	"garde/pkg/validation"
 )
 
@@ -162,21 +163,24 @@ func (s *Store) StoreUser(ctx context.Context, user *models.User) error {
 		}
 		user.UpdatedAt = time.Now().UTC()
 
-		// password_hash keeps its stored value when the caller passes an empty
-		// one: callers that never read credentials must not blank them out.
-		// created_at is immutable and deliberately absent from the SET list.
+		// password_hash / mfa_secret_encrypted / last_login keep their stored
+		// values when the caller omits them: partial updates must not blank
+		// credentials or timestamps. created_at is immutable and deliberately
+		// absent from the SET list. Intentional MFA wipe goes through
+		// ClearUserMFASecret (DisableMFA). pending_updates still accepts NULL
+		// so approve/reject can clear a request.
 		result, err := tx.ExecContext(ctx, `
 			UPDATE users SET
 				email = $2,
 				password_hash = COALESCE(NULLIF($3, ''), password_hash),
-				mfa_secret_encrypted = $4,
+				mfa_secret_encrypted = COALESCE($4, mfa_secret_encrypted),
 				mfa_enabled = $5,
 				mfa_enforced = $6,
 				status = $7,
 				permissions = $8,
 				"groups" = $9,
 				pending_updates = $10,
-				last_login = $11,
+				last_login = COALESCE($11, last_login),
 				updated_at = $12
 			WHERE id = $1 AND updated_at = $13`,
 			user.ID, user.Email, user.PasswordHash, mfaSecret, user.MFAEnabled, user.MFAEnforced,
@@ -197,6 +201,30 @@ func (s *Store) StoreUser(ctx context.Context, user *models.User) error {
 	}
 
 	return tx.Commit()
+}
+
+// ClearUserMFASecret wipes the encrypted MFA secret. StoreUser treats an empty
+// MFASecret as "leave unchanged", so DisableMFA (and tests that assert a wipe)
+// call this after flipping MFAEnabled off.
+func (s *Store) ClearUserMFASecret(ctx context.Context, userID string) error {
+	db, err := s.database()
+	if err != nil {
+		return err
+	}
+	result, err := db.ExecContext(ctx,
+		`UPDATE users SET mfa_secret_encrypted = NULL, updated_at = $2 WHERE id = $1`,
+		userID, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errUserNotFound
+	}
+	return nil
 }
 
 func (s *Store) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
@@ -229,9 +257,10 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User,
 }
 
 // DeleteUser removes the account and everything the schema cascades from it
-// (its personal access tokens), then clears the user's ephemeral Redis state.
-// The Redis half is best-effort: the account is already gone, and the keys it
-// touches all expire on their own.
+// (its personal access tokens), then revokes live sessions and clears the
+// user's ephemeral Redis state. The Redis half is best-effort: the account is
+// already gone, and the keys it touches all expire on their own — but sessions
+// are blacklisted first so a held session id cannot validate until TTL.
 func (s *Store) DeleteUser(ctx context.Context, userID string) error {
 	db, err := s.database()
 	if err != nil {
@@ -251,6 +280,23 @@ func (s *Store) DeleteUser(ctx context.Context, userID string) error {
 	}
 
 	if client := s.getClient(); client != nil {
+		// Enumerate before dropping the index so each session:{id} is
+		// blacklisted and deleted, matching revokeAllUserSessions.
+		if sessions, err := s.GetUserActiveSessions(ctx, userID); err != nil {
+			slog.Warn("Failed to list sessions for deleted user", "user_id", userID, "error", err)
+		} else {
+			for _, sessionID := range sessions {
+				if err := s.BlacklistSession(ctx, sessionID, session.BlacklistDuration); err != nil {
+					slog.Warn("Failed to blacklist session for deleted user",
+						"user_id", userID, "session_id_prefix", session.IDPrefix(sessionID), "error", err)
+				}
+				if err := s.DeleteSession(ctx, sessionID); err != nil {
+					slog.Warn("Failed to delete session for deleted user",
+						"user_id", userID, "session_id_prefix", session.IDPrefix(sessionID), "error", err)
+				}
+			}
+		}
+
 		pipe := client.Pipeline()
 		pipe.Del(ctx, tempMFAKey(userID))
 		pipe.Del(ctx, userSessionsKey(userID))

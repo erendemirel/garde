@@ -337,15 +337,16 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `smtp_*` | Read when sending mail |
 | `mfa_encryption_key` | Used for new encrypt/decrypt calls (**does not** re-encrypt existing MFA secrets). **Required** at startup |
 | `redis_*` | Reload hook reconnects the Redis client |
-| `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply) |
+| `database_url`, `postgres_*` | Reload hook rebuilds the Postgres pool so rotated credentials take effect |
+| `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply). Reloads that fail `ValidateConfig` (weak password, missing required keys, …) are **rejected** and the previous secret map is kept |
 | `admin_scopes_json` | Resolved per request, so scope changes apply to the admin's next call. A reload that leaves it unparseable denies every scoped admin route until it is fixed, rather than restoring full admin access |
+| `gin_mode` | Reload (and startup) call `gin.SetMode` from the secret — Gin does not read `/run/secrets` on its own |
 
 #### Requires process restart
 
 | Secret / key | Why |
 |--------------|-----|
 | `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
-| `database_url`, `postgres_*` | DSN / pool are opened at startup; changing them needs a restart (dropped connections recover from the existing pool) |
 | `browser_mtls`, `service_mtls`, `public_validate` | The client-certificate policy is part of the handshake configuration, and which routes exist is decided when the listeners are built |
 | `service_listener`, `service_port`, `service_tls_*` | Same: a second listener is opened, or not, at startup |
 | `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
@@ -353,7 +354,6 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `rapid_request_config` | Parsed once into package-level thresholds at startup |
 | `enable_swagger` | Swagger routes are registered only at startup |
 | `log_level` | Logger level is configured at startup |
-| `gin_mode` | Not re-applied after process start |
 
 **Ops tip:** After rotating TLS material, trusted proxies, rate limits, rapid-request thresholds, or log level, restart the `garde` container/process. After rotating only API keys, CORS, cookies, SMTP, feature flags, or admin passwords, a Vault Agent rewrite of `/run/secrets` is enough.
 

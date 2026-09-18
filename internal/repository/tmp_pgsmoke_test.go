@@ -92,12 +92,15 @@ func TestSmokeUserLifecycle(t *testing.T) {
 		t.Fatalf("password hash = %q, want preserved", got.PasswordHash)
 	}
 
-	// Clearing the MFA secret removes it.
+	// Clearing the MFA secret requires ClearUserMFASecret — empty MFASecret on
+	// StoreUser is preserved so partial updates cannot wipe enrollment.
 	cleared, _ := s.GetUserByID(ctx, "u-1")
-	cleared.MFASecret = ""
 	cleared.PendingUpdates = nil
 	cleared.UpdatedAt = time.Now()
 	if err := s.StoreUser(ctx, cleared); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ClearUserMFASecret(ctx, "u-1"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.GetUserByID(ctx, "u-1")
