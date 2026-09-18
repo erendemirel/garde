@@ -252,8 +252,8 @@ maintain a client certificate.
 These callers reach `/validate` on the public API hostname over ordinary server
 TLS, and authenticate with a key issued to them alone. Every `/validate`
 listener accepts **issued keys only**. See
-[the older layout](INSTALLATION.md#single-listener-deployments-the-older-layout)
-for single-listener notes.
+[single-listener deployments](INSTALLATION.md#single-listener-deployments)
+for notes on that layout.
 
 Keys look like `garde_<id>_<secret>`. Present the whole string:
 

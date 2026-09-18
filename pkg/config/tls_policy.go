@@ -74,7 +74,8 @@ func ServiceMTLS() ClientCertPolicy {
 }
 
 // ServiceListenerEnabled turns on the second listener that carries /validate.
-// Off by default so existing single-listener deployments keep working.
+// Off by default: /validate stays on the public listener until a private
+// service listener is enabled.
 func ServiceListenerEnabled() bool {
 	return GetBool("SERVICE_LISTENER")
 }

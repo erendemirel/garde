@@ -7,7 +7,7 @@
 #
 #   1. the public API hostname does not serve /validate (or, with
 #      PUBLIC_VALIDATE=true, serves it but refuses unauthenticated callers and
-#      legacy shared-secret shapes)
+#      non-issued credential shapes)
 #   2. the mesh service listener refuses a caller with no client certificate
 #   3. the same call succeeds with a certificate from the service CA + an
 #      issued per-caller key (POST /admin/api-keys)
@@ -53,23 +53,23 @@ else
       || die "https://${API_DOMAIN}/validate returned $code; an unauthenticated call must be refused with 401"
     ok "public edge serves /validate and refuses unauthenticated callers"
 
-    # Legacy shared-secret shapes must never authenticate on the public edge.
-    shared_body="$(mktemp)"
-    shared="$(curl -sS -o "$shared_body" -w '%{http_code}' --max-time 20 \
+    # Non-issued credential shapes must never authenticate on the public edge.
+    bad_key_body="$(mktemp)"
+    bad_key="$(curl -sS -o "$bad_key_body" -w '%{http_code}' --max-time 20 \
       -H 'X-API-Key: TestApiKey123!TestApiKey123!' \
       -H "X-Session-ID: ${FAKE_SESSION_ID}" \
       "https://${API_DOMAIN}/validate" || echo 000)"
-    shared_msg="$(tr '[:upper:]' '[:lower:]' < "$shared_body")"
-    rm -f "$shared_body"
-    [ "$shared" = "401" ] \
-      || die "legacy shared secret returned $shared on the public edge; it must not authenticate"
-    case "$shared_msg" in
+    bad_key_msg="$(tr '[:upper:]' '[:lower:]' < "$bad_key_body")"
+    rm -f "$bad_key_body"
+    [ "$bad_key" = "401" ] \
+      || die "non-issued key returned $bad_key on the public edge; it must not authenticate"
+    case "$bad_key_msg" in
       *session\ invalid*)
-        die "legacy shared secret authenticated on the public edge (got session invalid)" ;;
+        die "non-issued key authenticated on the public edge (got session invalid)" ;;
       *unauthorized*)
-        ok "public edge refuses legacy shared-secret credentials" ;;
+        ok "public edge refuses non-issued credentials" ;;
       *)
-        die "legacy shared secret returned 401 with unexpected body: $shared_msg" ;;
+        die "non-issued key returned 401 with unexpected body: $bad_key_msg" ;;
     esac
   else
     [ "$code" = "404" ] \

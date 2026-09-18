@@ -37,7 +37,7 @@ type APIKeyAuthOptions struct {
 //
 // Only issued per-caller keys (garde_<id>_<secret>) are accepted — for both
 // internal services on the private listener and external tenants on a public
-// /validate. There is no shared API_KEY fallback.
+// /validate. Wrong-shaped or non-issued credentials are refused.
 func APIKeyAuth(opts APIKeyAuthOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		presented := c.GetHeader(APIKeyHeader)

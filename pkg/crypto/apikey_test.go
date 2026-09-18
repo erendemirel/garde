@@ -48,11 +48,11 @@ func TestGenerateAPIKeyIsUnique(t *testing.T) {
 }
 
 func TestParseAPIKeyRejectsNonKeys(t *testing.T) {
-	// The legacy shared key must not parse, or the middleware would look it up
-	// in Redis instead of comparing it against configuration.
+	// Wrong-shaped credentials must not parse as issued keys, or the
+	// middleware would look them up in Redis instead of refusing them.
 	cases := map[string]string{
 		"personal access token": "garde_pat_0011223344556677_c2VjcmV0",
-		"legacy shared secret":  "TestApiKey123!TestApiKey123!",
+		"non-issued shape":      "TestApiKey123!TestApiKey123!",
 		"empty":                 "",
 		"prefix only":           "garde_",
 		"no secret half":        "garde_0011223344556677",

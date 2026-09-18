@@ -229,11 +229,13 @@ In a deployment fronted by the multi-node Caddy config, the edge blocks `/valida
 independently, so publishing it also takes `PUBLIC_VALIDATE=true` in the
 inventory. Two switches, so that one mistaken value cannot expose the endpoint.
 
-#### Single-listener deployments (the older layout)
+#### Single-listener deployments
 
-Without `service_listener`, `/validate` stays on the main listener and still
-requires an issued per-caller key (`POST /admin/api-keys`). Optional mTLS on
-that path follows `use_tls` + `tls_ca_path` / `browser_mtls` as before.
+When `service_listener` is unset (the default), `/validate` stays on the main
+listener and still requires an issued per-caller key (`POST /admin/api-keys`).
+Optional mTLS on that path follows `use_tls` + `tls_ca_path` / `browser_mtls`.
+Prefer the dual-listener layout above when browsers and service callers share
+a host, or when TLS terminates at a proxy that cannot forward client certificates.
 
 #### Browser client certificates
 

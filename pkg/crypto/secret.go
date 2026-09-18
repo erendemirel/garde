@@ -16,8 +16,9 @@ import (
 // MFAEncryptionKey returns a 32-byte AES key for MFA secret encryption.
 //
 // MFA_ENCRYPTION_KEY is required: a raw string (SHA-256'd to 32 bytes) or a
-// base64-encoded 32-byte key. There is no fallback from a shared API credential —
-// auth secrets and at-rest encryption keys must stay separate.
+// base64-encoded 32-byte key. Other config secrets (including a leftover
+// api_key value) are not used — auth material and at-rest encryption keys
+// must stay separate.
 func MFAEncryptionKey() ([]byte, error) {
 	keyMaterial := strings.TrimSpace(config.Get("MFA_ENCRYPTION_KEY"))
 	if keyMaterial == "" {

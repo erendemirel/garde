@@ -464,7 +464,6 @@ func newServiceServer(deps *routerDeps) (*http.Server, error) {
 	policy := config.ServiceMTLS()
 	router := newEngine(deps)
 	// Mesh callers present a client certificate and an issued per-caller key.
-	// There is no shared API_KEY on this listener either.
 	mountValidateRoute(router, deps, validateRouteOptions{mtls: policy})
 
 	tlsConfig, err := buildTLSConfig(

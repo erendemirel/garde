@@ -35,7 +35,7 @@
 # (or its registrable suffix) and the SANs against DOMAIN_NAME before accepting
 # a call, so a certificate from this CA issued for someone else's domain is
 # still refused.
-# Callers also need an issued API key from POST /admin/api-keys (no shared API_KEY).
+# Callers also need an issued API key from POST /admin/api-keys.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 

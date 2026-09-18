@@ -83,6 +83,6 @@ TLS_CA_PATH=./certs/ca-cert.pem
 
 # Service Authentication
 MFA_ENCRYPTION_KEY=dev-mfa-encryption-key-change-me  # Required; encrypts MFA secrets at rest
-# Issue /validate keys with POST /admin/api-keys (no shared API_KEY)
+# Issue /validate keys with POST /admin/api-keys (issued per-caller keys only)
 ```
 

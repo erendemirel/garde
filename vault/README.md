@@ -54,7 +54,7 @@ vault kv put secret/garde/domain_name value=your-domain.com
 vault kv put secret/garde/superuser_email value=admin@example.com
 vault kv put secret/garde/superuser_password value=YourSecurePassword
 vault kv put secret/garde/mfa_encryption_key value=your-dedicated-mfa-key
-# Issue /validate callers with POST /admin/api-keys (no shared API_KEY secret).
+# Issue /validate callers with POST /admin/api-keys (issued per-caller keys only).
 # ... and other keys (see dev.secrets or Required Mandatory Secrets in docs/INSTALLATION.md).
 
 # Optional: use dynamic Redis credentials from the database secrets engine instead of static redis_password.

@@ -103,7 +103,7 @@ func TestAPIKeyAuthAcceptsTenantKey(t *testing.T) {
 	}
 }
 
-func TestAPIKeyAuthRejectsSharedSecretShape(t *testing.T) {
+func TestAPIKeyAuthRejectsNonIssuedShape(t *testing.T) {
 	repo := newKeyRepo(t)
 
 	res := runAPIKeyAuth(t, APIKeyAuthOptions{

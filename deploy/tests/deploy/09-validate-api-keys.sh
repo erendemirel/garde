@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Impact: none — proves /validate credential rules on the live API process
-# (per-caller keys only; shared API_KEY is gone).
+# (issued per-caller keys only).
 #
 # Soft-skips when SUPERUSER_* are unset, or when the running image
 # does not yet expose POST /admin/api-keys.
@@ -46,9 +46,9 @@ code="$(parse_code "$out")"
 body="$(parse_body "$out" | tr '[:upper:]' '[:lower:]')"
 case "$code:$body" in
   401:*unauthorized*)
-    ok "legacy shared-secret shape is refused on /validate" ;;
+    ok "non-issued credential shape is refused on /validate" ;;
   *)
-    die "legacy shared key probe returned code=$code body=$body (want 401 unauthorized)" ;;
+    die "non-issued key probe returned code=$code body=$body (want 401 unauthorized)" ;;
 esac
 
 if [ -z "${SUPERUSER_EMAIL:-}" ] || [ -z "${SUPERUSER_PASSWORD:-}" ]; then

@@ -20,10 +20,10 @@ func TestMFAEncryptionKeyRequiresDedicatedSecret(t *testing.T) {
 		t.Fatalf("key len = %d, want 32", len(got))
 	}
 
-	// API_KEY alone must never unlock MFA encryption.
+	// A leftover api_key config value must never unlock MFA encryption.
 	testutil.InitConfig(t, map[string]string{"api_key": "TestApiKey123!TestApiKey123!"})
 	if _, err := crypto.MFAEncryptionKey(); err == nil {
-		t.Fatal("expected error when only API_KEY is set")
+		t.Fatal("expected error when only api_key is set")
 	}
 }
 
