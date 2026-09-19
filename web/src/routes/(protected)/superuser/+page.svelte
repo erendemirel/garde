@@ -5,7 +5,8 @@
 	import { get } from 'svelte/store';
 	import { isSuperuser } from '$lib/stores';
 	import { onTabListKeydown } from '$lib/tabs';
-	import { Users, Ungroup, Blocks, Combine, ShieldUser, KeyRound } from 'lucide-svelte';
+	import { Users, Ungroup, Blocks, Combine, KeyRound } from 'lucide-svelte';
+	import UserGroup from '$lib/icons/UserGroup.svelte';
 	import UsersListPanel from '$lib/components/UsersListPanel.svelte';
 	import SuperuserCatalogPanel from '$lib/components/SuperuserCatalogPanel.svelte';
 	import SuperuserVisibilityPanel from '$lib/components/SuperuserVisibilityPanel.svelte';
@@ -143,7 +144,7 @@
 						: 'text-muted hover:text-accent'}"
 					on:click={() => setActiveTab('admin-management')}
 				>
-					<ShieldUser size={18} class="inline mr-2" />
+					<UserGroup size={18} class="inline mr-2" />
 					Admin-User Management
 				</button>
 				<button
