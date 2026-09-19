@@ -8,7 +8,7 @@ import {
 	stageGroupAddByName,
 	submitRequestUpdate,
 	type JourneyActOptions
-} from '../helpers/journeys';
+} from '../helpers/journeyActs';
 import { describeTags, TAG } from '../helpers/tags';
 import {
 	createEphemeralUser,

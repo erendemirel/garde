@@ -3,18 +3,18 @@
 	import { requestOtp, resetPassword } from '$lib/api';
 	import { goto } from '$app/navigation';
 
-	let step = 'email';
-	let email = '';
-	let otp = '';
-	let newPassword = '';
-	let confirmPassword = '';
-	let mfaCode = '';
-	let error = '';
-	let success = '';
-	let loading = false;
-	let formReady = false;
+	let step = $state('email');
+	let email = $state('');
+	let otp = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let mfaCode = $state('');
+	let error = $state('');
+	let success = $state('');
+	let loading = $state(false);
+	let formReady = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | null} */
-	let redirectTimer = null;
+	let redirectTimer = $state(null);
 
 	onMount(() => {
 		formReady = true;
@@ -73,7 +73,10 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				on:submit|preventDefault={handleRequestOtp}
+				onsubmit={(e) => {
+					e.preventDefault();
+					void handleRequestOtp();
+				}}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Email
@@ -109,7 +112,10 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				on:submit|preventDefault={handleReset}
+				onsubmit={(e) => {
+					e.preventDefault();
+					void handleReset();
+				}}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Email
@@ -186,7 +192,7 @@
 					type="button"
 					class="btn-secondary w-full justify-center"
 					data-testid="forgot-back-to-email"
-					on:click={() => {
+					onclick={() => {
 						step = 'email';
 						error = '';
 						success = '';

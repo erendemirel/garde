@@ -6,15 +6,15 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import { ArrowLeft, KeyRound } from '@lucide/svelte';
 
-	let oldPassword = '';
-	let newPassword = '';
-	let confirmPassword = '';
-	let mfaCode = '';
-	let error = '';
-	let success = '';
-	let loading = false;
-	let showConfirmModal = false;
-	let formReady = false;
+	let oldPassword = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let mfaCode = $state('');
+	let error = $state('');
+	let success = $state('');
+	let loading = $state(false);
+	let showConfirmModal = $state(false);
+	let formReady = $state(false);
 
 	onMount(() => {
 		formReady = true;
@@ -79,7 +79,10 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				on:submit|preventDefault={requestConfirmation}
+				onsubmit={(e) => {
+					e.preventDefault();
+					void requestConfirmation();
+				}}
 			>
 				<label class="form-label">
 					<span>Current Password</span>

@@ -63,6 +63,18 @@ test.describe('Register page', describeTags(TAG.auth, TAG.registration, TAG.focu
 			await expect(page).toHaveURL(/\/register/);
 			await expect(page.getByTestId('register-form')).toBeVisible();
 		});
+
+		test('Enter submit stays on page without full navigation', async ({ page }) => {
+			await openRegister(page);
+			await page.getByTestId('register-email').fill('e2e.enter@example.com');
+			await page.getByTestId('register-password').fill('DevAdminTest123!');
+			await page.getByTestId('register-confirm').fill('DifferentPass123!');
+			await page.getByTestId('register-confirm').press('Enter');
+
+			await expect(page).toHaveURL(/\/register/);
+			await expect(page.getByTestId('register-page')).toBeVisible();
+			await expect(page.getByTestId('register-error')).toBeVisible();
+		});
 	});
 
 	test.describe('duplicate registration', () => {

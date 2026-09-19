@@ -7,24 +7,25 @@
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import { ArrowLeft, ShieldCheck, ShieldOff, CheckCircle, X } from '@lucide/svelte';
 
-	let step = 'choice';
-	let secret = '';
-	let qrCodeUrl = '';
-	let verifyCode = '';
-	let disableCode = '';
-	let error = '';
-	let success = '';
-	let loading = false;
-	let showConfirmModal = false;
-	let formReady = false;
+	let step = $state('choice');
+	let secret = $state('');
+	let qrCodeUrl = $state('');
+	let verifyCode = $state('');
+	let disableCode = $state('');
+	let error = $state('');
+	let success = $state('');
+	let loading = $state(false);
+	let showConfirmModal = $state(false);
+	let formReady = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | null} */
-	let redirectTimer = null;
+	let redirectTimer = $state(null);
 
-	$: safeQrSrc =
+	let safeQrSrc = $derived(
 		typeof qrCodeUrl === 'string' &&
-		(qrCodeUrl.startsWith('data:image/') || qrCodeUrl.startsWith('https://'))
+			(qrCodeUrl.startsWith('data:image/') || qrCodeUrl.startsWith('https://'))
 			? qrCodeUrl
-			: '';
+			: ''
+	);
 
 	onMount(() => {
 		formReady = true;
@@ -132,7 +133,7 @@
 						class="btn-danger"
 						type="button"
 						data-testid="mfa-disable-start"
-						on:click={() => {
+						onclick={() => {
 							disableCode = '';
 							error = '';
 							step = 'disable';
@@ -154,7 +155,7 @@
 						class="btn-secondary"
 						type="button"
 						data-testid="mfa-setup"
-						on:click={handleSetup}
+						onclick={handleSetup}
 						disabled={!formReady || loading}
 					>
 						<ShieldCheck size={18} />
@@ -180,7 +181,10 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				on:submit|preventDefault={handleVerify}
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleVerify();
+				}}
 			>
 				<label class="form-label">
 					<span>Enter code from app</span>
@@ -212,7 +216,7 @@
 						type="button"
 						class="btn-secondary"
 						data-testid="mfa-verify-cancel"
-						on:click={goToChoice}
+						onclick={goToChoice}
 						disabled={loading}
 					>
 						<X size={18} />Cancel
@@ -228,7 +232,10 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				on:submit|preventDefault={requestDisableConfirmation}
+				onsubmit={(e) => {
+					e.preventDefault();
+					requestDisableConfirmation();
+				}}
 			>
 				<label class="form-label">
 					<span>MFA Code</span>
@@ -260,7 +267,7 @@
 						type="button"
 						class="btn-secondary"
 						data-testid="mfa-disable-cancel"
-						on:click={goToChoice}
+						onclick={goToChoice}
 						><X size={18} />Cancel</button
 					>
 				</div>

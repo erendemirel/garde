@@ -15,7 +15,7 @@ import { assertToast, waitForApiKeysPanel, waitForPageShell } from '../helpers/w
  */
 test.describe(
 	'API key rotation journey',
-	describeTags(TAG.journey, TAG.superuser, TAG.security),
+	describeTags(TAG.journey, TAG.apiKeys, TAG.superuser, TAG.security),
 	() => {
 		test('issue, validate, rotate, revoke old, then revoke-all', async ({
 			superuserPage: page,

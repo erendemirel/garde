@@ -50,7 +50,7 @@ bun install
 bun run test:e2e
 ```
 
-See [web/e2e/README.md](../web/e2e/README.md) for layout, tags, and conventions. For a faster local run excluding long epics: `bun run test:e2e:focused`.
+See [web/e2e/README.md](../web/e2e/README.md) for layout, tags, and conventions. Faster local runs: `bun run test:e2e:no-epic` (skips `@epic`), or `bun run test:e2e:focused` / `bun run test:e2e:journey` for layer filters.
 
 #### Tests That Require mTLS (API-key auth flow)
 

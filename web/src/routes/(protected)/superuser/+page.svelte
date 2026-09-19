@@ -15,9 +15,9 @@
 	const TAB_IDS = ['users', 'permissions', 'groups', 'visibility', 'admin-management', 'api-keys'];
 	const SUPERUSER_TABS = new Set(TAB_IDS);
 
-	let activeTab = 'users';
-	let accessDenied = false;
-	let checking = true;
+	let activeTab = $state('users');
+	let accessDenied = $state(false);
+	let checking = $state(true);
 
 	onMount(() => {
 		const tab = get(page).url.searchParams.get('tab');
@@ -64,7 +64,7 @@
 				role="tablist"
 				tabindex="-1"
 				aria-label="Superuser sections"
-				on:keydown={(e) => onTabListKeydown(e, TAB_IDS, activeTab, setActiveTab)}
+				onkeydown={(e) => onTabListKeydown(e, TAB_IDS, activeTab, setActiveTab)}
 			>
 				<button
 					type="button"
@@ -77,7 +77,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'users'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('users')}
+					onclick={() => setActiveTab('users')}
 				>
 					<Users size={18} class="inline mr-2" />
 					Users
@@ -93,7 +93,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'permissions'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('permissions')}
+					onclick={() => setActiveTab('permissions')}
 				>
 					<Ungroup size={18} class="inline mr-2" />
 					Permissions
@@ -109,7 +109,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'groups'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('groups')}
+					onclick={() => setActiveTab('groups')}
 				>
 					<Blocks size={18} class="inline mr-2" />
 					Groups
@@ -125,7 +125,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'visibility'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('visibility')}
+					onclick={() => setActiveTab('visibility')}
 				>
 					<Combine size={18} class="inline mr-2" />
 					Permission Visibility
@@ -141,7 +141,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'admin-management'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('admin-management')}
+					onclick={() => setActiveTab('admin-management')}
 				>
 					<UserGroup size={18} class="inline mr-2" />
 					Admin-User Management
@@ -157,7 +157,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'api-keys'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('api-keys')}
+					onclick={() => setActiveTab('api-keys')}
 				>
 					<KeyRound size={18} class="inline mr-2" />
 					API Keys

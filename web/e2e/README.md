@@ -1,188 +1,168 @@
 # E2E test layout
 
+Playwright specs are organized by **domain or page** (primary axis). Multi-actor chains and long epics live under `journeys/`. Shared widget interaction locks live under `ui-contracts/`.
 
-
-Playwright specs are organized by **feature or journey**, not by outcome. Happy-path, validation, and API-error cases for the same page live together in nested `test.describe` blocks.
-
-
+Within a feature file, group cases with nested `test.describe` blocks (`happy path`, `validation`, `API errors`, etc.).
 
 ## Directory structure
 
-
-
 ```
-
 e2e/
-
-  auth/                    # Public auth (no session required)
-
-    login.spec.ts          # UI smoke, API login/logout, MFA login errors
-
+  auth/                         # Public auth pages (no session)
+    login.spec.ts
     register.spec.ts
-
     forgot-password.spec.ts
 
-  dashboard/               # Logged-in self-service
+  dashboard/                    # Signed-in self-service + regular dashboard UX
+    self-service.spec.ts        # Overview, password, MFA
+    pending.spec.ts             # Pending-update banner
+    regular.spec.ts             # Regular-user nav / dashboard / request-update entry
 
-    self-service.spec.ts   # Overview, password, MFA (happy + validation + errors)
+  admin/                        # Admin console (lists, catalog)
+    admin.spec.ts
+    admin-users-list.spec.ts
+    admin-catalog.spec.ts
+    admin-catalog-members.spec.ts
 
-    pending.spec.ts        # Pending-update banner
+  superuser/                    # Superuser console
+    superuser.spec.ts
+    users-list.spec.ts
+    superuser-group.spec.ts
+    superuser-permission.spec.ts
+    superuser-visibility.spec.ts
+    superuser-catalog-members.spec.ts
+    superuser-admin-management.spec.ts
+    superuser-api-keys.spec.ts  # Tenant API keys (focused)
 
-  roles/
+  regular/                      # Regular-user access + PATs
+    access.spec.ts
+    access-tokens.spec.ts       # User access tokens / PATs (focused)
 
-    nav.spec.ts            # Nav links by role (admin, superuser, regular)
+  user-detail/                  # /admin|superuser/users/:id (page, both actors)
+    user-detail-flows.spec.ts
+    user-access.spec.ts
+    user-delete.spec.ts
+    user-revoke.spec.ts
+    user-security.spec.ts
+    user-detail-scope.spec.ts   # Admin out-of-scope
+    admin-user-detail.spec.ts
+    admin-user-edit.spec.ts
+    admin-user-revoke.spec.ts
+    admin-user-security.spec.ts
 
-    component-contracts.spec.ts  # @focused — Modal/MultiSelect/tabs/icon upgrade locks
+  catalog/
+    modals.spec.ts              # Catalog cancel / don't-persist (admin + superuser)
 
-    catalog-modals.spec.ts # Modal cancel flows (admin + superuser)
+  nav/
+    by-role.spec.ts             # Nav links by role
 
-    admin/                 # Admin console
+  journeys/                     # Multi-actor (@journey) + long epics (@epic)
+    registration.spec.ts
+    request-update.spec.ts
+    active-session.spec.ts
+    api-keys.spec.ts            # Tenant API-key lifecycle
+    access-tokens.spec.ts       # PAT lifecycle across actors
+    epic-lifecycle.spec.ts
+    epic-catalog-to-access.spec.ts
+    epic-scope-alignment.spec.ts
+    epic-security-hardening.spec.ts
 
-    superuser/             # Superuser console
+  ui-contracts/
+    widget-contracts.spec.ts    # ConfirmModal, ManageModal, MultiSelect, Tablist, Toast
 
-      superuser-api-keys.spec.ts  # Issue/revoke per-tenant keys + /validate auth
+  helpers/                      # Fixtures, auth, waits, domain helpers
+    fixtures.ts
+    auth.ts                     # Login helpers (not auth.setup.ts)
+    journeyActs.ts              # Multi-step act helpers for journeys/epics
+    apiKeys.ts                  # Tenant API keys
+    accessTokens.ts             # User PATs (/api/users/me/tokens)
+    catalog.ts
+    mfa.ts
+    totp.ts
+    userApi.ts
+    waits.ts
+    tags.ts
 
-    regular/               # Ephemeral regular-user perspective
-
-      dashboard.spec.ts
-
-      access.spec.ts
-
-    user-detail/           # /admin/users/:id (primarily superuser; scope test uses admin)
-
-    journeys/                # Multi-actor or multi-step flows (named by domain)
-
-      api-keys.spec.ts       # @journey — issue → validate → rotate → revoke → wipe holder
-      registration.spec.ts   # Pending-account approve/reject + actor handoffs
-
-    request-update.spec.ts # Form UX, decisions, dashboard outcomes, handoffs
-
-    active-session.spec.ts # Lock, delete, MFA enforce while user is online
-
-    epic-lifecycle.spec.ts       # @epic — register → reject → approve → access → password → delete
-
-    epic-catalog-to-access.spec.ts # @epic — catalog, visibility, scope, safeguard
-
-    epic-scope-alignment.spec.ts   # @epic — admin scope expansion + lock cycle
-
-    epic-security-hardening.spec.ts # @epic — MFA enforce, TOTP login, revoke
-
-  helpers/                 # Fixtures, auth, API helpers, waits
-
-  auth.setup.ts            # Seed admin access restore (setup project)
-
+  auth.setup.ts                 # Seed admin access restore (Playwright setup project)
 ```
 
+## Where to add a test
 
+| Kind | Location |
+|------|----------|
+| Single page / feature | `auth/`, `dashboard/`, `admin/`, `superuser/`, `regular/`, `user-detail/`, `catalog/` |
+| Cross-role nav | `nav/by-role.spec.ts` |
+| Multi-actor domain flow | `journeys/<domain>.spec.ts` (`@journey`) |
+| Long cross-feature story | `journeys/epic-*.spec.ts` (`@epic`) |
+| Shared widget mechanics | `ui-contracts/widget-contracts.spec.ts` |
 
-## Conventions
+**Ownership**
 
+- **Feature specs** own product meaning (copy, permissions, API outcomes, cancel-without-persist).
+- **`ui-contracts/`** owns control behavior (Escape, overlay, keyboard, tablist keys, toast dismiss). Do not duplicate a full save/search/toast chain in both.
+- **`journeys/`** owns multi-actor handoffs; focused specs own the single-page mechanics for the same domain (e.g. `auth/register` vs `journeys/registration`).
+- **Tenant API keys** (`helpers/apiKeys.ts`, `superuser/superuser-api-keys`, `journeys/api-keys`) vs **user PATs** (`helpers/accessTokens.ts`, `regular/access-tokens`, `journeys/access-tokens`) — different credentials; keep names distinct.
 
+## Tags and scripts
 
-- **Where to add a test**
+Tags live in `helpers/tags.ts`.
 
-  - Single page or feature → file under `auth/`, `dashboard/`, or the relevant `roles/` folder.
+| Tag | Meaning |
+|-----|---------|
+| `@focused` | Single-feature / page / actor spec |
+| `@journey` | Multi-actor domain journey |
+| `@epic` | Long integration (outcome assertions only) |
+| `@ui-contracts` | Shared widget locks |
+| `@auth`, `@registration`, `@request-update`, `@api-keys`, `@access-tokens`, … | Domain filters |
 
-  - Multi-actor flow → `journeys/`, in the file for that **domain** (`registration`, `request-update`, `active-session`).
+```bash
+bun run test:e2e              # full suite
+bun run test:e2e:focused      # --grep @focused
+bun run test:e2e:journey      # --grep @journey
+bun run test:e2e:epic         # --grep @epic
+bun run test:e2e:no-epic      # everything except @epic (focused + journey)
+bun run test:e2e -- --grep @registration
+```
 
-  - Long cross-feature epics → `journeys/epic-*.spec.ts` (tagged `@epic`; run with `--grep @epic`).
+**Epic vs focused overlap:** `@epic` specs use `outcomesOnly` journey act helpers — they verify chain outcomes (chips, signed-in/out, URLs). Toast copy, error messages, and form validation stay in `@focused` / `@journey` specs.
 
-  - Svelte upgrade / shared-component contracts → `roles/component-contracts.spec.ts` (tagged `@focused`). Locks Modal close/confirm, MultiSelect change/search/keyboard, tablist arrows, Lucide icon controls, and non-dismissible reveal before/after framework bumps. Prefer extending this file when changing those hubs.
+## Fixtures
 
-  - Use nested `test.describe` blocks for story type (`form`, `actor handoffs`, `user dashboard outcomes`, etc.).
+(`helpers/fixtures.ts`)
 
-  - Group validation/API errors with `test.describe('happy path' | 'validation' | 'API errors', …)` inside feature files.
+- `adminPage` / `superuserPage` — per-worker isolated sessions.
+- `regularUserPage` + `ephemeralUser` — fresh regular user per test.
+- Mutating tests must use ephemeral users; never mutate seed admin/superuser credentials.
 
+## Imports
 
+From a one-level domain folder (`admin/`, `auth/`, …):
 
-- **Fixtures** (`helpers/fixtures.ts`)
-
-  - `adminPage` / `superuserPage` — per-worker isolated sessions.
-
-  - `regularUserPage` + `ephemeralUser` — fresh regular user per test.
-
-  - Mutating tests must use ephemeral users; never mutate seed admin/superuser credentials.
-
-
-
-- **Imports** — from a spec file, import helpers relative to depth:
-
-  - `auth/login.spec.ts` → `../helpers/fixtures`
-
-  - `roles/admin/admin.spec.ts` → `../../helpers/fixtures`
-
-
+```ts
+import { test } from '../helpers/fixtures';
+```
 
 ## Running
 
-
-
-Requires the API running (Vite dev server proxies `/api` to garde on `:8443`):
+Requires the API running (Vite proxies `/api` to garde on `:8443`):
 
 ```bash
 docker compose --profile dev up --build -d   # from repo root
 cd web
 bun install
+bun run test:e2e
 ```
 
-```bash
-bun run test:e2e              # default workers (CPU cores)
-
-bun run test:e2e -- --workers=8
-
-# Stress / low-resource simulation (optional env overrides):
-
-PLAYWRIGHT_LOAD_TIMEOUT=60000 PLAYWRIGHT_TEST_TIMEOUT=180000 PLAYWRIGHT_RETRIES=1 bun run test:e2e -- --workers=32
-
-# Force fresh worker auth cookies (default reuses playwright/.auth when present):
-
-PLAYWRIGHT_FRESH_AUTH=1 bun run test:e2e
-```
+Optional stress overrides: `PLAYWRIGHT_LOAD_TIMEOUT`, `PLAYWRIGHT_TEST_TIMEOUT`, `PLAYWRIGHT_RETRIES`, `PLAYWRIGHT_FRESH_AUTH=1`.
 
 ### CI
 
-GitHub Actions (`.github/workflows/e2e.yml`) runs on push and pull request:
-
-- Starts the dev Docker stack (`docker compose --profile dev`)
-- Installs web deps with Bun and runs `bun run test:e2e` (full suite, including `@epic`)
-- Uses **4 workers + 2 retries** (`playwright.config.ts` when `CI=true`)
-- Uploads the HTML report and test results after every run (1-day retention)
-
-The 32-worker command above is for local stress only.
-
-### Tags
-
-Tests use Playwright [`tag`](https://playwright.dev/docs/test-annotations#tag-tests) annotations via `helpers/tags.ts`:
-
-| Tag | Meaning |
-|-----|---------|
-| `@focused` | Single-feature / role spec (default CI signal) |
-| `@journey` | Multi-actor domain journey (focused cases) |
-| `@epic` | Long integration story (outcome assertions only) |
-| `@auth`, `@registration`, `@request-update`, … | Domain filter |
-
-```bash
-bun run test:e2e:focused   # all except @epic (~165 tests)
-bun run test:e2e:epic      # integration epics only (4 tests)
-bun run test:e2e -- --grep @registration
-```
-
-**Epic vs focused overlap:** `@epic` specs use `outcomesOnly` journey helpers — they verify chain **outcomes** (chips, signed-in/out, URLs). Toast copy, error messages, and form validation stay in `@focused` / `@journey` specs. If only an epic fails, re-run the matching domain tag before debugging the full chain.
-
-### Epics vs focused journeys
-
-Focused journey files (`registration`, `request-update`, `active-session`) keep fast, parallel-safe cases. **`epic-*.spec.ts`** adds four long integration stories (one test each) that chain multiple actors and negative branches. They are additive — nothing replaces the focused specs.
+GitHub Actions (`.github/workflows/e2e.yml`) runs `bun run test:e2e` (full suite) with 4 workers + 2 retries when `CI=true`.
 
 ### Auth helpers
 
-- **`startUserSession`** / **`loginViaRequest`** — preferred for any test that is not exercising the login form.
-- **`loginAs`** / **`expectLoginRejected`** — only for login-page specs, MFA second step after logout, and blocked-account messages.
-- Worker **`suRequest`** validates `/api/users/me` and re-authenticates when cached cookies are stale (`ensureApiAuth`).
-- Login/register forms expose `data-ready="true"` after mount and stay disabled until then; sign-in uses `type="button"` + click handler so Playwright clicks always fire the handler.
-- **`openLogin` / `openRegister` / `openForgotPassword`** — navigate public auth pages without `networkidle` (waits for testids + `data-ready` where applicable).
-- Request-update waits for `data-ready="true"` on the form (catalog fetch complete) before interacting with multiselects.
-- **`waitForOutOfScopeDenied`** — admin opens `/admin/users/:id` for a user outside their groups: API returns 404 `user not found`, UI shows `user-detail-access-denied`, session stays signed in (not a login redirect).
-- **`gotoDashboardFresh`** — navigate to `/dashboard` and wait for `/api/users/me` (dashboard refetches on mount).
-- **`assertToast`** — assert toast copy when the spec tests messaging, then click **`toast-dismiss`** (do not wait for auto-hide).
-- **`dismissToast`** — clear a visible toast without re-asserting copy (use between steps in journeys/epics). Production toasts still auto-hide after 5s; tests dismiss immediately.
-- **Timeout tiers:** `REDIRECT_TIMEOUT` (15s) for login/redirect assertions; `LOAD_TIMEOUT` (30s default, env override) for session boot and API-backed panels. CI uses 4 workers; very high local worker counts can saturate the dev stack — use default parallelism for routine runs.
+- **`startUserSession` / `loginViaRequest`** — preferred when not exercising the login form.
+- **`loginAs` / `expectLoginRejected`** — login-page specs, MFA second step, blocked-account messages.
+- Worker **`suRequest`** re-authenticates when cached cookies are stale (`ensureApiAuth`).
+- **`assertToast` / `dismissToast`** — assert then dismiss; do not wait for the 5s auto-hide.
+- **Timeouts:** `REDIRECT_TIMEOUT` (15s), `LOAD_TIMEOUT` (30s default, env override).

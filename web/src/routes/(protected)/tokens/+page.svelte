@@ -7,30 +7,30 @@
 	import Modal from '$lib/components/Modal.svelte';
 
 	/** @type {import('$lib/api').PATInfo[]} */
-	let tokens = [];
-	let loading = true;
-	let error = '';
+	let tokens = $state([]);
+	let loading = $state(true);
+	let error = $state('');
 
-	let showIssueModal = false;
-	let issuing = false;
-	let issueName = '';
-	/** @type {'default' | 'custom' | 'never'} */
-	let issueExpiryMode = 'default';
-	let issueExpiresIn = '';
+	let showIssueModal = $state(false);
+	let issuing = $state(false);
+	let issueName = $state('');
+	let issueExpiryMode = $state(/** @type {'default' | 'custom' | 'never'} */ ('default'));
+	let issueExpiresIn = $state('');
 
 	/** @type {import('$lib/api').CreatePATResult | null} */
-	let revealed = null;
-	let copied = false;
-	let revealAcknowledged = false;
+	let revealed = $state(null);
+	let copied = $state(false);
+	let revealAcknowledged = $state(false);
 
 	/** @type {import('$lib/api').PATInfo | null} */
-	let revoking = null;
-	let showRevokeConfirm = false;
+	let revoking = $state(null);
+	let showRevokeConfirm = $state(false);
 
-	$: canIssue =
+	let canIssue = $derived(
 		issueName.trim().length > 0 &&
-		(issueExpiryMode !== 'custom' || issueExpiresIn.trim().length > 0) &&
-		!issuing;
+			(issueExpiryMode !== 'custom' || issueExpiresIn.trim().length > 0) &&
+			!issuing
+	);
 
 	onMount(() => {
 		load();
@@ -143,7 +143,7 @@
 					<code class="text-xs">/validate</code> keys.
 				</p>
 			</div>
-			<button type="button" class="btn-primary" data-testid="tokens-issue" on:click={openIssue}>
+			<button type="button" class="btn-primary" data-testid="tokens-issue" onclick={openIssue}>
 				<Plus size={16} class="inline mr-1" />
 				Issue token
 			</button>
@@ -184,7 +184,7 @@
 										class="btn-icon-danger"
 										data-testid="tokens-revoke"
 										title="Revoke token"
-										on:click={() => askRevoke(token)}
+										onclick={() => askRevoke(token)}
 									>
 										<Trash2 size={16} />
 									</button>
@@ -204,7 +204,14 @@
 	labelledBy="tokens-issue-title"
 	onClose={() => (showIssueModal = false)}
 >
-	<form class="space-y-4" data-testid="tokens-issue-modal" on:submit|preventDefault={submitIssue}>
+	<form
+		class="space-y-4"
+		data-testid="tokens-issue-modal"
+		onsubmit={(e) => {
+			e.preventDefault();
+			submitIssue();
+		}}
+	>
 		<div>
 			<label class="form-label" for="tokens-issue-name">Name</label>
 			<input
@@ -246,7 +253,7 @@
 				type="button"
 				class="btn-secondary"
 				data-testid="tokens-issue-cancel"
-				on:click={() => {
+				onclick={() => {
 					// Defer unmount so Playwright's click can finish (same class of hang as ConfirmModal).
 					queueMicrotask(() => {
 						showIssueModal = false;
@@ -279,7 +286,7 @@
 			</p>
 			<div class="flex gap-2 items-start">
 				<code class="input flex-1 break-all text-xs" data-testid="tokens-reveal-secret">{revealed.token}</code>
-				<button type="button" class="btn-secondary shrink-0" data-testid="tokens-reveal-copy" on:click={copyToken}>
+				<button type="button" class="btn-secondary shrink-0" data-testid="tokens-reveal-copy" onclick={copyToken}>
 					{#if copied}<Check size={16} />{:else}<Copy size={16} />{/if}
 				</button>
 			</div>
@@ -293,7 +300,7 @@
 					class="btn-primary"
 					data-testid="tokens-reveal-done"
 					disabled={!revealAcknowledged}
-					on:click={closeReveal}
+					onclick={closeReveal}
 				>
 					Done
 				</button>

@@ -13,7 +13,7 @@ import {
 	submitRequestUpdate,
 	superuserApproveAccountAnyway,
 	type JourneyActOptions
-} from '../helpers/journeys';
+} from '../helpers/journeyActs';
 import { describeTags, TAG } from '../helpers/tags';
 import { deleteUserById, findUserByEmail, openUserDetailFromSuperuser } from '../helpers/userApi';
 import { waitForPageShell, waitForPasswordChangeSignOut } from '../helpers/waits';

@@ -1,16 +1,18 @@
 /**
  * Playwright test tags — filter with `--grep @tag` or `--grep-invert @tag`.
  *
- * Layers: @focused (default short specs), @journey (multi-actor), @epic (long integration).
- * Domains: @auth, @registration, @request-update, @active-session, @dashboard, @admin, …
+ * Layers: @focused (single-feature), @journey (multi-actor), @epic (long integration).
+ * Domains: @auth, @registration, @request-update, @api-keys, @access-tokens, …
  */
 export const TAG = {
 	/** Long cross-feature integration (outcome assertions only). */
 	epic: '@epic',
-	/** Multi-actor domain journey (focused cases). */
+	/** Multi-actor domain journey. */
 	journey: '@journey',
-	/** Single-feature or role spec (default CI signal). */
+	/** Single-feature / page / actor spec. */
 	focused: '@focused',
+	/** Shared widget interaction locks (ui-contracts/). */
+	uiContracts: '@ui-contracts',
 
 	auth: '@auth',
 	registration: '@registration',
@@ -24,7 +26,9 @@ export const TAG = {
 	regular: '@regular',
 	nav: '@nav',
 	catalog: '@catalog',
-	security: '@security'
+	security: '@security',
+	apiKeys: '@api-keys',
+	accessTokens: '@access-tokens'
 } as const;
 
 export type Tag = (typeof TAG)[keyof typeof TAG];

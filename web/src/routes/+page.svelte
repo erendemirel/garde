@@ -3,14 +3,14 @@
 	import { login } from '$lib/api';
 	import { goto } from '$app/navigation';
 
-	let email = '';
-	let password = '';
-	let mfaCode = '';
-	let error = '';
-	let needsMfa = false;
-	let loading = false;
+	let email = $state('');
+	let password = $state('');
+	let mfaCode = $state('');
+	let error = $state('');
+	let needsMfa = $state(false);
+	let loading = $state(false);
 	/** True after mount — gates interactivity until Svelte handlers are wired. */
-	let formReady = false;
+	let formReady = $state(false);
 
 	onMount(() => {
 		formReady = true;
@@ -50,7 +50,10 @@
 			aria-busy={!formReady}
 			method="post"
 			action="#"
-			on:submit|preventDefault={handleLogin}
+			onsubmit={(e) => {
+				e.preventDefault();
+				void handleLogin();
+			}}
 		>
 			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
 				Email

@@ -151,6 +151,23 @@ test.describe('Change password page', describeTags(TAG.dashboard, TAG.selfServic
 			await expect(page.getByTestId('password-form')).toBeVisible();
 			await expect(page.getByTestId('password-new')).toHaveValue('AnotherPass123!');
 		});
+
+		test('Enter submit opens confirm without navigating away', async ({
+			regularUserPage: page,
+			ephemeralUser
+		}) => {
+			await page.goto('/password');
+			await waitForPageShell(page, 'password-page');
+			await page.getByTestId('password-current').fill(ephemeralUser.password);
+			await page.getByTestId('password-new').fill('NewPassword123!');
+			await page.getByTestId('password-confirm').fill('NewPassword123!');
+			await page.getByTestId('password-confirm').press('Enter');
+
+			await expect(page).toHaveURL(/\/password/);
+			await expect(page.getByTestId('confirm-modal-confirm')).toBeVisible();
+			await page.getByTestId('confirm-modal-cancel').click();
+			await expect(page.getByTestId('password-page')).toBeVisible();
+		});
 	});
 
 	test.describe('API errors', () => {
@@ -224,6 +241,24 @@ test.describe('MFA page', describeTags(TAG.dashboard, TAG.selfService, TAG.secur
 			await expect(page.getByTestId('mfa-qr')).toBeVisible();
 			await expect(page.getByTestId('mfa-secret')).not.toBeEmpty();
 			await context.close();
+		});
+
+		test('setup QR img uses safe data: or https src', async ({ regularUserPage: page }) => {
+			await page.goto('/mfa');
+			await waitForPageShell(page, 'mfa-page');
+			const setupResponse = page.waitForResponse(
+				(res) =>
+					res.url().includes('/api/users/mfa/setup') && res.request().method() === 'POST'
+			);
+			await page.getByTestId('mfa-setup').click();
+			await setupResponse;
+
+			await expect(page.getByTestId('mfa-page')).toHaveAttribute('data-step', 'verify');
+			const qrImg = page.getByTestId('mfa-qr').locator('img');
+			await expect(qrImg).toBeVisible();
+			const src = await qrImg.getAttribute('src');
+			expect(src).toMatch(/^(data:image\/|https:\/\/)/);
+			await expect(page.getByTestId('mfa-secret')).not.toBeEmpty();
 		});
 
 		test('shows an error for invalid MFA code during setup verify', async ({

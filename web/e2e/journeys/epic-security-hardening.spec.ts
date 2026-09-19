@@ -9,7 +9,7 @@ import {
 	submitRequestUpdate,
 	verifyMfaSetup,
 	type JourneyActOptions
-} from '../helpers/journeys';
+} from '../helpers/journeyActs';
 import { describeTags, TAG } from '../helpers/tags';
 import { openUserDetailFromAdmin, openUserDetailFromSuperuser } from '../helpers/userApi';
 import { totpCode } from '../helpers/totp';

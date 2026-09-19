@@ -9,25 +9,25 @@
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 
-	let loading = false;
-	let catalogLoading = true;
-	let catalogError = '';
-	let formReady = false;
+	let loading = $state(false);
+	let catalogLoading = $state(true);
+	let catalogError = $state('');
+	let formReady = $state(false);
 
 	/** @type {import('$lib/api').PermissionInfo[]} */
-	let availablePermissions = [];
+	let availablePermissions = $state([]);
 	/** @type {import('$lib/api').GroupInfo[]} */
-	let availableGroups = [];
-	let selectedPermissions = new Set();
-	let selectedGroups = new Set();
-	let initialPermissions = new Set();
-	let initialGroups = new Set();
+	let availableGroups = $state([]);
+	let selectedPermissions = $state(new Set());
+	let selectedGroups = $state(new Set());
+	let initialPermissions = $state(new Set());
+	let initialGroups = $state(new Set());
 
-	$: permissionsAdd = [...selectedPermissions].filter((p) => !initialPermissions.has(p));
-	$: permissionsRemove = [...initialPermissions].filter((p) => !selectedPermissions.has(p));
-	$: groupsAdd = [...selectedGroups].filter((g) => !initialGroups.has(g));
-	$: groupsRemove = [...initialGroups].filter((g) => !selectedGroups.has(g));
-	$: changeItems = [
+	let permissionsAdd = $derived([...selectedPermissions].filter((p) => !initialPermissions.has(p)));
+	let permissionsRemove = $derived([...initialPermissions].filter((p) => !selectedPermissions.has(p)));
+	let groupsAdd = $derived([...selectedGroups].filter((g) => !initialGroups.has(g)));
+	let groupsRemove = $derived([...initialGroups].filter((g) => !selectedGroups.has(g)));
+	let changeItems = $derived([
 		...permissionsAdd.map((p) => ({
 			label: availablePermissions.find((x) => x.key === p)?.name || p,
 			kind: 'add',
@@ -52,9 +52,9 @@
 			target: 'group',
 			key: g
 		}))
-	];
-	$: hasChanges = changeItems.length > 0;
-	$: catalogReady = formReady && !catalogLoading && !catalogError;
+	]);
+	let hasChanges = $derived(changeItems.length > 0);
+	let catalogReady = $derived(formReady && !catalogLoading && !catalogError);
 
 	onMount(async () => {
 		formReady = true;
@@ -230,7 +230,7 @@
 					class="btn-secondary w-full sm:w-auto min-w-[9rem]"
 					type="button"
 					data-testid="request-update-submit"
-					on:click={handleSubmit}
+					onclick={handleSubmit}
 					disabled={!catalogReady || loading || !hasChanges}
 				>
 					<Send size={18} />
