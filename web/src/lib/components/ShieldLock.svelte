@@ -1,8 +1,6 @@
 <script>
-	export let size = 24;
-	export let strokeWidth = 2;
-	let className = '';
-	export { className as class };
+	/** @type {{ size?: number, strokeWidth?: number, class?: string }} */
+	let { size = 24, strokeWidth = 2, class: className = '' } = $props();
 </script>
 
 <svg

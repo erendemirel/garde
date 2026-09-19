@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { listPATs, createPAT, revokePAT } from '$lib/api';
 	import { showToast } from '$lib/toast';
-	import { ArrowLeft, Plus, Trash2, Copy, Check, KeyRound } from 'lucide-svelte';
+	import { ArrowLeft, Plus, Trash2, Copy, Check, KeyRound } from '@lucide/svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 
@@ -202,7 +202,7 @@
 	bind:open={showIssueModal}
 	title="Issue access token"
 	labelledBy="tokens-issue-title"
-	on:close={() => (showIssueModal = false)}
+	onClose={() => (showIssueModal = false)}
 >
 	<form class="space-y-4" data-testid="tokens-issue-modal" on:submit|preventDefault={submitIssue}>
 		<div>
@@ -267,7 +267,7 @@
 	title="Copy your token"
 	labelledBy="tokens-reveal-title"
 	dismissible={false}
-	on:close={closeReveal}
+	onClose={closeReveal}
 >
 	{#if revealed}
 		<div class="space-y-4" data-testid="tokens-reveal-modal">
@@ -309,8 +309,8 @@
 		? `Revoke "${revoking.name}" (${revoking.id})?\n\nAnything using this token will be refused immediately.`
 		: ''}
 	confirmText="Revoke"
-	on:confirm={confirmRevoke}
-	on:cancel={() => {
+	onConfirm={confirmRevoke}
+	onCancel={() => {
 		showRevokeConfirm = false;
 		revoking = null;
 	}}

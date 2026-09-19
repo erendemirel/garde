@@ -1,8 +1,9 @@
 <script>
 	import '../app.css';
 	import ToastHost from '$lib/components/ToastHost.svelte';
+
+	let { children } = $props();
 </script>
 
-<slot />
+{@render children()}
 <ToastHost />
-

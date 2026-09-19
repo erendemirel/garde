@@ -7,22 +7,28 @@
 	import { user, isAdmin, isSuperuser, clearAuthState } from '$lib/stores';
 	import { invalidateUsersCache } from '$lib/usersCache';
 	import { refreshSession } from '$lib/session';
-	import { LogOut } from 'lucide-svelte';
+	import { LogOut } from '@lucide/svelte';
+
+	let { children } = $props();
 
 	/** Block chrome until the session is verified on first mount. */
-	let loading = true;
-	let bootError = '';
+	let loading = $state(true);
+	let bootError = $state('');
 
-	$: mfaBlocked = !!$user?.mfa_enforced && !$user?.mfa_enabled;
-	$: path = $page.url.pathname;
+	let mfaBlocked = $derived(!!$user?.mfa_enforced && !$user?.mfa_enabled);
+	let path = $derived($page.url.pathname);
 
-	$: if (browser && $user && mfaBlocked && !path.startsWith('/mfa')) {
-		goto('/mfa');
-	}
+	$effect(() => {
+		if (browser && $user && mfaBlocked && !path.startsWith('/mfa')) {
+			goto('/mfa');
+		}
+	});
 
-	$: if (browser && !loading && !$user && !bootError) {
-		goto('/');
-	}
+	$effect(() => {
+		if (browser && !loading && !$user && !bootError) {
+			goto('/');
+		}
+	});
 
 	onMount(async () => {
 		bootError = '';
@@ -95,7 +101,7 @@
 					>Admin</a>
 				{/if}
 			{/if}
-			<button class="btn-secondary" type="button" data-testid="nav-logout" on:click={handleLogout}>
+			<button class="btn-secondary" type="button" data-testid="nav-logout" onclick={handleLogout}>
 				<LogOut size={18} />
 				Logout
 			</button>
@@ -106,7 +112,7 @@
 			<p>Redirecting to MFA setup…</p>
 		</div>
 	{:else}
-		<slot />
+		{@render children()}
 	{/if}
 {:else if bootError}
 	<div class="container-base max-w-md mx-auto pt-32 text-center">

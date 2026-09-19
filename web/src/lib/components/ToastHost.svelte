@@ -1,6 +1,6 @@
 <script>
 	import { toast, dismissToast } from '$lib/toast';
-	import { X } from 'lucide-svelte';
+	import { X } from '@lucide/svelte';
 </script>
 
 {#if $toast.visible}
@@ -20,7 +20,7 @@
 			class="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
 			aria-label="Dismiss notification"
 			data-testid="toast-dismiss"
-			on:click={dismissToast}
+			onclick={dismissToast}
 		>
 			<X size={16} />
 		</button>

@@ -4,7 +4,7 @@
 	import { get } from 'svelte/store';
 	import { isAdmin, isSuperuser } from '$lib/stores';
 	import { onTabListKeydown } from '$lib/tabs';
-	import { Users, Ungroup, Blocks } from 'lucide-svelte';
+	import { Users, Ungroup, Blocks } from '@lucide/svelte';
 	import AdminMembershipCatalog from '$lib/components/AdminMembershipCatalog.svelte';
 	import UsersListPanel from '$lib/components/UsersListPanel.svelte';
 

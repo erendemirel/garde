@@ -5,8 +5,7 @@
 	import { get } from 'svelte/store';
 	import { isSuperuser } from '$lib/stores';
 	import { onTabListKeydown } from '$lib/tabs';
-	import { Users, Ungroup, Blocks, Combine, KeyRound } from 'lucide-svelte';
-	import UserGroup from '$lib/icons/UserGroup.svelte';
+	import { Users, Ungroup, Blocks, Combine, KeyRound, UserGroup } from '@lucide/svelte';
 	import UsersListPanel from '$lib/components/UsersListPanel.svelte';
 	import SuperuserCatalogPanel from '$lib/components/SuperuserCatalogPanel.svelte';
 	import SuperuserVisibilityPanel from '$lib/components/SuperuserVisibilityPanel.svelte';

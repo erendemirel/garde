@@ -17,49 +17,54 @@
 		membershipDiff
 	} from '$lib/membership';
 	import { user } from '$lib/stores';
-	import { Users, X } from 'lucide-svelte';
+	import { Users, X } from '@lucide/svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import TablePagination from '$lib/components/TablePagination.svelte';
 
-	/** @type {'permissions' | 'groups'} */
-	export let mode = 'permissions';
+	/** @type {{ mode?: 'permissions' | 'groups' }} */
+	let { mode = 'permissions' } = $props();
 
-	let loading = true;
-	let error = '';
+	let loading = $state(true);
+	let error = $state('');
 	/** @type {{ key: string, name: string, description?: string }[]} */
-	let catalog = [];
-	let search = '';
-	let catalogPage = 1;
-	let catalogPageSize = 30;
+	let catalog = $state([]);
+	let search = $state('');
+	let catalogPage = $state(1);
+	let catalogPageSize = $state(30);
 
-	let showManageUsersModal = false;
-	let showMembershipSaveConfirm = false;
-	let membershipSaving = false;
+	let showManageUsersModal = $state(false);
+	let showMembershipSaveConfirm = $state(false);
+	let membershipSaving = $state(false);
 	/** @type {{ type: 'permission' | 'group', name: string } | null} */
-	let managingMembership = null;
+	let managingMembership = $state(
+		/** @type {{ type: 'permission' | 'group', name: string } | null} */ (null)
+	);
 	/** @type {Set<string>} */
-	let selectedMembers = new Set();
+	let selectedMembers = $state(new Set());
 	/** @type {Set<string>} */
-	let initialMembers = new Set();
+	let initialMembers = $state(new Set());
 	/** @type {{ key: string, name: string, description?: string }[]} */
-	let searchHitOptions = [];
+	let searchHitOptions = $state([]);
 
-	$: adminGroupKeys = new Set(
-		Object.entries($user?.groups || {})
-			.filter(([, enabled]) => enabled)
-			.map(([name]) => name)
+	let adminGroupKeys = $derived(
+		new Set(
+			Object.entries($user?.groups || {})
+				.filter(([, enabled]) => enabled)
+				.map(([name]) => name)
+		)
 	);
 
-	$: title = mode === 'permissions' ? 'Permissions' : 'Groups';
-	$: subtitle =
+	let title = $derived(mode === 'permissions' ? 'Permissions' : 'Groups');
+	let subtitle = $derived(
 		mode === 'permissions'
 			? 'Permissions visible to your groups. You can grant them only to users you already manage (shared group).'
-			: 'Groups you belong to. You can add manageable users to these groups, or remove group membership within your scope.';
+			: 'Groups you belong to. You can add manageable users to these groups, or remove group membership within your scope.'
+	);
 
-	$: filteredCatalog = (() => {
+	let filteredCatalog = $derived.by(() => {
 		const q = search.trim().toLowerCase();
 		const rows = catalog;
 		if (!q) return rows;
@@ -68,22 +73,22 @@
 				(item.name || '').toLowerCase().includes(q) ||
 				(item.description || '').toLowerCase().includes(q)
 		);
-	})();
+	});
 
-	$: {
+	$effect(() => {
 		void search;
 		catalogPage = 1;
-	}
+	});
 
-	$: pagedCatalog = (() => {
+	let pagedCatalog = $derived.by(() => {
 		const size = Number(catalogPageSize) || 30;
 		const start = (catalogPage - 1) * size;
 		return filteredCatalog.slice(start, start + size);
-	})();
+	});
 
-	$: userCounts = countMemberships($usersCache, mode);
+	let userCounts = $derived(countMemberships($usersCache, mode));
 
-	$: pickerOptions = (() => {
+	let pickerOptions = $derived.by(() => {
 		/** @type {Map<string, { key: string, name: string, description?: string }>} */
 		const byId = new Map();
 		for (const u of $usersCache) {
@@ -99,11 +104,11 @@
 			byId.set(opt.key, opt);
 		}
 		return [...byId.values()];
-	})();
+	});
 
-	$: memberAdds = membershipDiff(selectedMembers, initialMembers).adds;
-	$: memberRemoves = membershipDiff(selectedMembers, initialMembers).removes;
-	$: memberChangeItems = [
+	let memberAdds = $derived(membershipDiff(selectedMembers, initialMembers).adds);
+	let memberRemoves = $derived(membershipDiff(selectedMembers, initialMembers).removes);
+	let memberChangeItems = $derived([
 		...memberAdds.map((id) => ({
 			label: userEmail(id),
 			kind: 'add',
@@ -116,18 +121,22 @@
 			target: 'user',
 			key: id
 		}))
-	];
-	$: membershipDirty = memberChangeItems.length > 0;
-	$: membershipSaveMessage = managingMembership
-		? `Save membership changes for ${managingMembership.type} "${managingMembership.name}"?\n\n${memberChangeItems
-				.map((i) => `• ${i.kind === 'add' ? 'Add' : 'Remove'}: ${i.label}`)
-				.join('\n')}`
-		: '';
-	$: manageUsersTitle = managingMembership
-		? managingMembership.type === 'permission'
-			? `Manage users for permission: ${managingMembership.name}`
-			: `Manage users for group: ${managingMembership.name}`
-		: 'Manage users';
+	]);
+	let membershipDirty = $derived(memberChangeItems.length > 0);
+	let membershipSaveMessage = $derived(
+		managingMembership
+			? `Save membership changes for ${managingMembership.type} "${managingMembership.name}"?\n\n${memberChangeItems
+					.map((i) => `• ${i.kind === 'add' ? 'Add' : 'Remove'}: ${i.label}`)
+					.join('\n')}`
+			: ''
+	);
+	let manageUsersTitle = $derived(
+		managingMembership
+			? managingMembership.type === 'permission'
+				? `Manage users for permission: ${managingMembership.name}`
+				: `Manage users for group: ${managingMembership.name}`
+			: 'Manage users'
+	);
 
 	onMount(() => {
 		void (async () => {
@@ -136,15 +145,19 @@
 		})();
 	});
 
-	let lastMode = mode;
-	$: if (mode !== lastMode) {
-		lastMode = mode;
+	let modeReady = false;
+	$effect(() => {
+		void mode;
+		if (!modeReady) {
+			modeReady = true;
+			return;
+		}
 		search = '';
 		void (async () => {
 			await reloadCatalog();
 			await loadUsers();
 		})();
-	}
+	});
 
 	async function reloadCatalog() {
 		loading = true;
@@ -189,9 +202,9 @@
 		return searchHitOptions.find((o) => o.key === id)?.name || id;
 	}
 
-	/** @param {CustomEvent} event */
-	async function handleUserSearch(event) {
-		const q = String(event.detail ?? '');
+	/** @param {string} query */
+	async function handleUserSearch(query) {
+		const q = String(query ?? '');
 		if (q.trim().length < 2) {
 			searchHitOptions = [];
 			return;
@@ -239,9 +252,8 @@
 		selectedMembers = new Set(selectedMembers);
 	}
 
-	/** @param {CustomEvent} event */
-	function revertMemberChange(event) {
-		const item = event.detail;
+	/** @param {{ label: string, kind: string, target?: string, key?: string }} item */
+	function revertMemberChange(item) {
 		if (!item?.key) return;
 		toggleMember(item.key);
 	}
@@ -376,7 +388,7 @@
 										title="Manage users"
 										aria-label="Manage users for {item.name}"
 										data-testid="admin-catalog-manage"
-										on:click={() => openManageUsers(item)}
+										onclick={() => openManageUsers(item)}
 									>
 										<Users size={20} />
 									</button>
@@ -402,18 +414,19 @@
 	labelledBy="admin-manage-users-title"
 	wide
 	preferDialogFocus
-	on:close={closeManageUsersModal}
+	onClose={closeManageUsersModal}
 >
-	<button
-		slot="header-end"
-		type="button"
-		class="text-muted hover:text-accent"
-		data-testid="admin-catalog-modal-close"
-		on:click={closeManageUsersModal}
-		aria-label="Close"
-	>
-		<X size={20} />
-	</button>
+	{#snippet headerEnd()}
+		<button
+			type="button"
+			class="text-muted hover:text-accent"
+			data-testid="admin-catalog-modal-close"
+			onclick={closeManageUsersModal}
+			aria-label="Close"
+		>
+			<X size={20} />
+		</button>
+	{/snippet}
 	{#if managingMembership}
 		<div class="space-y-4" data-testid="admin-catalog-manage-modal">
 			<p class="text-xs text-muted">
@@ -433,36 +446,38 @@
 				placeholder="Type email to search users…"
 				label="Users"
 				remote={true}
-				on:search={handleUserSearch}
+				onSearch={handleUserSearch}
 			/>
 			<ChangeSummary
 				title="Pending save"
 				items={memberChangeItems}
 				emptyText="No unsaved membership changes."
-				on:revert={revertMemberChange}
+				onRevert={revertMemberChange}
 			/>
 		</div>
 	{/if}
-	<div slot="footer" class="contents">
-		{#if managingMembership}
-			<button
-				type="button"
-				class="btn-secondary"
-				data-testid="admin-catalog-manage-cancel"
-				on:click={closeManageUsersModal}
-				disabled={membershipSaving}>Cancel</button
-			>
-			<button
-				type="button"
-				class="btn-primary"
-				data-testid="admin-catalog-manage-save"
-				on:click={requestMembershipSave}
-				disabled={membershipSaving || !membershipDirty}
-			>
-				{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
-			</button>
-		{/if}
-	</div>
+	{#snippet footer()}
+		<div class="contents">
+			{#if managingMembership}
+				<button
+					type="button"
+					class="btn-secondary"
+					data-testid="admin-catalog-manage-cancel"
+					onclick={closeManageUsersModal}
+					disabled={membershipSaving}>Cancel</button
+				>
+				<button
+					type="button"
+					class="btn-primary"
+					data-testid="admin-catalog-manage-save"
+					onclick={requestMembershipSave}
+					disabled={membershipSaving || !membershipDirty}
+				>
+					{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
+				</button>
+			{/if}
+		</div>
+	{/snippet}
 </Modal>
 
 <ConfirmModal
@@ -471,5 +486,5 @@
 	message={membershipSaveMessage}
 	confirmText="Save Changes"
 	confirmClass="btn-primary"
-	on:confirm={saveMembership}
+	onConfirm={saveMembership}
 />

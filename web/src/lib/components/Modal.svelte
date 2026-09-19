@@ -1,25 +1,35 @@
 <script>
-	import { createEventDispatcher, tick } from 'svelte';
+	import { tick } from 'svelte';
 
-	export let open = false;
-	export let title = '';
-	export let labelledBy = 'modal-title';
-	export let wide = false;
-	/** When true, prefer focusing the dialog shell instead of the first input (keeps search closed). */
-	export let preferDialogFocus = false;
-	/**
-	 * When false, Escape and the overlay do not close the dialog. Used for the
-	 * one-time API key reveal: dismissing by accident loses a secret that
-	 * cannot be retrieved.
-	 */
-	export let dismissible = true;
-
-	const dispatch = createEventDispatcher();
+	/** @type {{
+	 *   open?: boolean,
+	 *   title?: string,
+	 *   labelledBy?: string,
+	 *   wide?: boolean,
+	 *   preferDialogFocus?: boolean,
+	 *   dismissible?: boolean,
+	 *   onClose?: () => void,
+	 *   children?: import('svelte').Snippet,
+	 *   headerEnd?: import('svelte').Snippet,
+	 *   footer?: import('svelte').Snippet
+	 * }} */
+	let {
+		open = $bindable(false),
+		title = '',
+		labelledBy = 'modal-title',
+		wide = false,
+		preferDialogFocus = false,
+		dismissible = true,
+		onClose,
+		children,
+		headerEnd,
+		footer
+	} = $props();
 
 	function close() {
 		if (!dismissible) return;
 		open = false;
-		dispatch('close');
+		onClose?.();
 	}
 
 	/** @param {HTMLElement} node */
@@ -85,7 +95,7 @@
 				type="button"
 				class="absolute inset-0 h-full w-full cursor-default bg-transparent"
 				aria-label="Close dialog"
-				on:click={close}
+				onclick={close}
 			></button>
 		{:else}
 			<div class="absolute inset-0 h-full w-full bg-transparent" aria-hidden="true"></div>
@@ -102,15 +112,19 @@
 			{#if title}
 				<div class="mb-4 flex shrink-0 items-center justify-between gap-3">
 					<h2 id={labelledBy} class="section-title">{title}</h2>
-					<slot name="header-end" />
+					{#if headerEnd}
+						{@render headerEnd()}
+					{/if}
 				</div>
 			{/if}
 			<div class="modal-body">
-				<slot />
+				{#if children}
+					{@render children()}
+				{/if}
 			</div>
-			{#if $$slots.footer}
+			{#if footer}
 				<div class="modal-footer">
-					<slot name="footer" />
+					{@render footer()}
 				</div>
 			{/if}
 		</div>

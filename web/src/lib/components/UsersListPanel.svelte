@@ -2,28 +2,29 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { listUsers } from '$lib/api';
-	import { Edit } from 'lucide-svelte';
+	import { Edit } from '@lucide/svelte';
 	import TablePagination from '$lib/components/TablePagination.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
 	/** Base path for user detail links, e.g. "/admin/users" */
-	export let detailBase = '/admin/users';
+	let { detailBase = '/admin/users' } = $props();
 
 	/** @type {import('$lib/api').User[]} */
-	let users = [];
-	let error = '';
-	let loading = true;
-	let searchInput = '';
-	let searchQuery = '';
-	let sortField = 'email';
-	let sortDirection = 'asc';
-	let currentPage = 1;
-	let itemsPerPage = 30;
-	let totalCount = 0;
-	let ready = false;
+	let users = $state([]);
+	let error = $state('');
+	let loading = $state(true);
+	let searchInput = $state('');
+	let searchQuery = $state('');
+	let sortField = $state('email');
+	let sortDirection = $state('asc');
+	let currentPage = $state(1);
+	let itemsPerPage = $state(30);
+	let totalCount = $state(0);
+	let ready = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
-	let searchTimer;
+	let searchTimer = $state();
+	/** Non-reactive: incremented inside $effect; must not be $state or the effect loops. */
 	let fetchGen = 0;
 
 	onMount(() => {
@@ -33,14 +34,16 @@
 		};
 	});
 
-	$: if (browser && ready) {
-		searchQuery;
-		sortField;
-		sortDirection;
-		currentPage;
-		itemsPerPage;
-		void fetchUsers();
-	}
+	$effect(() => {
+		if (browser && ready) {
+			searchQuery;
+			sortField;
+			sortDirection;
+			currentPage;
+			itemsPerPage;
+			void fetchUsers();
+		}
+	});
 
 	async function fetchUsers() {
 		const gen = ++fetchGen;
@@ -103,7 +106,7 @@
 				data-testid="users-list-search"
 				placeholder="Enter email to search..."
 				bind:value={searchInput}
-				on:input={onSearchInput}
+				oninput={onSearchInput}
 			/>
 		</label>
 
@@ -119,7 +122,7 @@
 								data-testid="users-list-sort-email"
 								data-sort-active={sortField === 'email' ? 'true' : 'false'}
 								data-sort-direction={sortField === 'email' ? sortDirection : ''}
-								on:click={() => handleSort('email')}
+								onclick={() => handleSort('email')}
 							>
 								Email
 								{#if sortField === 'email'}
@@ -136,7 +139,7 @@
 								data-testid="users-list-sort-status"
 								data-sort-active={sortField === 'status' ? 'true' : 'false'}
 								data-sort-direction={sortField === 'status' ? sortDirection : ''}
-								on:click={() => handleSort('status')}
+								onclick={() => handleSort('status')}
 							>
 								Status
 								{#if sortField === 'status'}
@@ -153,7 +156,7 @@
 								data-testid="users-list-sort-mfa"
 								data-sort-active={sortField === 'mfa' ? 'true' : 'false'}
 								data-sort-direction={sortField === 'mfa' ? sortDirection : ''}
-								on:click={() => handleSort('mfa')}
+								onclick={() => handleSort('mfa')}
 							>
 								MFA
 								{#if sortField === 'mfa'}
@@ -170,7 +173,7 @@
 								data-testid="users-list-sort-pending"
 								data-sort-active={sortField === 'pending' ? 'true' : 'false'}
 								data-sort-direction={sortField === 'pending' ? sortDirection : ''}
-								on:click={() => handleSort('pending')}
+								onclick={() => handleSort('pending')}
 							>
 								Pending
 								{#if sortField === 'pending'}

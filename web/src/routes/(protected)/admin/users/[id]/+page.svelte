@@ -7,7 +7,7 @@
 	import { isForbidden, isApiError, isSessionInvalidMessage } from '$lib/apiError';
 	import { showToast } from '$lib/toast';
 	import { user as currentUser, isSuperuser } from '$lib/stores';
-	import { ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from 'lucide-svelte';
+	import { ArrowLeft, Check, X, LogOut, Trash2, Lock, LockOpen } from '@lucide/svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
@@ -21,71 +21,70 @@
 	const STATUS_LOCKED_ADMIN = 'locked by admin';
 	const STATUS_LOCKED_SECURITY = 'locked by security';
 
-	$: usersListHref = $isSuperuser ? '/superuser?tab=users' : '/admin';
+	let usersListHref = $derived($isSuperuser ? '/superuser?tab=users' : '/admin');
 
-	/** @type {import('$lib/api').User | null} */
-	let userData = null;
-	let error = '';
-	let catalogError = '';
-	let loading = true;
-	let saving = false;
-	let accessDenied = false;
-	/** @type {ReturnType<typeof setTimeout> | null} */
-	let redirectTimer = null;
-	let showDeleteConfirm = false;
-	let showSaveConfirm = false;
-	let showMfaEnforceConfirm = false;
-	let showLockConfirm = false;
-	let showApproveConfirm = false;
-	let showRejectAccountConfirm = false;
-	let showLeaveConfirm = false;
-	let showRevokeConfirm = false;
-	let showApproveUpdateConfirm = false;
-	let showRejectUpdateConfirm = false;
-	let pendingMfaEnforced = false;
+	let userData = $state(/** @type {import('$lib/api').User | null} */ (null));
+	let error = $state('');
+	let catalogError = $state('');
+	let loading = $state(true);
+	let saving = $state(false);
+	let accessDenied = $state(false);
+	let redirectTimer = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+	let showDeleteConfirm = $state(false);
+	let showSaveConfirm = $state(false);
+	let showMfaEnforceConfirm = $state(false);
+	let showLockConfirm = $state(false);
+	let showApproveConfirm = $state(false);
+	let showRejectAccountConfirm = $state(false);
+	let showLeaveConfirm = $state(false);
+	let showRevokeConfirm = $state(false);
+	let showApproveUpdateConfirm = $state(false);
+	let showRejectUpdateConfirm = $state(false);
+	let pendingMfaEnforced = $state(false);
 	/** true = lock account, false = unlock */
-	let pendingLock = false;
-	let pendingLeaveHref = '';
-	let allowNextNavigation = false;
-	let dirty = false;
+	let pendingLock = $state(false);
+	let pendingLeaveHref = $state('');
+	let allowNextNavigation = $state(false);
+	/** Non-reactive: incremented inside $effect; must not be $state or the effect loops. */
 	let loadGen = 0;
 
-	let mfaCode = '';
+	let mfaCode = $state('');
 
 	/** @type {import('$lib/api').PermissionInfo[]} */
-	let availablePermissions = [];
+	let availablePermissions = $state([]);
 	/** @type {import('$lib/api').GroupInfo[]} */
-	let availableGroups = [];
+	let availableGroups = $state([]);
 
 	/** @type {Set<string>} */
-	let selectedPermissions = new Set();
+	let selectedPermissions = $state(new Set());
 	/** @type {Set<string>} */
-	let initialPermissions = new Set();
+	let initialPermissions = $state(new Set());
 	/** @type {Set<string>} */
-	let selectedGroups = new Set();
+	let selectedGroups = $state(new Set());
 	/** @type {Set<string>} */
-	let initialGroups = new Set();
+	let initialGroups = $state(new Set());
 
-	$: userId = $page.params.id;
-	$: accountStatus = (userData?.status || '').toLowerCase();
-	$: isLockedByAdmin = accountStatus === STATUS_LOCKED_ADMIN;
-	$: isLockedBySecurity = accountStatus === STATUS_LOCKED_SECURITY;
-	$: isAccountLocked = isLockedByAdmin || isLockedBySecurity;
-	$: isPendingApproval = accountStatus === STATUS_PENDING;
-	$: isApprovalRejected = accountStatus === STATUS_REJECTED;
-	$: needsAccountApproval = isPendingApproval || isApprovalRejected;
-	$: canAdminLock = accountStatus === STATUS_OK;
+	let userId = $derived($page.params.id);
+	let accountStatus = $derived((userData?.status || '').toLowerCase());
+	let isLockedByAdmin = $derived(accountStatus === STATUS_LOCKED_ADMIN);
+	let isLockedBySecurity = $derived(accountStatus === STATUS_LOCKED_SECURITY);
+	let isAccountLocked = $derived(isLockedByAdmin || isLockedBySecurity);
+	let isPendingApproval = $derived(accountStatus === STATUS_PENDING);
+	let isApprovalRejected = $derived(accountStatus === STATUS_REJECTED);
+	let needsAccountApproval = $derived(isPendingApproval || isApprovalRejected);
+	let canAdminLock = $derived(accountStatus === STATUS_OK);
 
-	$: permissionsAdd = [...selectedPermissions].filter((p) => !initialPermissions.has(p));
-	$: permissionsRemove = [...initialPermissions].filter((p) => !selectedPermissions.has(p));
-	$: groupsAdd = [...selectedGroups].filter((g) => !initialGroups.has(g));
-	$: groupsRemove = [...initialGroups].filter((g) => !selectedGroups.has(g));
-	$: accessChanged =
+	let permissionsAdd = $derived([...selectedPermissions].filter((p) => !initialPermissions.has(p)));
+	let permissionsRemove = $derived([...initialPermissions].filter((p) => !selectedPermissions.has(p)));
+	let groupsAdd = $derived([...selectedGroups].filter((g) => !initialGroups.has(g)));
+	let groupsRemove = $derived([...initialGroups].filter((g) => !selectedGroups.has(g)));
+	let accessChanged = $derived(
 		permissionsAdd.length > 0 ||
-		permissionsRemove.length > 0 ||
-		groupsAdd.length > 0 ||
-		groupsRemove.length > 0;
-	$: changeItems = [
+			permissionsRemove.length > 0 ||
+			groupsAdd.length > 0 ||
+			groupsRemove.length > 0
+	);
+	let changeItems = $derived([
 		...permissionsAdd.map((p) => ({
 			label: permissionLabel(p),
 			kind: 'add',
@@ -110,32 +109,42 @@
 			target: 'group',
 			key: g
 		}))
-	];
-	$: hasChanges = changeItems.length > 0;
-	$: dirty = hasChanges;
-	$: saveConfirmMessage = accessChanged
-		? `Save these access changes for ${userData?.email || 'this user'}?\n\n${changeItems.map((i) => `• ${i.label}`).join('\n')}`
-		: '';
-	$: mfaEnforceConfirmMessage = pendingMfaEnforced
-		? 'Require MFA for this user? They must set up MFA before using other features if it is not already enabled.'
-		: 'Stop requiring MFA for this user? They can disable MFA themselves afterward if it is enabled.';
-	$: mfaEnforceConfirmTitle = pendingMfaEnforced ? 'Enforce MFA' : 'Remove MFA enforcement';
-	$: mfaEnforceConfirmText = pendingMfaEnforced ? 'Enforce MFA' : 'Remove enforcement';
-	$: lockConfirmTitle = pendingLock
-		? 'Lock account'
-		: isLockedByAdmin
-			? 'Unlock account anyway'
-			: 'Unlock account';
-	$: lockConfirmMessage = pendingLock
-		? 'Lock this user as an admin? They will not be able to sign in until unlocked.'
-		: isLockedBySecurity
-			? 'Unlock this security-locked account? Status will be set to OK and they can sign in again.'
-			: 'Unlock this admin-locked account anyway? Status will be set to OK and they can sign in again.';
-	$: lockConfirmText = pendingLock
-		? 'Lock account'
-		: isLockedByAdmin
-			? 'Unlock account anyway'
-			: 'Unlock account';
+	]);
+	let hasChanges = $derived(changeItems.length > 0);
+	let dirty = $derived(hasChanges);
+	let saveConfirmMessage = $derived(
+		accessChanged
+			? `Save these access changes for ${userData?.email || 'this user'}?\n\n${changeItems.map((i) => `• ${i.label}`).join('\n')}`
+			: ''
+	);
+	let mfaEnforceConfirmMessage = $derived(
+		pendingMfaEnforced
+			? 'Require MFA for this user? They must set up MFA before using other features if it is not already enabled.'
+			: 'Stop requiring MFA for this user? They can disable MFA themselves afterward if it is enabled.'
+	);
+	let mfaEnforceConfirmTitle = $derived(pendingMfaEnforced ? 'Enforce MFA' : 'Remove MFA enforcement');
+	let mfaEnforceConfirmText = $derived(pendingMfaEnforced ? 'Enforce MFA' : 'Remove enforcement');
+	let lockConfirmTitle = $derived(
+		pendingLock
+			? 'Lock account'
+			: isLockedByAdmin
+				? 'Unlock account anyway'
+				: 'Unlock account'
+	);
+	let lockConfirmMessage = $derived(
+		pendingLock
+			? 'Lock this user as an admin? They will not be able to sign in until unlocked.'
+			: isLockedBySecurity
+				? 'Unlock this security-locked account? Status will be set to OK and they can sign in again.'
+				: 'Unlock this admin-locked account anyway? Status will be set to OK and they can sign in again.'
+	);
+	let lockConfirmText = $derived(
+		pendingLock
+			? 'Lock account'
+			: isLockedByAdmin
+				? 'Unlock account anyway'
+				: 'Unlock account'
+	);
 
 	beforeNavigate(({ to, cancel }) => {
 		if (allowNextNavigation) {
@@ -214,9 +223,8 @@
 		selectedGroups = new Set(selectedGroups);
 	}
 
-	/** @param {CustomEvent} event */
-	function revertChange(event) {
-		const item = event.detail;
+	/** @param {{ label: string, kind: string, target?: string, key?: string }} item */
+	function revertChange(item) {
 		if (!item?.key || !item?.target) return;
 		if (item.target === 'permission') {
 			togglePermission(item.key);
@@ -283,9 +291,11 @@
 		}
 	}
 
-	$: if (browser && userId) {
-		void loadDetail(userId);
-	}
+	$effect(() => {
+		if (browser && userId) {
+			void loadDetail(userId);
+		}
+	});
 
 	onMount(() => {
 		/** @param {BeforeUnloadEvent} e */
@@ -632,7 +642,7 @@
 								class="btn-secondary min-w-[11.5rem] justify-center"
 								type="button"
 								data-testid="user-detail-approve-account"
-								on:click={requestApproveAccount}
+								onclick={requestApproveAccount}
 								disabled={saving}
 							>
 								<Check size={16} />
@@ -643,7 +653,7 @@
 									class="btn-danger min-w-[11.5rem] justify-center"
 									type="button"
 									data-testid="user-detail-reject-account"
-									on:click={requestRejectAccount}
+									onclick={requestRejectAccount}
 									disabled={saving}
 								>
 									<X size={16} />
@@ -737,7 +747,7 @@
 							class="btn-secondary"
 							type="button"
 							data-testid="user-detail-approve-update"
-							on:click={requestApproveUpdate}
+							onclick={requestApproveUpdate}
 							disabled={saving}
 							><Check size={18} />Approve</button
 						>
@@ -745,7 +755,7 @@
 							class="btn-danger"
 							type="button"
 							data-testid="user-detail-reject-update"
-							on:click={requestRejectUpdate}
+							onclick={requestRejectUpdate}
 							disabled={saving}
 							><X size={18} />Reject</button
 						>
@@ -765,7 +775,10 @@
 					data-testid="user-detail-access-form"
 					method="post"
 					action="#"
-					on:submit|preventDefault={requestSave}
+					onsubmit={(e) => {
+						e.preventDefault();
+						requestSave();
+					}}
 				>
 					{#if catalogError}
 						<p class="error text-sm" data-testid="user-detail-catalog-error">{catalogError}</p>
@@ -802,7 +815,7 @@
 						title="Pending save"
 						items={changeItems}
 						emptyText="No unsaved changes."
-						on:revert={revertChange}
+						onRevert={revertChange}
 					/>
 
 					<button
@@ -884,7 +897,7 @@
 							type="button"
 							data-testid="user-detail-lock-btn"
 							data-action="unlock"
-							on:click={requestLockToggle}
+							onclick={requestLockToggle}
 							disabled={saving}
 						>
 							<LockOpen size={16} />
@@ -896,7 +909,7 @@
 							type="button"
 							data-testid="user-detail-lock-btn"
 							data-action="lock"
-							on:click={requestLockToggle}
+							onclick={requestLockToggle}
 							disabled={saving}
 						>
 							<Lock size={16} />
@@ -939,7 +952,7 @@
 						type="button"
 						data-testid="user-detail-mfa-enforce-btn"
 						data-action={userData.mfa_enforced ? 'stop' : 'enforce'}
-						on:click={requestMfaEnforceToggle}
+						onclick={requestMfaEnforceToggle}
 						disabled={saving}
 					>
 						<ShieldLock size={16} />
@@ -960,7 +973,7 @@
 						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-red-700 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-red-700 shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 						type="button"
 						data-testid="user-detail-revoke-btn"
-						on:click={requestRevokeSessions}
+						onclick={requestRevokeSessions}
 						disabled={saving}
 					>
 						<LogOut size={16} />
@@ -978,7 +991,7 @@
 						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-red-700 bg-red-700 px-3.5 py-2.5 text-sm font-semibold text-white shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-800 hover:border-red-800 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
 						type="button"
 						data-testid="user-detail-delete-btn"
-						on:click={requestDeleteConfirmation}
+						onclick={requestDeleteConfirmation}
 						disabled={saving}
 					>
 						<Trash2 size={16} />
@@ -995,7 +1008,7 @@
 	title="Confirm access changes"
 	message={saveConfirmMessage}
 	confirmText="Save Changes"
-	on:confirm={handleUpdate}
+	onConfirm={handleUpdate}
 />
 
 <ConfirmModal
@@ -1003,7 +1016,7 @@
 	title={mfaEnforceConfirmTitle}
 	message={mfaEnforceConfirmMessage}
 	confirmText={mfaEnforceConfirmText}
-	on:confirm={handleMfaEnforceConfirm}
+	onConfirm={handleMfaEnforceConfirm}
 />
 
 <ConfirmModal
@@ -1012,7 +1025,7 @@
 	message={lockConfirmMessage}
 	confirmText={lockConfirmText}
 	confirmClass="btn-primary"
-	on:confirm={handleLockConfirm}
+	onConfirm={handleLockConfirm}
 />
 
 <ConfirmModal
@@ -1023,7 +1036,7 @@
 		: 'Approve this account? Status will be set to OK and the user can sign in.'}
 	confirmText={isApprovalRejected ? 'Approve account anyway' : 'Approve account'}
 	confirmClass="btn-primary"
-	on:confirm={handleApproveAccount}
+	onConfirm={handleApproveAccount}
 />
 
 <ConfirmModal
@@ -1032,7 +1045,7 @@
 	message="Reject this account? Status will be set to Approval rejected by an admin and they will not be able to sign in until approved later."
 	confirmText="Reject account"
 	confirmClass="btn-danger"
-	on:confirm={handleRejectAccount}
+	onConfirm={handleRejectAccount}
 />
 
 <ConfirmModal
@@ -1042,8 +1055,8 @@
 	confirmText="Leave without saving"
 	cancelText="Stay"
 	confirmClass="btn-primary"
-	on:confirm={confirmLeave}
-	on:cancel={cancelLeave}
+	onConfirm={confirmLeave}
+	onCancel={cancelLeave}
 />
 
 <ConfirmModal
@@ -1052,7 +1065,7 @@
 	message="Approve this user's pending permission and group changes? The request will be applied immediately."
 	confirmText="Approve request"
 	confirmClass="btn-primary"
-	on:confirm={handleApproveUpdate}
+	onConfirm={handleApproveUpdate}
 />
 
 <ConfirmModal
@@ -1061,7 +1074,7 @@
 	message="Reject this user's pending permission and group changes? They will need to submit a new request."
 	confirmText="Reject request"
 	confirmClass="btn-danger"
-	on:confirm={handleRejectUpdate}
+	onConfirm={handleRejectUpdate}
 />
 
 <ConfirmModal
@@ -1070,7 +1083,7 @@
 	message="Sign this user out everywhere? They can sign in again with their credentials."
 	confirmText="Revoke sessions"
 	confirmClass="btn-danger"
-	on:confirm={handleRevokeSessions}
+	onConfirm={handleRevokeSessions}
 />
 
 <ConfirmModal
@@ -1079,7 +1092,7 @@
 	message="Are you sure you want to delete this user? This action cannot be undone. All user data, sessions, and security records will be permanently removed."
 	confirmText="Delete User"
 	confirmClass="btn-danger"
-	on:confirm={handleDelete}
+	onConfirm={handleDelete}
 />
 
 <style>
