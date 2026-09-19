@@ -9,7 +9,7 @@ import {
 	issuePATViaUI,
 	meWithPAT,
 	openTokensPage
-} from '../helpers/pats';
+} from '../helpers/accessTokens';
 import { assertToast, waitForTokensPage } from '../helpers/waits';
 
 /**
@@ -18,7 +18,7 @@ import { assertToast, waitForTokensPage } from '../helpers/waits';
  */
 test.describe(
 	'PAT rotation journey',
-	describeTags(TAG.journey, TAG.regular, TAG.selfService, TAG.security),
+	describeTags(TAG.journey, TAG.accessTokens, TAG.regular, TAG.selfService, TAG.security),
 	() => {
 		test('issue, use, rotate, revoke old, then wipe remaining', async ({
 			regularUserPage: page,

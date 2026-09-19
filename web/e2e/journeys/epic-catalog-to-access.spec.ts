@@ -15,7 +15,7 @@ import {
 	submitRequestUpdate,
 	VISIBILITY_GROUP,
 	type JourneyActOptions
-} from '../helpers/journeys';
+} from '../helpers/journeyActs';
 import { describeTags, TAG } from '../helpers/tags';
 import { createEphemeralUser, deleteUserById } from '../helpers/userApi';
 import {

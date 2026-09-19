@@ -10,7 +10,7 @@ import {
 	patchUserMaps
 } from '../helpers/userApi';
 import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast, waitForRequestUpdateGroups } from '../helpers/waits';
-import { gotoDashboardFresh } from '../helpers/journeys';
+import { gotoDashboardFresh } from '../helpers/journeyActs';
 import { describeTags, TAG } from '../helpers/tags';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from '../helpers/catalog';
 
