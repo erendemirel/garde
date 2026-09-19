@@ -169,9 +169,16 @@ func main() {
 	// does not belong on the hostname browsers reach.
 	if config.PublicValidateEnabled() {
 		opts := validateRouteOptions{mtls: config.PublicValidateMTLS()}
+		// Dual-listener: public /validate is for tenant keys only. Single-listener:
+		// leave audience unrestricted so internal and tenant keys both work.
+		if config.ServiceListenerEnabled() {
+			opts.audience = models.AudienceTenant
+		}
 		mountValidateRoute(router, deps, opts)
 		slog.Info("/validate mounted on the public listener",
-			"mtls", opts.mtls.String(), "credentials", "per-caller keys only")
+			"mtls", opts.mtls.String(),
+			"audience", audienceLogLabel(opts.audience),
+			"credentials", "per-caller keys only")
 	} else {
 		slog.Info("/validate is not served on the public listener")
 	}
@@ -403,6 +410,15 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 type validateRouteOptions struct {
 	// mtls requires a verified client certificate when it is required.
 	mtls config.ClientCertPolicy
+	// audience restricts which issued keys this mount accepts. Empty means any.
+	audience string
+}
+
+func audienceLogLabel(audience string) string {
+	if audience == "" {
+		return "any"
+	}
+	return audience
 }
 
 // mountValidateRoute registers the service session-validation endpoint.
@@ -418,8 +434,9 @@ func mountValidateRoute(router *gin.Engine, deps *routerDeps, opts validateRoute
 	}
 
 	validateEndpoint.Use(middleware.APIKeyAuth(middleware.APIKeyAuthOptions{
-		Repo:          deps.repo,
-		RequiredScope: models.ScopeValidate,
+		Repo:             deps.repo,
+		RequiredScope:    models.ScopeValidate,
+		RequiredAudience: opts.audience,
 	}))
 
 	// Charges the request to the calling key rather than to its address,
@@ -463,8 +480,11 @@ func newPublicServer(handler http.Handler) (*http.Server, error) {
 func newServiceServer(deps *routerDeps) (*http.Server, error) {
 	policy := config.ServiceMTLS()
 	router := newEngine(deps)
-	// Mesh callers present a client certificate and an issued per-caller key.
-	mountValidateRoute(router, deps, validateRouteOptions{mtls: policy})
+	// Mesh callers present a client certificate and an issued internal key.
+	mountValidateRoute(router, deps, validateRouteOptions{
+		mtls:     policy,
+		audience: models.AudienceInternal,
+	})
 
 	tlsConfig, err := buildTLSConfig(
 		config.ServiceTLSCertPath(),

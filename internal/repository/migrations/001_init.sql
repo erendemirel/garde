@@ -63,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_pats_user_active ON personal_access_tokens(user_i
 CREATE TABLE IF NOT EXISTS tenant_api_keys (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
+    audience TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     secret_hash TEXT NOT NULL,
     scopes JSONB NOT NULL DEFAULT '[]'::jsonb,

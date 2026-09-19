@@ -1,12 +1,16 @@
 import { expect, type APIRequestContext } from '@playwright/test';
 
-/** Legacy shared secret — must never authenticate /validate after API_KEY removal. */
-export const e2eLegacySharedSecret =
-	process.env.E2E_LEGACY_API_KEY || 'TestApiKey123!TestApiKey123!';
+/** Non-issued credential shape — must never authenticate /validate. */
+export const e2eNonIssuedKeyShape =
+	process.env.E2E_NON_ISSUED_API_KEY || 'TestApiKey123!TestApiKey123!';
+
+/** @deprecated Use e2eNonIssuedKeyShape */
+export const e2eLegacySharedSecret = e2eNonIssuedKeyShape;
 
 export type IssuedAPIKey = {
 	id: string;
 	tenant_id: string;
+	audience?: string;
 	name: string;
 	scopes: string[];
 	key: string;
@@ -15,6 +19,7 @@ export type IssuedAPIKey = {
 
 type CreateKeyBody = {
 	tenant_id: string;
+	audience?: 'internal' | 'tenant';
 	name: string;
 	scopes: string[];
 	expires_in?: string;
@@ -22,12 +27,14 @@ type CreateKeyBody = {
 	rate_limit?: number;
 };
 
-/** Issue a per-tenant key via the superuser API (cleanup helper for UI specs). */
+/** Issue a per-caller key via the superuser API (cleanup helper for UI specs). */
 export async function issueAPIKey(
 	suRequest: APIRequestContext,
 	body: CreateKeyBody
 ): Promise<IssuedAPIKey> {
-	const res = await suRequest.post('/api/admin/api-keys', { data: body });
+	const res = await suRequest.post('/api/admin/api-keys', {
+		data: { audience: 'tenant', ...body }
+	});
 	const text = await res.text();
 	expect(res.status(), `issue API key failed: ${text}`).toBe(201);
 	const json = JSON.parse(text);

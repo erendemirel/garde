@@ -5,6 +5,31 @@ import (
 	"time"
 )
 
+func TestAPIKeyAudienceVocabulary(t *testing.T) {
+	for _, info := range AllAPIKeyAudiences() {
+		if !IsKnownAPIKeyAudience(info.Name) {
+			t.Fatalf("AllAPIKeyAudiences lists %q which IsKnownAPIKeyAudience rejects", info.Name)
+		}
+		if info.Description == "" {
+			t.Fatalf("audience %q has no description", info.Name)
+		}
+	}
+	if IsKnownAPIKeyAudience("partner") {
+		t.Fatal("unknown audience accepted")
+	}
+}
+
+func TestServiceAPIKeyMatchesAudience(t *testing.T) {
+	k := &ServiceAPIKey{Audience: AudienceTenant}
+	if !k.MatchesAudience("") || !k.MatchesAudience(AudienceTenant) || k.MatchesAudience(AudienceInternal) {
+		t.Fatal("tenant key audience matching wrong")
+	}
+	empty := &ServiceAPIKey{}
+	if !empty.MatchesAudience(AudienceInternal) || !empty.MatchesAudience(AudienceTenant) {
+		t.Fatal("empty audience must match any required surface")
+	}
+}
+
 func TestAPIKeyScopeVocabularyLockstep(t *testing.T) {
 	for _, info := range AllAPIKeyScopes() {
 		if !IsKnownAPIKeyScope(info.Name) {

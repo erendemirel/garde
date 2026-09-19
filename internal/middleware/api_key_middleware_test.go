@@ -103,6 +103,56 @@ func TestAPIKeyAuthAcceptsTenantKey(t *testing.T) {
 	}
 }
 
+func TestAPIKeyAuthRejectsWrongAudience(t *testing.T) {
+	repo := newKeyRepo(t)
+	presented := issueKey(t, repo, func(k *models.ServiceAPIKey) {
+		k.Audience = models.AudienceInternal
+		k.Name = "mesh-only"
+	})
+
+	res := runAPIKeyAuth(t, APIKeyAuthOptions{
+		Repo:             repo,
+		RequiredScope:    models.ScopeValidate,
+		RequiredAudience: models.AudienceTenant,
+	}, presented)
+
+	if res.reached || res.status != http.StatusForbidden {
+		t.Fatalf("status=%d reached=%v, want 403 for wrong audience", res.status, res.reached)
+	}
+}
+
+func TestAPIKeyAuthAcceptsMatchingAudience(t *testing.T) {
+	repo := newKeyRepo(t)
+	presented := issueKey(t, repo, func(k *models.ServiceAPIKey) {
+		k.Audience = models.AudienceTenant
+	})
+
+	res := runAPIKeyAuth(t, APIKeyAuthOptions{
+		Repo:             repo,
+		RequiredScope:    models.ScopeValidate,
+		RequiredAudience: models.AudienceTenant,
+	}, presented)
+
+	if !res.reached || res.status != http.StatusOK {
+		t.Fatalf("status=%d reached=%v, want authenticated tenant key", res.status, res.reached)
+	}
+}
+
+func TestAPIKeyAuthEmptyAudienceStillWorks(t *testing.T) {
+	repo := newKeyRepo(t)
+	presented := issueKey(t, repo, nil) // no audience — pre-migration shape
+
+	res := runAPIKeyAuth(t, APIKeyAuthOptions{
+		Repo:             repo,
+		RequiredScope:    models.ScopeValidate,
+		RequiredAudience: models.AudienceInternal,
+	}, presented)
+
+	if !res.reached || res.status != http.StatusOK {
+		t.Fatalf("status=%d reached=%v, want empty audience accepted for compatibility", res.status, res.reached)
+	}
+}
+
 func TestAPIKeyAuthRejectsNonIssuedShape(t *testing.T) {
 	repo := newKeyRepo(t)
 

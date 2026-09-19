@@ -7,6 +7,13 @@ import "time"
 // the shape of records already in Redis.
 const ScopeValidate = "validate"
 
+// Audience binds a key to one /validate surface. It is set at issue time and
+// enforced by the listener that mounts the route — not by the key string.
+const (
+	AudienceInternal = "internal" // private service listener (mesh + mTLS)
+	AudienceTenant   = "tenant"   // public /validate when published
+)
+
 // APIKeyScopeInfo is the operator-facing description of one grantable scope.
 // The UI sources this list from the server so adding a scope does not need a
 // frontend release, and so the UI cannot offer a name the server rejects.
@@ -15,8 +22,18 @@ type APIKeyScopeInfo struct {
 	Description string `json:"description"`
 }
 
+// APIKeyAudienceInfo describes one grantable audience for the admin UI.
+type APIKeyAudienceInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 func IsKnownAPIKeyScope(scope string) bool {
 	return scope == ScopeValidate
+}
+
+func IsKnownAPIKeyAudience(audience string) bool {
+	return audience == AudienceInternal || audience == AudienceTenant
 }
 
 // AllAPIKeyScopes is the closed vocabulary CreateAPIKey accepts. Keep this and
@@ -27,6 +44,20 @@ func AllAPIKeyScopes() []APIKeyScopeInfo {
 		{
 			Name:        ScopeValidate,
 			Description: "Call /validate to check whether a session is still valid",
+		},
+	}
+}
+
+// AllAPIKeyAudiences is the closed vocabulary CreateAPIKey accepts for audience.
+func AllAPIKeyAudiences() []APIKeyAudienceInfo {
+	return []APIKeyAudienceInfo{
+		{
+			Name:        AudienceInternal,
+			Description: "Private service listener only (mesh; mTLS when configured)",
+		},
+		{
+			Name:        AudienceTenant,
+			Description: "Public /validate only (when public_validate is enabled)",
 		},
 	}
 }
@@ -50,7 +81,10 @@ type ServiceAPIKey struct {
 	// TenantID names the holder rather than the key. Several keys share one,
 	// which is what makes deliberate rotation and "revoke everything this
 	// caller has" possible — the questions that matter during an incident.
-	TenantID   string     `json:"tenant_id"`
+	TenantID string `json:"tenant_id"`
+	// Audience is which /validate surface may accept this key. Empty means a
+	// pre-audience record: still usable on any surface until re-issued.
+	Audience   string     `json:"audience,omitempty"`
 	Name       string     `json:"name"`
 	SecretHash string     `json:"secret_hash"`
 	Scopes     []string   `json:"scopes"`
@@ -81,6 +115,20 @@ func (k *ServiceAPIKey) HasScope(scope string) bool {
 	return false
 }
 
+// MatchesAudience reports whether this key may be used on a mount that
+// requires the given audience. An empty required value means the mount does
+// not restrict by audience (single-listener). An empty key audience is a
+// pre-audience record and is accepted on every surface until re-issued.
+func (k *ServiceAPIKey) MatchesAudience(required string) bool {
+	if required == "" {
+		return true
+	}
+	if k.Audience == "" {
+		return true
+	}
+	return k.Audience == required
+}
+
 type CreateAPIKeyRequest struct {
 	// TenantID identifies the external party that will hold the key. Required,
 	// so that every credential can be traced back to a holder and revoked with
@@ -90,6 +138,9 @@ type CreateAPIKeyRequest struct {
 	// answers with a message naming the field; a binding failure would
 	// collapse all of that into one generic "invalid request".
 	TenantID string `json:"tenant_id"`
+	// Audience is which /validate surface may accept the key: internal or
+	// tenant. Required for new issues.
+	Audience string `json:"audience"`
 	Name     string `json:"name"`
 	// Scopes must be listed explicitly. Defaulting them would grant more than
 	// was asked for, which is the wrong direction for a credential.
@@ -110,6 +161,7 @@ type CreateAPIKeyRequest struct {
 type APIKeyResponse struct {
 	ID         string     `json:"id"`
 	TenantID   string     `json:"tenant_id"`
+	Audience   string     `json:"audience,omitempty"`
 	Name       string     `json:"name"`
 	Scopes     []string   `json:"scopes"`
 	RateLimit  int        `json:"rate_limit,omitempty"`
@@ -148,6 +200,7 @@ func NewAPIKeyResponse(k *ServiceAPIKey) APIKeyResponse {
 	return APIKeyResponse{
 		ID:         k.ID,
 		TenantID:   k.TenantID,
+		Audience:   k.Audience,
 		Name:       k.Name,
 		Scopes:     scopes,
 		RateLimit:  k.RateLimit,

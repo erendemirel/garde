@@ -68,7 +68,7 @@ fi
   || die "GET /admin/api-key-scopes -> $probe_code (want 200 for superuser)"
 
 tenant_id="deploy_ci_$(date +%s)"
-create_body="$(printf '{"tenant_id":"%s","name":"ci-validate","scopes":["validate"]}' "$tenant_id")"
+create_body="$(printf '{"tenant_id":"%s","audience":"tenant","name":"ci-validate","scopes":["validate"]}' "$tenant_id")"
 created="$(http_api "$TARGET" POST /admin/api-keys "$create_body" "$token")"
 [ "$(http_code "$created")" = "201" ] \
   || die "POST /admin/api-keys failed: $created"

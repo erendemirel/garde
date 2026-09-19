@@ -81,8 +81,8 @@ func TestCreateAPIKeyRequiresExplicitScopes(t *testing.T) {
 	router := apiKeyRouter(newAPIKeyTestHandler(t))
 
 	for _, body := range []map[string]any{
-		{"tenant_id": "acme", "name": "acme-prod"},
-		{"tenant_id": "acme", "name": "acme-prod", "scopes": []string{}},
+		{"tenant_id": "acme", "audience": "tenant", "name": "acme-prod"},
+		{"tenant_id": "acme", "audience": "tenant", "name": "acme-prod", "scopes": []string{}},
 	} {
 		rec := postKey(t, router, body)
 		if rec.Code != http.StatusBadRequest {
@@ -94,12 +94,42 @@ func TestCreateAPIKeyRequiresExplicitScopes(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRequiresAudience(t *testing.T) {
+	router := apiKeyRouter(newAPIKeyTestHandler(t))
+
+	rec := postKey(t, router, map[string]any{
+		"tenant_id": "acme",
+		"name":      "acme-prod",
+		"scopes":    []string{models.ScopeValidate},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if got := errorMessage(t, rec); got != pkgerrors.ErrAPIKeyAudienceRequired {
+		t.Fatalf("message = %q, want %q", got, pkgerrors.ErrAPIKeyAudienceRequired)
+	}
+
+	rec = postKey(t, router, map[string]any{
+		"tenant_id": "acme",
+		"audience":  "partner",
+		"name":      "acme-prod",
+		"scopes":    []string{models.ScopeValidate},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if got := errorMessage(t, rec); got != pkgerrors.ErrInvalidAPIKeyAudience {
+		t.Fatalf("message = %q, want %q", got, pkgerrors.ErrInvalidAPIKeyAudience)
+	}
+}
+
 func TestCreateAPIKeyRequiresTenantID(t *testing.T) {
 	router := apiKeyRouter(newAPIKeyTestHandler(t))
 
 	rec := postKey(t, router, map[string]any{
-		"name":   "acme-prod",
-		"scopes": []string{models.ScopeValidate},
+		"audience": "tenant",
+		"name":     "acme-prod",
+		"scopes":   []string{models.ScopeValidate},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
@@ -115,6 +145,7 @@ func TestCreateAPIKeyExpiresByDefault(t *testing.T) {
 
 	rec := postKey(t, router, map[string]any{
 		"tenant_id": "acme",
+		"audience":  "tenant",
 		"name":      "acme-prod",
 		"scopes":    []string{models.ScopeValidate},
 	})
@@ -132,6 +163,9 @@ func TestCreateAPIKeyExpiresByDefault(t *testing.T) {
 	if key.TenantID != "acme" {
 		t.Fatalf("tenant_id = %q, want acme", key.TenantID)
 	}
+	if key.Audience != models.AudienceTenant {
+		t.Fatalf("audience = %q, want tenant", key.Audience)
+	}
 }
 
 func TestCreateAPIKeyNeverExpiresIsDeliberate(t *testing.T) {
@@ -139,6 +173,7 @@ func TestCreateAPIKeyNeverExpiresIsDeliberate(t *testing.T) {
 
 	rec := postKey(t, router, map[string]any{
 		"tenant_id":     "acme",
+		"audience":      "internal",
 		"name":          "acme-forever",
 		"scopes":        []string{models.ScopeValidate},
 		"never_expires": true,
@@ -146,8 +181,12 @@ func TestCreateAPIKeyNeverExpiresIsDeliberate(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
 	}
-	if decodeKey(t, rec).ExpiresAt != nil {
+	key := decodeKey(t, rec)
+	if key.ExpiresAt != nil {
 		t.Fatal("never_expires was asked for but an expiry was set anyway")
+	}
+	if key.Audience != models.AudienceInternal {
+		t.Fatalf("audience = %q, want internal", key.Audience)
 	}
 }
 
@@ -163,6 +202,7 @@ func TestRevokeTenantAPIKeysRevokesOnlyThatTenant(t *testing.T) {
 	} {
 		rec := postKey(t, router, map[string]any{
 			"tenant_id": spec.tenant,
+			"audience":  "tenant",
 			"name":      spec.name,
 			"scopes":    []string{models.ScopeValidate},
 		})

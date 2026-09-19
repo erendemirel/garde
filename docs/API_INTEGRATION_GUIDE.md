@@ -277,7 +277,7 @@ X-Session-ID: 8e8217f1-4f...
 
 | Operation | Request |
 |-----------|---------|
-| Issue | `POST /admin/api-keys` with `tenant_id`, `name` and `scopes`; optional `expires_in`, `never_expires`, `rate_limit` |
+| Issue | `POST /admin/api-keys` with `tenant_id`, `audience` (`internal` or `tenant`), `name` and `scopes`; optional `expires_in`, `never_expires`, `rate_limit` |
 | List | `GET /admin/api-keys` — no secrets, but each key's `last_used_at`. Add `?tenant_id=acme` to narrow it |
 | Revoke one | `DELETE /admin/api-keys/{key_id}` — effective on the caller's next request |
 | Revoke a holder | `DELETE /admin/tenants/{tenant_id}/api-keys` — every key that holder has, in one call |
@@ -287,6 +287,7 @@ X-Session-ID: 8e8217f1-4f...
     "data": {
         "id": "1f4c8a0b6d2e7391",
         "tenant_id": "acme",
+        "audience": "tenant",
         "name": "acme-prod",
         "scopes": ["validate"],
         "created_at": "2026-09-11T10:04:00Z",
@@ -298,6 +299,11 @@ X-Session-ID: 8e8217f1-4f...
 
 Store the `key` value at the caller's end immediately; `id` is what you use to
 revoke that one key, and `tenant_id` is what you use to revoke all of them.
+
+`audience` binds the key to one surface: `internal` (private service listener)
+or `tenant` (public `/validate` when published). On a dual-listener deploy, a
+key issued for the wrong surface is refused with `403`. Pre-audience keys
+(empty `audience`) remain usable on either surface until re-issued.
 
 `tenant_id` names the holder and `name` labels the individual key, so one
 holder can carry several — which is how you roll a credential without a gap:
@@ -1001,6 +1007,7 @@ Content-Type: application/json
 
 {
     "tenant_id": "acme",
+    "audience": "tenant",
     "name": "acme-prod",
     "scopes": ["validate"],
     "expires_in": "4320h",
@@ -1008,9 +1015,10 @@ Content-Type: application/json
 }
 ```
 
-`tenant_id`, `name` and `scopes` are all required. **Scopes are never granted
+`tenant_id`, `audience`, `name` and `scopes` are all required. **Scopes are never granted
 by default** — an empty or missing list is a `400`, because a credential issued
-without a stated grant should carry nothing.
+without a stated grant should carry nothing. `audience` must be `internal`
+(service listener) or `tenant` (public `/validate`).
 
 Lifetime is bounded unless you say otherwise. Omitting `expires_in` gives the
 default 90 days; it may not exceed `8760h` (one year); and a key that never
