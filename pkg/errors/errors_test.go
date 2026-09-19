@@ -56,6 +56,8 @@ func TestErrorMessagesNonEmptyAndUnique(t *testing.T) {
 	add("ErrInvalidPermissionName", ErrInvalidPermissionName)
 	add("ErrInvalidAPIKeyName", ErrInvalidAPIKeyName)
 	add("ErrInvalidAPIKeyTenantID", ErrInvalidAPIKeyTenantID)
+	add("ErrInvalidAPIKeyAudience", ErrInvalidAPIKeyAudience)
+	add("ErrAPIKeyAudienceRequired", ErrAPIKeyAudienceRequired)
 	add("ErrInvalidAPIKeyScope", ErrInvalidAPIKeyScope)
 	add("ErrAPIKeyScopesRequired", ErrAPIKeyScopesRequired)
 	add("ErrInvalidAPIKeyExpiry", ErrInvalidAPIKeyExpiry)

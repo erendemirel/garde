@@ -30,7 +30,7 @@ func apiKeyFullRouter(t *testing.T, h *APIKeyHandler) *gin.Engine {
 func createServiceKey(t *testing.T, router *gin.Engine, tenant, name string) string {
 	t.Helper()
 	body, _ := json.Marshal(map[string]any{
-		"tenant_id": tenant, "name": name, "scopes": []string{"validate"},
+		"tenant_id": tenant, "audience": "tenant", "name": name, "scopes": []string{"validate"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -116,12 +116,14 @@ func TestCreateAPIKeyValidationBranches(t *testing.T) {
 		name string
 		body map[string]any
 	}{
-		{"missing scopes", map[string]any{"tenant_id": "acme", "name": "k"}},
-		{"unknown scope", map[string]any{"tenant_id": "acme", "name": "k", "scopes": []string{"admin"}}},
-		{"expiry conflict", map[string]any{"tenant_id": "acme", "name": "k", "scopes": []string{"validate"}, "expires_in": "24h", "never_expires": true}},
-		{"expiry too long", map[string]any{"tenant_id": "acme", "name": "k", "scopes": []string{"validate"}, "expires_in": "9000h"}},
-		{"negative rate", map[string]any{"tenant_id": "acme", "name": "k", "scopes": []string{"validate"}, "rate_limit": -1}},
-		{"bad name", map[string]any{"tenant_id": "acme", "name": "bad name!", "scopes": []string{"validate"}}},
+		{"missing scopes", map[string]any{"tenant_id": "acme", "audience": "tenant", "name": "k"}},
+		{"missing audience", map[string]any{"tenant_id": "acme", "name": "k", "scopes": []string{"validate"}}},
+		{"unknown audience", map[string]any{"tenant_id": "acme", "audience": "partner", "name": "k", "scopes": []string{"validate"}}},
+		{"unknown scope", map[string]any{"tenant_id": "acme", "audience": "tenant", "name": "k", "scopes": []string{"admin"}}},
+		{"expiry conflict", map[string]any{"tenant_id": "acme", "audience": "tenant", "name": "k", "scopes": []string{"validate"}, "expires_in": "24h", "never_expires": true}},
+		{"expiry too long", map[string]any{"tenant_id": "acme", "audience": "tenant", "name": "k", "scopes": []string{"validate"}, "expires_in": "9000h"}},
+		{"negative rate", map[string]any{"tenant_id": "acme", "audience": "tenant", "name": "k", "scopes": []string{"validate"}, "rate_limit": -1}},
+		{"bad name", map[string]any{"tenant_id": "acme", "audience": "tenant", "name": "bad name!", "scopes": []string{"validate"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

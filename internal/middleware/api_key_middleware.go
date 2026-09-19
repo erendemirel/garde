@@ -31,13 +31,19 @@ type APIKeyAuthOptions struct {
 
 	// RequiredScope, when set, must be carried by the presented key.
 	RequiredScope string
+
+	// RequiredAudience, when set, must match the key's audience (internal or
+	// tenant). Empty means this mount does not restrict by audience — used on
+	// single-listener deployments where /validate serves both caller classes.
+	RequiredAudience string
 }
 
 // APIKeyAuth authenticates a caller from the X-API-Key header.
 //
 // Only issued per-caller keys (garde_<id>_<secret>) are accepted — for both
 // internal services on the private listener and external tenants on a public
-// /validate. Wrong-shaped or non-issued credentials are refused.
+// /validate. Wrong-shaped or non-issued credentials are refused. When the
+// mount sets RequiredAudience, keys issued for the other surface are refused.
 func APIKeyAuth(opts APIKeyAuthOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		presented := c.GetHeader(APIKeyHeader)
@@ -93,6 +99,18 @@ func authenticateServiceAPIKey(c *gin.Context, opts APIKeyAuthOptions, id, secre
 			"api_key_id", id, "name", key.Name, "required_scope", opts.RequiredScope)
 		c.AbortWithStatusJSON(http.StatusForbidden, models.NewErrorResponse(errors.ErrAPIKeyNotPermitted))
 		return
+	}
+
+	if !key.MatchesAudience(opts.RequiredAudience) {
+		slog.Warn("API key audience does not match this listener",
+			"api_key_id", id, "name", key.Name,
+			"key_audience", key.Audience, "required_audience", opts.RequiredAudience)
+		c.AbortWithStatusJSON(http.StatusForbidden, models.NewErrorResponse(errors.ErrAPIKeyNotPermitted))
+		return
+	}
+	if opts.RequiredAudience != "" && key.Audience == "" {
+		slog.Info("API key has no audience; allowing for compatibility — re-issue with audience set",
+			"api_key_id", id, "name", key.Name, "listener_audience", opts.RequiredAudience)
 	}
 
 	if err := opts.Repo.TouchServiceAPIKey(c.Request.Context(), id); err != nil {

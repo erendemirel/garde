@@ -307,6 +307,8 @@ export interface APIKeyScopeInfo {
 export interface APIKeyInfo {
 	id: string;
 	tenant_id: string;
+	/** Which /validate surface may accept this key: internal | tenant */
+	audience?: string;
 	name: string;
 	scopes: string[];
 	rate_limit?: number;
@@ -335,6 +337,8 @@ export interface RevokeTenantAPIKeysResult {
 
 export interface CreateAPIKeyInput {
 	tenant_id: string;
+	/** internal = service listener; tenant = public /validate */
+	audience: 'internal' | 'tenant';
 	name: string;
 	scopes: string[];
 	expires_in?: string;

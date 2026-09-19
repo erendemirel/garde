@@ -430,29 +430,41 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			const tenantId = `e2e_contract_${uniqueSuffix}`;
 
 			const noScopes = await suRequest.post('/api/admin/api-keys', {
-				data: { tenant_id: tenantId, name: 'x' }
+				data: { tenant_id: tenantId, audience: 'tenant', name: 'x' }
 			});
 			expect(noScopes.status()).toBe(400);
 			expect(String((await noScopes.json()).error.message)).toMatch(/scope/i);
 
 			const emptyScopes = await suRequest.post('/api/admin/api-keys', {
-				data: { tenant_id: tenantId, name: 'x', scopes: [] }
+				data: { tenant_id: tenantId, audience: 'tenant', name: 'x', scopes: [] }
 			});
 			expect(emptyScopes.status()).toBe(400);
 
+			const noAudience = await suRequest.post('/api/admin/api-keys', {
+				data: { tenant_id: tenantId, name: 'x', scopes: ['validate'] }
+			});
+			expect(noAudience.status()).toBe(400);
+			expect(String((await noAudience.json()).error.message)).toMatch(/audience/i);
+
+			const badAudience = await suRequest.post('/api/admin/api-keys', {
+				data: { tenant_id: tenantId, audience: 'partner', name: 'x', scopes: ['validate'] }
+			});
+			expect(badAudience.status()).toBe(400);
+			expect(String((await badAudience.json()).error.message)).toMatch(/audience/i);
+
 			const noTenant = await suRequest.post('/api/admin/api-keys', {
-				data: { name: 'x', scopes: ['validate'] }
+				data: { audience: 'tenant', name: 'x', scopes: ['validate'] }
 			});
 			expect(noTenant.status()).toBe(400);
 			expect(String((await noTenant.json()).error.message)).toMatch(/tenant_id/i);
 
 			const badTenant = await suRequest.post('/api/admin/api-keys', {
-				data: { tenant_id: 'bad client!', name: 'x', scopes: ['validate'] }
+				data: { tenant_id: 'bad client!', audience: 'tenant', name: 'x', scopes: ['validate'] }
 			});
 			expect(badTenant.status()).toBe(400);
 
 			const unknownScope = await suRequest.post('/api/admin/api-keys', {
-				data: { tenant_id: tenantId, name: 'x', scopes: ['admin'] }
+				data: { tenant_id: tenantId, audience: 'tenant', name: 'x', scopes: ['admin'] }
 			});
 			expect(unknownScope.status()).toBe(400);
 			expect(String((await unknownScope.json()).error.message)).toMatch(/scope/i);
@@ -460,6 +472,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			const tooLong = await suRequest.post('/api/admin/api-keys', {
 				data: {
 					tenant_id: tenantId,
+					audience: 'tenant',
 					name: 'x',
 					scopes: ['validate'],
 					expires_in: '9000h'
@@ -471,6 +484,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			const conflict = await suRequest.post('/api/admin/api-keys', {
 				data: {
 					tenant_id: tenantId,
+					audience: 'tenant',
 					name: 'x',
 					scopes: ['validate'],
 					expires_in: '24h',
@@ -483,6 +497,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.focused), ()
 			const negativeRate = await suRequest.post('/api/admin/api-keys', {
 				data: {
 					tenant_id: tenantId,
+					audience: 'tenant',
 					name: 'x',
 					scopes: ['validate'],
 					rate_limit: -1

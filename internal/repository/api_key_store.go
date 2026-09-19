@@ -10,7 +10,7 @@ import (
 	"garde/internal/models"
 )
 
-const apiKeyColumns = `id, tenant_id, name, secret_hash, scopes, rate_limit,
+const apiKeyColumns = `id, tenant_id, audience, name, secret_hash, scopes, rate_limit,
 	created_at, created_by, expires_at, revoked_at, last_used_at`
 
 func scanServiceAPIKey(sc rowScanner) (*models.ServiceAPIKey, error) {
@@ -22,7 +22,7 @@ func scanServiceAPIKey(sc rowScanner) (*models.ServiceAPIKey, error) {
 		lastUsedAt sql.NullTime
 	)
 
-	if err := sc.Scan(&key.ID, &key.TenantID, &key.Name, &key.SecretHash, &scopes, &key.RateLimit,
+	if err := sc.Scan(&key.ID, &key.TenantID, &key.Audience, &key.Name, &key.SecretHash, &scopes, &key.RateLimit,
 		&key.CreatedAt, &key.CreatedBy, &expiresAt, &revokedAt, &lastUsedAt); err != nil {
 		return nil, err
 	}
@@ -60,12 +60,12 @@ func (s *Store) StoreServiceAPIKey(ctx context.Context, key *models.ServiceAPIKe
 		return fmt.Errorf("encode scopes: %w", err)
 	}
 
-	// tenant_id is immutable on conflict, matching personal_access_tokens.user_id:
-	// an upsert must not move a key between holders.
+	// tenant_id and audience are immutable on conflict: an upsert must not
+	// move a key between holders or surfaces.
 	_, err = db.ExecContext(ctx, `
-		INSERT INTO tenant_api_keys (id, tenant_id, name, secret_hash, scopes, rate_limit,
+		INSERT INTO tenant_api_keys (id, tenant_id, audience, name, secret_hash, scopes, rate_limit,
 			created_at, created_by, expires_at, revoked_at, last_used_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			secret_hash = EXCLUDED.secret_hash,
@@ -75,7 +75,7 @@ func (s *Store) StoreServiceAPIKey(ctx context.Context, key *models.ServiceAPIKe
 			expires_at = EXCLUDED.expires_at,
 			revoked_at = EXCLUDED.revoked_at,
 			last_used_at = EXCLUDED.last_used_at`,
-		key.ID, key.TenantID, key.Name, key.SecretHash, scopes, key.RateLimit,
+		key.ID, key.TenantID, key.Audience, key.Name, key.SecretHash, scopes, key.RateLimit,
 		key.CreatedAt, key.CreatedBy, nullableTime(key.ExpiresAt), nullableTime(key.RevokedAt),
 		nullableTime(key.LastUsedAt))
 	return err

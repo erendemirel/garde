@@ -30,6 +30,8 @@
 	let issuing = false;
 	let issueTenantId = '';
 	let issueName = '';
+	/** @type {'internal' | 'tenant'} */
+	let issueAudience = 'tenant';
 	/** @type {Set<string>} */
 	let issueScopes = new Set();
 	/** @type {'default' | 'custom' | 'never'} */
@@ -79,6 +81,7 @@
 					(k) =>
 						k.name.toLowerCase().includes(q) ||
 						k.id.toLowerCase().includes(q) ||
+						(k.audience || '').toLowerCase().includes(q) ||
 						(k.scopes || []).some((s) => s.toLowerCase().includes(q))
 				);
 			})
@@ -88,6 +91,7 @@
 	$: canIssue =
 		issueTenantId.trim().length > 0 &&
 		issueName.trim().length > 0 &&
+		(issueAudience === 'internal' || issueAudience === 'tenant') &&
 		issueScopes.size > 0 &&
 		(issueExpiryMode !== 'custom' || issueExpiresIn.trim().length > 0) &&
 		!issuing;
@@ -125,6 +129,7 @@
 	function openIssueModal() {
 		issueTenantId = '';
 		issueName = '';
+		issueAudience = 'tenant';
 		issueScopes = new Set();
 		issueExpiryMode = 'default';
 		issueExpiresIn = '';
@@ -148,6 +153,7 @@
 			/** @type {import('$lib/api').CreateAPIKeyInput} */
 			const body = {
 				tenant_id: issueTenantId.trim(),
+				audience: issueAudience,
 				name: issueName.trim(),
 				scopes: [...issueScopes]
 			};
@@ -277,9 +283,9 @@
 		<div>
 			<h2 class="section-title">API Keys</h2>
 			<p class="text-sm text-muted mt-1">
-				Per-caller credentials for external <code class="text-xs">/validate</code> traffic. Grouped by
-				tenant so you can rotate one holder or revoke everything they have. Scopes are enforced by
-				garde — unlike permissions, which other apps interpret.
+				Per-caller credentials for <code class="text-xs">/validate</code>. Audience binds each key to
+				the internal (mesh) or tenant (public) surface. Grouped by tenant so you can rotate one holder
+				or revoke everything they have.
 			</p>
 		</div>
 		<button
@@ -313,7 +319,7 @@
 
 		{#if tenantGroups.length === 0}
 			<p class="text-muted py-6" data-testid="api-keys-empty">
-				No API keys yet. Issue one to give an external caller its own credential for
+				No API keys yet. Issue one for an internal service or external tenant to call
 				<code class="text-xs">/validate</code>.
 			</p>
 		{:else}
@@ -361,6 +367,7 @@
 									<thead>
 										<tr class="text-left text-muted border-t border-borderc">
 											<th class="px-3 py-2 font-medium">Name</th>
+											<th class="px-3 py-2 font-medium">Audience</th>
 											<th class="px-3 py-2 font-medium">Scopes</th>
 											<th class="px-3 py-2 font-medium">Expires</th>
 											<th class="px-3 py-2 font-medium">Last used</th>
@@ -379,6 +386,13 @@
 												<td class="px-3 py-2">
 													<div class="font-medium">{key.name}</div>
 													<div class="text-xs text-muted font-mono">{key.id}</div>
+												</td>
+												<td class="px-3 py-2" data-testid="api-keys-row-audience">
+													{#if key.audience}
+														<span class="ms-chip text-xs px-2 py-0.5">{key.audience}</span>
+													{:else}
+														<span class="text-muted text-xs" title="Pre-audience key; accepted on any surface until re-issued">any</span>
+													{/if}
 												</td>
 												<td class="px-3 py-2">
 													<div class="flex flex-wrap gap-1" data-testid="api-keys-row-scopes">
@@ -485,6 +499,35 @@
 				autocomplete="off"
 				bind:value={issueName}
 			/>
+		</div>
+		<div>
+			<span class="form-label">Audience</span>
+			<p class="text-xs text-muted mb-2">
+				Which /validate surface may accept this key. Internal is the private service listener;
+				tenant is the public edge when published.
+			</p>
+			<div class="flex flex-wrap gap-3" data-testid="api-keys-issue-audience">
+				<label class="inline-flex items-center gap-2 text-sm">
+					<input
+						type="radio"
+						name="api-key-audience"
+						value="tenant"
+						bind:group={issueAudience}
+						data-testid="api-keys-issue-audience-tenant"
+					/>
+					Tenant (public)
+				</label>
+				<label class="inline-flex items-center gap-2 text-sm">
+					<input
+						type="radio"
+						name="api-key-audience"
+						value="internal"
+						bind:group={issueAudience}
+						data-testid="api-keys-issue-audience-internal"
+					/>
+					Internal (mesh)
+				</label>
+			</div>
 		</div>
 		<div data-testid="api-keys-issue-scopes">
 			<span class="form-label">Scopes</span>
@@ -594,7 +637,7 @@
 			</p>
 			<div>
 				<div class="text-xs text-muted mb-1">
-					{revealedKey.tenant_id} · {revealedKey.name}
+					{revealedKey.tenant_id} · {revealedKey.audience || 'any'} · {revealedKey.name}
 				</div>
 				<div class="flex gap-2 items-stretch">
 					<code

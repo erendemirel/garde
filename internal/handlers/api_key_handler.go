@@ -16,8 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// APIKeyHandler manages the per-tenant credentials that authenticate external
-// callers of /validate. Every route it serves is superuser-only.
+// APIKeyHandler manages the per-caller credentials that authenticate
+// /validate (internal services and external tenants). Every route it serves
+// is superuser-only.
 type APIKeyHandler struct {
 	repo *repository.RedisRepository
 }
@@ -40,7 +41,7 @@ func (h *APIKeyHandler) ListAPIKeyScopes(c *gin.Context) {
 }
 
 // @Summary Issue a service API key
-// @Description Creates a per-tenant API key for calling /validate. tenant_id names the holder, name labels this key, and scopes must be listed explicitly - there is no default grant. Lifetime is bounded unless never_expires is set: omitting expires_in gives 90 days, and it may not exceed 8760h. The plaintext key is returned once, in this response, and cannot be retrieved again. Only superuser can perform this operation.
+// @Description Creates a per-caller API key for /validate. tenant_id names the holder, audience binds the key to the internal (service listener) or tenant (public) surface, name labels this key, and scopes must be listed explicitly - there is no default grant. Lifetime is bounded unless never_expires is set: omitting expires_in gives 90 days, and it may not exceed 8760h. The plaintext key is returned once, in this response, and cannot be retrieved again. Only superuser can perform this operation.
 // @Tags Superuser Routes
 // @Accept json
 // @Produce json
@@ -61,6 +62,16 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	tenantID := strings.TrimSpace(req.TenantID)
 	if err := validation.ValidateAPIKeyTenantID(tenantID); err != nil {
 		c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+		return
+	}
+
+	audience := strings.TrimSpace(req.Audience)
+	if audience == "" {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrAPIKeyAudienceRequired))
+		return
+	}
+	if !models.IsKnownAPIKeyAudience(audience) {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidAPIKeyAudience))
 		return
 	}
 
@@ -105,6 +116,7 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	key := &models.ServiceAPIKey{
 		ID:         id,
 		TenantID:   tenantID,
+		Audience:   audience,
 		Name:       name,
 		SecretHash: secretHash,
 		Scopes:     req.Scopes,
@@ -121,7 +133,7 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	}
 
 	slog.Info("Issued a service API key",
-		"api_key_id", id, "tenant_id", tenantID, "name", name,
+		"api_key_id", id, "tenant_id", tenantID, "audience", audience, "name", name,
 		"scopes", req.Scopes, "expires_at", expiresAt, "created_by", createdBy)
 
 	c.JSON(http.StatusCreated, models.NewSuccessResponse(models.CreateAPIKeyResponse{
