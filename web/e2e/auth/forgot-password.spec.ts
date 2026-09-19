@@ -47,6 +47,16 @@ test.describe('Forgot password page', describeTags(TAG.auth, TAG.focused), () =>
 			await expect(page.getByTestId('forgot-success')).toContainText('OTP');
 		});
 
+		test('Enter submit advances without leaving the page', async ({ page }) => {
+			await stubOtpRoute(page);
+			await openForgotPassword(page);
+			await page.getByTestId('forgot-email').fill('test.admin@test.com');
+			await page.getByTestId('forgot-email').press('Enter');
+
+			await expect(page).toHaveURL(/\/forgot-password/);
+			await expect(page.getByTestId('forgot-password-page')).toHaveAttribute('data-step', 'reset');
+		});
+
 		test('reset step back button returns to email step', async ({ page }) => {
 			await stubOtpRoute(page);
 			await openForgotPassword(page);

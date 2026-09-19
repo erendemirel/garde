@@ -94,4 +94,35 @@ test.describe('Regular user request update', describeTags(TAG.regular, TAG.reque
 		}
 		await page.keyboard.press('Escape');
 	});
+
+	test('catalog failure keeps submit disabled', async ({ regularUserPage: page }) => {
+		await page.route('**/api/permissions**', async (route) => {
+			if (route.request().method() === 'GET') {
+				await route.fulfill({
+					status: 500,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: { message: 'catalog unavailable' } })
+				});
+				return;
+			}
+			await route.continue();
+		});
+		await page.route('**/api/groups**', async (route) => {
+			if (route.request().method() === 'GET') {
+				await route.fulfill({
+					status: 500,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: { message: 'catalog unavailable' } })
+				});
+				return;
+			}
+			await route.continue();
+		});
+
+		await page.goto('/request-update');
+		await waitForPageShell(page, 'request-update-page');
+		await expect(page.getByTestId('request-update-catalog-error')).toBeVisible();
+		await expect(page.getByTestId('request-update-form')).toHaveAttribute('data-ready', 'false');
+		await expect(page.getByTestId('request-update-submit')).toBeDisabled();
+	});
 });

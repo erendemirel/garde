@@ -106,6 +106,26 @@ test.describe(
 				await cleanupPATs(page.request);
 			});
 
+			test('issue Enter submits and reveal ignores Escape', async ({ regularUserPage: page }) => {
+				await openTokensPage(page);
+				await waitForTokensPage(page);
+
+				const name = `e2e_enter_${Date.now()}`;
+				await page.getByTestId('tokens-issue').click();
+				await page.getByTestId('tokens-issue-name').fill(name);
+				await page.getByTestId('tokens-issue-name').press('Enter');
+
+				await expect(page).toHaveURL(/\/tokens/);
+				await assertToast(page, name);
+				await expect(page.getByTestId('tokens-reveal-modal')).toBeVisible();
+				await page.keyboard.press('Escape');
+				await expect(page.getByTestId('tokens-reveal-modal')).toBeVisible();
+
+				await page.getByTestId('tokens-reveal-ack').check();
+				await page.getByTestId('tokens-reveal-done').click();
+				await cleanupPATs(page.request);
+			});
+
 			test('never-expires token shows Never and still authenticates', async ({
 				regularUserPage: page,
 				request

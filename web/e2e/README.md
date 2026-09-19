@@ -87,7 +87,7 @@ e2e/
 
   - Long cross-feature epics → `journeys/epic-*.spec.ts` (tagged `@epic`; run with `--grep @epic`).
 
-  - Svelte upgrade / shared-component contracts → `roles/component-contracts.spec.ts` (tagged `@focused`). Locks Modal close/confirm, MultiSelect change/search/keyboard, tablist arrows, Lucide icon controls, and non-dismissible reveal before/after framework bumps. Prefer extending this file when changing those hubs.
+  - Shared-component contracts → `roles/component-contracts.spec.ts` (tagged `@focused`). Locks Modal close/confirm, MultiSelect change/search/keyboard, full tablist keys (arrows/Home/End), Lucide icon controls, and non-dismissible reveal. Prefer extending this file when changing those hubs. Form Enter-submit and page `$derived` gates live in the feature specs (`auth/`, `dashboard/self-service`, `roles/regular/…`).
 
   - Use nested `test.describe` blocks for story type (`form`, `actor handoffs`, `user dashboard outcomes`, etc.).
 

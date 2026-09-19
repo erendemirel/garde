@@ -11,9 +11,9 @@
 	const TAB_IDS = ['users', 'permissions', 'groups'];
 
 	/** @type {'users' | 'permissions' | 'groups'} */
-	let activeTab = 'users';
-	let accessDenied = false;
-	let checking = true;
+	let activeTab = $state('users');
+	let accessDenied = $state(false);
+	let checking = $state(true);
 
 	onMount(() => {
 		if (get(isSuperuser)) {
@@ -60,7 +60,7 @@
 				role="tablist"
 				tabindex="-1"
 				aria-label="Admin sections"
-				on:keydown={(e) => onTabListKeydown(e, TAB_IDS, activeTab, setActiveTab)}
+				onkeydown={(e) => onTabListKeydown(e, TAB_IDS, activeTab, setActiveTab)}
 			>
 				<button
 					type="button"
@@ -73,7 +73,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'users'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('users')}
+					onclick={() => setActiveTab('users')}
 				>
 					<Users size={18} class="inline mr-2" />
 					Users
@@ -89,7 +89,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'permissions'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('permissions')}
+					onclick={() => setActiveTab('permissions')}
 				>
 					<Ungroup size={18} class="inline mr-2" />
 					Permissions
@@ -105,7 +105,7 @@
 					class="px-4 py-2 font-medium transition-colors {activeTab === 'groups'
 						? 'text-accent border-b-2 border-accent'
 						: 'text-muted hover:text-accent'}"
-					on:click={() => setActiveTab('groups')}
+					onclick={() => setActiveTab('groups')}
 				>
 					<Blocks size={18} class="inline mr-2" />
 					Groups

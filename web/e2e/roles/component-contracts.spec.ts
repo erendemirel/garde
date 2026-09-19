@@ -14,8 +14,7 @@ import { cleanupTenantKeys, selectIssueScope } from '../helpers/apiKeys';
 import { openUserDetailFromSuperuser, patchUserMaps } from '../helpers/userApi';
 
 /**
- * Svelte 5 upgrade contracts — lock Modal/MultiSelect/tabs/icon/event chains
- * on current Svelte 4 before dependency bumps.
+ * Shared UI contracts — Modal/MultiSelect/tabs/icon/event chains.
  */
 test.describe(
 	'Component contracts (Svelte upgrade locks)',
@@ -319,6 +318,31 @@ test.describe(
 			await expect(suPage).toHaveURL(/tab=permissions/);
 			await expect(suPage.getByTestId('superuser-panel-permissions')).toBeVisible();
 
+			await suPage.getByTestId('superuser-tab-permissions').focus();
+			await suPage.keyboard.press('ArrowLeft');
+			await expect(suPage.getByTestId('superuser-tab-users')).toHaveAttribute(
+				'aria-selected',
+				'true'
+			);
+			await expect(suPage).toHaveURL(/tab=users/);
+
+			await suPage.getByTestId('superuser-tab-users').focus();
+			await suPage.keyboard.press('End');
+			await expect(suPage.getByTestId('superuser-tab-api-keys')).toHaveAttribute(
+				'aria-selected',
+				'true'
+			);
+			await expect(suPage).toHaveURL(/tab=api-keys/);
+			await expect(suPage.getByTestId('superuser-panel-api-keys')).toBeVisible();
+
+			await suPage.getByTestId('superuser-tab-api-keys').focus();
+			await suPage.keyboard.press('Home');
+			await expect(suPage.getByTestId('superuser-tab-users')).toHaveAttribute(
+				'aria-selected',
+				'true'
+			);
+			await expect(suPage).toHaveURL(/tab=users/);
+
 			await adminPage.goto('/admin');
 			await waitForPageShell(adminPage, 'admin-page');
 			await waitForUsersList(adminPage);
@@ -329,6 +353,21 @@ test.describe(
 				'true'
 			);
 			await expect(adminPage.getByTestId('admin-panel-permissions')).toBeVisible();
+
+			await adminPage.getByTestId('admin-tab-users').focus();
+			await adminPage.keyboard.press('End');
+			await expect(adminPage.getByTestId('admin-tab-groups')).toHaveAttribute(
+				'aria-selected',
+				'true'
+			);
+			await expect(adminPage.getByTestId('admin-panel-groups')).toBeVisible();
+			await adminPage.getByTestId('admin-tab-groups').focus();
+			await adminPage.keyboard.press('Home');
+			await expect(adminPage.getByTestId('admin-tab-users')).toHaveAttribute(
+				'aria-selected',
+				'true'
+			);
+			await expect(adminPage.getByTestId('admin-panel-users')).toBeVisible();
 		});
 
 		test('icon-backed controls remain operable', async ({

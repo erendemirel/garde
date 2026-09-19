@@ -3,15 +3,15 @@
 	import { register } from '$lib/api';
 	import { goto } from '$app/navigation';
 
-	let email = '';
-	let password = '';
-	let confirmPassword = '';
-	let error = '';
-	let success = '';
-	let loading = false;
-	let formReady = false;
+	let email = $state('');
+	let password = $state('');
+	let confirmPassword = $state('');
+	let error = $state('');
+	let success = $state('');
+	let loading = $state(false);
+	let formReady = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | null} */
-	let redirectTimer = null;
+	let redirectTimer = $state(null);
 
 	onMount(() => {
 		formReady = true;
@@ -63,7 +63,10 @@
 				aria-busy={!formReady}
 				method="post"
 				action="#"
-				on:submit|preventDefault={handleRegister}
+				onsubmit={(e) => {
+					e.preventDefault();
+					void handleRegister();
+				}}
 			>
 				<label class="flex flex-col gap-2 text-sm text-muted">
 					Email

@@ -35,6 +35,17 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 			await expect(page.getByTestId('login-page')).toBeVisible();
 			await expect(page.getByTestId('login-error')).toHaveCount(0);
 		});
+
+		test('Enter submit stays on page without full navigation', async ({ page }) => {
+			await openLogin(page);
+			await page.getByTestId('login-email').fill('nobody@example.com');
+			await page.getByTestId('login-password').fill('WrongPassword123!');
+			await page.getByTestId('login-password').press('Enter');
+
+			await expect(page).toHaveURL('/');
+			await expect(page.getByTestId('login-page')).toBeVisible();
+			await expect(page.getByTestId('login-error')).toBeVisible();
+		});
 	});
 
 	test.describe('API', () => {
