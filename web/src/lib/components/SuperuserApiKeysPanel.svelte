@@ -8,7 +8,7 @@
 		revokeTenantAPIKeys
 	} from '$lib/api';
 	import { showToast } from '$lib/toast';
-	import { KeyRound, Plus, Trash2, ChevronDown, ChevronRight, Copy, Check } from 'lucide-svelte';
+	import { KeyRound, Plus, Trash2, ChevronDown, ChevronRight, Copy, Check } from '@lucide/svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
@@ -16,51 +16,48 @@
 	const EXPIRY_WARN_MS = 14 * 24 * 60 * 60 * 1000;
 
 	/** @type {import('$lib/api').APIKeyInfo[]} */
-	let keys = [];
+	let keys = $state([]);
 	/** @type {import('$lib/api').APIKeyScopeInfo[]} */
-	let scopeCatalog = [];
-	let loading = true;
-	let error = '';
-	let search = '';
+	let scopeCatalog = $state([]);
+	let loading = $state(true);
+	let error = $state('');
+	let search = $state('');
 
 	/** @type {Set<string>} */
-	let expandedTenants = new Set();
+	let expandedTenants = $state(new Set());
 
-	let showIssueModal = false;
-	let issuing = false;
-	let issueTenantId = '';
-	let issueName = '';
-	/** @type {'internal' | 'tenant'} */
-	let issueAudience = 'tenant';
+	let showIssueModal = $state(false);
+	let issuing = $state(false);
+	let issueTenantId = $state('');
+	let issueName = $state('');
+	let issueAudience = $state(/** @type {'internal' | 'tenant'} */ ('tenant'));
 	/** @type {Set<string>} */
-	let issueScopes = new Set();
-	/** @type {'default' | 'custom' | 'never'} */
-	let issueExpiryMode = 'default';
-	let issueExpiresIn = '';
-	let issueRateLimit = '';
+	let issueScopes = $state(new Set());
+	let issueExpiryMode = $state(/** @type {'default' | 'custom' | 'never'} */ ('default'));
+	let issueExpiresIn = $state('');
+	let issueRateLimit = $state('');
 
-	/** @type {import('$lib/api').CreateAPIKeyResult | null} */
-	let revealedKey = null;
-	let copied = false;
-	let revealAcknowledged = false;
+	let revealedKey = $state(/** @type {import('$lib/api').CreateAPIKeyResult | null} */ (null));
+	let copied = $state(false);
+	let revealAcknowledged = $state(false);
 
-	/** @type {import('$lib/api').APIKeyInfo | null} */
-	let revokingKey = null;
-	let showRevokeKeyConfirm = false;
+	let revokingKey = $state(/** @type {import('$lib/api').APIKeyInfo | null} */ (null));
+	let showRevokeKeyConfirm = $state(false);
 
-	/** @type {{ tenantId: string, count: number } | null} */
-	let revokingTenant = null;
-	let showRevokeTenantConfirm = false;
+	let revokingTenant = $state(/** @type {{ tenantId: string, count: number } | null} */ (null));
+	let showRevokeTenantConfirm = $state(false);
 
-	$: scopeOptions = scopeCatalog.map((s) => ({
-		key: s.name,
-		name: s.name,
-		description: s.description
-	}));
+	let scopeOptions = $derived(
+		scopeCatalog.map((s) => ({
+			key: s.name,
+			name: s.name,
+			description: s.description
+		}))
+	);
 
-	$: activeKeys = keys.filter((k) => !k.revoked_at);
+	let activeKeys = $derived(keys.filter((k) => !k.revoked_at));
 
-	$: tenantGroups = (() => {
+	let tenantGroups = $derived.by(() => {
 		/** @type {Map<string, import('$lib/api').APIKeyInfo[]>} */
 		const map = new Map();
 		for (const key of activeKeys) {
@@ -86,15 +83,16 @@
 				);
 			})
 			.sort((a, b) => a.tenantId.localeCompare(b.tenantId));
-	})();
+	});
 
-	$: canIssue =
+	let canIssue = $derived(
 		issueTenantId.trim().length > 0 &&
-		issueName.trim().length > 0 &&
-		(issueAudience === 'internal' || issueAudience === 'tenant') &&
-		issueScopes.size > 0 &&
-		(issueExpiryMode !== 'custom' || issueExpiresIn.trim().length > 0) &&
-		!issuing;
+			issueName.trim().length > 0 &&
+			(issueAudience === 'internal' || issueAudience === 'tenant') &&
+			issueScopes.size > 0 &&
+			(issueExpiryMode !== 'custom' || issueExpiresIn.trim().length > 0) &&
+			!issuing
+	);
 
 	onMount(() => {
 		load();
@@ -141,9 +139,9 @@
 		showIssueModal = false;
 	}
 
-	/** @param {CustomEvent<Set<string>>} e */
-	function onScopesChange(e) {
-		issueScopes = e.detail;
+	/** @param {Set<string>} next */
+	function onScopesChange(next) {
+		issueScopes = next;
 	}
 
 	async function submitIssue() {
@@ -292,7 +290,7 @@
 			type="button"
 			class="btn-primary"
 			data-testid="api-keys-issue"
-			on:click={openIssueModal}
+			onclick={openIssueModal}
 		>
 			<Plus size={16} class="inline mr-1" />
 			Issue key
@@ -337,7 +335,7 @@
 								class="flex items-center gap-2 font-medium text-left flex-1 min-w-0"
 								data-testid="api-keys-tenant-toggle"
 								aria-expanded={expandedTenants.has(group.tenantId)}
-								on:click={() => toggleTenant(group.tenantId)}
+								onclick={() => toggleTenant(group.tenantId)}
 							>
 								{#if expandedTenants.has(group.tenantId)}
 									<ChevronDown size={16} class="shrink-0" />
@@ -355,7 +353,7 @@
 								class="btn-small text-error border-error/40"
 								data-testid="api-keys-revoke-tenant"
 								title="Revoke every key for this tenant"
-								on:click={() => askRevokeTenant(group.tenantId, group.keys.length)}
+								onclick={() => askRevokeTenant(group.tenantId, group.keys.length)}
 							>
 								Revoke all
 							</button>
@@ -444,7 +442,7 @@
 														class="btn-icon-danger"
 														data-testid="api-keys-revoke"
 														title="Revoke this key"
-														on:click={() => askRevokeKey(key)}
+														onclick={() => askRevokeKey(key)}
 													>
 														<Trash2 size={16} />
 													</button>
@@ -467,12 +465,15 @@
 	title="Issue API key"
 	labelledBy="api-keys-issue-title"
 	wide
-	on:close={closeIssueModal}
+	onClose={closeIssueModal}
 >
 	<form
 		class="space-y-4"
 		data-testid="api-keys-issue-modal"
-		on:submit|preventDefault={submitIssue}
+		onsubmit={(e) => {
+			e.preventDefault();
+			void submitIssue();
+		}}
 	>
 		<div>
 			<label class="form-label" for="api-keys-issue-tenant">Tenant ID</label>
@@ -541,7 +542,7 @@
 				options={scopeOptions}
 				selected={issueScopes}
 				initial={new Set()}
-				on:change={onScopesChange}
+				onChange={onScopesChange}
 			/>
 		</div>
 		<div>
@@ -600,25 +601,27 @@
 			/>
 		</div>
 	</form>
-	<div slot="footer" class="flex justify-end gap-3">
-		<button
-			type="button"
-			class="btn-secondary"
-			data-testid="api-keys-issue-cancel"
-			on:click={closeIssueModal}
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
-			class="btn-primary"
-			data-testid="api-keys-issue-submit"
-			disabled={!canIssue}
-			on:click={submitIssue}
-		>
-			{issuing ? 'Issuing…' : 'Issue key'}
-		</button>
-	</div>
+	{#snippet footer()}
+		<div class="flex justify-end gap-3">
+			<button
+				type="button"
+				class="btn-secondary"
+				data-testid="api-keys-issue-cancel"
+				onclick={closeIssueModal}
+			>
+				Cancel
+			</button>
+			<button
+				type="button"
+				class="btn-primary"
+				data-testid="api-keys-issue-submit"
+				disabled={!canIssue}
+				onclick={submitIssue}
+			>
+				{issuing ? 'Issuing…' : 'Issue key'}
+			</button>
+		</div>
+	{/snippet}
 </Modal>
 
 <Modal
@@ -648,7 +651,7 @@
 						type="button"
 						class="btn-secondary shrink-0"
 						data-testid="api-keys-reveal-copy"
-						on:click={copyRevealedKey}
+						onclick={copyRevealedKey}
 					>
 						{#if copied}
 							<Check size={16} />
@@ -668,17 +671,19 @@
 			</label>
 		</div>
 	{/if}
-	<div slot="footer" class="flex justify-end">
-		<button
-			type="button"
-			class="btn-primary"
-			data-testid="api-keys-reveal-done"
-			disabled={!revealAcknowledged}
-			on:click={closeRevealModal}
-		>
-			Done
-		</button>
-	</div>
+	{#snippet footer()}
+		<div class="flex justify-end">
+			<button
+				type="button"
+				class="btn-primary"
+				data-testid="api-keys-reveal-done"
+				disabled={!revealAcknowledged}
+				onclick={closeRevealModal}
+			>
+				Done
+			</button>
+		</div>
+	{/snippet}
 </Modal>
 
 <ConfirmModal
@@ -689,8 +694,8 @@
 		: ''}
 	confirmText="Revoke"
 	confirmClass="btn-danger"
-	on:confirm={confirmRevokeKey}
-	on:cancel={() => {
+	onConfirm={confirmRevokeKey}
+	onCancel={() => {
 		revokingKey = null;
 	}}
 />
@@ -703,8 +708,8 @@
 		: ''}
 	confirmText="Revoke all"
 	confirmClass="btn-danger"
-	on:confirm={confirmRevokeTenant}
-	on:cancel={() => {
+	onConfirm={confirmRevokeTenant}
+	onCancel={() => {
 		revokingTenant = null;
 	}}
 />

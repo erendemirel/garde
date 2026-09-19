@@ -5,7 +5,7 @@
 	import { refreshSession } from '$lib/session';
 	import { goto } from '$app/navigation';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
-	import { ArrowLeft, ShieldCheck, ShieldOff, CheckCircle, X } from 'lucide-svelte';
+	import { ArrowLeft, ShieldCheck, ShieldOff, CheckCircle, X } from '@lucide/svelte';
 
 	let step = 'choice';
 	let secret = '';
@@ -276,5 +276,5 @@
 	message="Disable MFA now? Your next sign-in will only require email and password until you set MFA up again."
 	confirmText="Disable MFA"
 	confirmClass="btn-danger"
-	on:confirm={handleDisable}
+	onConfirm={handleDisable}
 />

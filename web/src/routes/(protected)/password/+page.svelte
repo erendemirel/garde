@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
-	import { ArrowLeft, KeyRound } from 'lucide-svelte';
+	import { ArrowLeft, KeyRound } from '@lucide/svelte';
 
 	let oldPassword = '';
 	let newPassword = '';
@@ -153,5 +153,5 @@
 	title="Confirm Password Change"
 	message="Change your password now? You will be signed out immediately and must sign in with the new password."
 	confirmText="Change Password"
-	on:confirm={handleChange}
+	onConfirm={handleChange}
 />

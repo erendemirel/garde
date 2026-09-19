@@ -32,6 +32,8 @@ e2e/
 
     nav.spec.ts            # Nav links by role (admin, superuser, regular)
 
+    component-contracts.spec.ts  # @focused — Modal/MultiSelect/tabs/icon upgrade locks
+
     catalog-modals.spec.ts # Modal cancel flows (admin + superuser)
 
     admin/                 # Admin console
@@ -84,6 +86,8 @@ e2e/
   - Multi-actor flow → `journeys/`, in the file for that **domain** (`registration`, `request-update`, `active-session`).
 
   - Long cross-feature epics → `journeys/epic-*.spec.ts` (tagged `@epic`; run with `--grep @epic`).
+
+  - Svelte upgrade / shared-component contracts → `roles/component-contracts.spec.ts` (tagged `@focused`). Locks Modal close/confirm, MultiSelect change/search/keyboard, tablist arrows, Lucide icon controls, and non-dismissible reveal before/after framework bumps. Prefer extending this file when changing those hubs.
 
   - Use nested `test.describe` blocks for story type (`form`, `actor handoffs`, `user dashboard outcomes`, etc.).
 

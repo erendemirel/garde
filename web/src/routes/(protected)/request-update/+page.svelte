@@ -5,7 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
 	import { refreshSession } from '$lib/session';
-	import { ArrowLeft, Send } from 'lucide-svelte';
+	import { ArrowLeft, Send } from '@lucide/svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 
@@ -114,9 +114,8 @@
 		selectedGroups = new Set(selectedGroups);
 	}
 
-	/** @param {CustomEvent} event */
-	function revertChange(event) {
-		const item = event.detail;
+	/** @param {{ label: string, kind: string, target?: string, key?: string }} item */
+	function revertChange(item) {
 		if (!item?.key || !item?.target) return;
 		if (item.target === 'permission') {
 			togglePermission(item.key);
@@ -223,7 +222,7 @@
 				title="Request summary"
 				items={changeItems}
 				emptyText="No permission or group changes selected yet."
-				on:revert={revertChange}
+				onRevert={revertChange}
 			/>
 
 			<div class="flex justify-center sm:justify-start">

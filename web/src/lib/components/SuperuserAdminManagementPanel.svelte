@@ -4,46 +4,50 @@
 	import { showToast } from '$lib/toast';
 	import { ensureUsersCache, setUsersCache, usersCache, usersCacheError } from '$lib/usersLoad';
 	import { enabledKeys } from '$lib/membership';
-	import { Eye, UserPen, X } from 'lucide-svelte';
+	import { Eye, UserPen, X } from '@lucide/svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import TablePagination from '$lib/components/TablePagination.svelte';
 
-	let loading = true;
-	let error = '';
+	let loading = $state(true);
+	let error = $state('');
 	/** @type {Record<string, string[]>} */
-	let adminUserManagement = {};
+	let adminUserManagement = $state({});
 	/** @type {{ key: string, name: string, description?: string }[]} */
-	let groups = [];
+	let groups = $state([]);
 
-	let adminManagementSearch = '';
-	let adminManagementPage = 1;
-	let adminManagementPageSize = 30;
+	let adminManagementSearch = $state('');
+	let adminManagementPage = $state(1);
+	let adminManagementPageSize = $state(30);
 
-	let showManageableUsersModal = false;
-	/** @type {{ adminEmail: string, userEmails: string[] } | null} */
-	let viewingManageableUsers = null;
-	let manageableUsersSearch = '';
+	let showManageableUsersModal = $state(false);
+	let viewingManageableUsers = $state(
+		/** @type {{ adminEmail: string, userEmails: string[] } | null} */ (null)
+	);
+	let manageableUsersSearch = $state('');
 
-	let showManageUsersModal = false;
-	let showMembershipSaveConfirm = false;
-	let membershipSaving = false;
-	/** @type {{ type: 'admin-groups', name: string, userId: string } | null} */
-	let managingMembership = null;
+	let showManageUsersModal = $state(false);
+	let showMembershipSaveConfirm = $state(false);
+	let membershipSaving = $state(false);
+	let managingMembership = $state(
+		/** @type {{ type: 'admin-groups', name: string, userId: string } | null} */ (null)
+	);
 	/** @type {Set<string>} */
-	let selectedMembers = new Set();
+	let selectedMembers = $state(new Set());
 	/** @type {Set<string>} */
-	let initialMembers = new Set();
+	let initialMembers = $state(new Set());
 
-	$: groupNameOptions = groups.map((g) => ({
-		key: g.name,
-		name: g.name,
-		description: g.description || undefined
-	}));
+	let groupNameOptions = $derived(
+		groups.map((g) => ({
+			key: g.name,
+			name: g.name,
+			description: g.description || undefined
+		}))
+	);
 
-	$: adminManagementRows = (() => {
+	let adminManagementRows = $derived.by(() => {
 		/** @type {Map<string, string[]>} */
 		const byEmail = new Map();
 		for (const [adminEmail, userEmails] of Object.entries(adminUserManagement)) {
@@ -56,9 +60,9 @@
 		return [...byEmail.entries()]
 			.map(([adminEmail, userEmails]) => ({ adminEmail, userEmails }))
 			.sort((a, b) => a.adminEmail.localeCompare(b.adminEmail));
-	})();
+	});
 
-	$: filteredAdminManagementRows = (() => {
+	let filteredAdminManagementRows = $derived.by(() => {
 		const q = adminManagementSearch.trim().toLowerCase();
 		if (!q) return adminManagementRows;
 		return adminManagementRows.filter(
@@ -66,30 +70,30 @@
 				row.adminEmail.toLowerCase().includes(q) ||
 				row.userEmails.some((email) => String(email).toLowerCase().includes(q))
 		);
-	})();
+	});
 
-	$: {
+	$effect(() => {
 		void adminManagementSearch;
 		adminManagementPage = 1;
-	}
+	});
 
-	$: pagedAdminManagementRows = (() => {
+	let pagedAdminManagementRows = $derived.by(() => {
 		const size = Number(adminManagementPageSize) || 30;
 		const start = (adminManagementPage - 1) * size;
 		return filteredAdminManagementRows.slice(start, start + size);
-	})();
+	});
 
-	$: filteredManageableUserEmails = (() => {
+	let filteredManageableUserEmails = $derived.by(() => {
 		if (!viewingManageableUsers) return [];
 		const q = manageableUsersSearch.trim().toLowerCase();
 		const emails = viewingManageableUsers.userEmails;
 		if (!q) return emails;
 		return emails.filter((email) => String(email).toLowerCase().includes(q));
-	})();
+	});
 
-	$: memberAdds = [...selectedMembers].filter((id) => !initialMembers.has(id));
-	$: memberRemoves = [...initialMembers].filter((id) => !selectedMembers.has(id));
-	$: memberChangeItems = [
+	let memberAdds = $derived([...selectedMembers].filter((id) => !initialMembers.has(id)));
+	let memberRemoves = $derived([...initialMembers].filter((id) => !selectedMembers.has(id)));
+	let memberChangeItems = $derived([
 		...memberAdds.map((id) => ({
 			label: assignmentLabelForKey(id),
 			kind: 'add',
@@ -102,16 +106,20 @@
 			target: 'group',
 			key: id
 		}))
-	];
-	$: membershipDirty = memberChangeItems.length > 0;
-	$: membershipSaveMessage = managingMembership
-		? `Save changes for groups of admin "${managingMembership.name}"?\n\n${memberChangeItems
-				.map((i) => `• ${i.kind === 'add' ? 'Add' : 'Remove'}: ${i.label}`)
-				.join('\n')}`
-		: '';
-	$: manageUsersTitle = managingMembership
-		? `Manage groups for admin: ${managingMembership.name}`
-		: 'Manage groups';
+	]);
+	let membershipDirty = $derived(memberChangeItems.length > 0);
+	let membershipSaveMessage = $derived(
+		managingMembership
+			? `Save changes for groups of admin "${managingMembership.name}"?\n\n${memberChangeItems
+					.map((i) => `• ${i.kind === 'add' ? 'Add' : 'Remove'}: ${i.label}`)
+					.join('\n')}`
+			: ''
+	);
+	let manageUsersTitle = $derived(
+		managingMembership
+			? `Manage groups for admin: ${managingMembership.name}`
+			: 'Manage groups'
+	);
 
 	onMount(() => {
 		void loadAdminData();
@@ -223,9 +231,8 @@
 		selectedMembers = new Set(selectedMembers);
 	}
 
-	/** @param {CustomEvent} event */
-	function revertMemberChange(event) {
-		const item = event.detail;
+	/** @param {{ label: string, kind: string, target?: string, key?: string }} item */
+	function revertMemberChange(item) {
 		if (!item?.key) return;
 		toggleMember(item.key);
 	}
@@ -373,7 +380,7 @@
 											title="View manageable users"
 											aria-label="View manageable users for admin {row.adminEmail}"
 											data-testid="admin-mgmt-view-users"
-											on:click={() => openManageableUsersModal(row)}
+											onclick={() => openManageableUsersModal(row)}
 										>
 											<Eye size={20} />
 										</button>
@@ -383,7 +390,7 @@
 											title="Manage groups of the admin"
 											aria-label="Manage groups of the admin {row.adminEmail}"
 											data-testid="admin-mgmt-edit-groups"
-											on:click={() => openManageAdminGroups(row.adminEmail)}
+											onclick={() => openManageAdminGroups(row.adminEmail)}
 										>
 											<UserPen size={20} />
 										</button>
@@ -411,17 +418,18 @@
 		: 'Manageable users'}
 	labelledBy="manageable-users-title"
 	wide
-	on:close={closeManageableUsersModal}
+	onClose={closeManageableUsersModal}
 >
-	<button
-		slot="header-end"
-		type="button"
-		class="text-muted hover:text-accent"
-		on:click={closeManageableUsersModal}
-		aria-label="Close"
-	>
-		<X size={20} />
-	</button>
+	{#snippet headerEnd()}
+		<button
+			type="button"
+			class="text-muted hover:text-accent"
+			onclick={closeManageableUsersModal}
+			aria-label="Close"
+		>
+			<X size={20} />
+		</button>
+	{/snippet}
 	{#if viewingManageableUsers}
 		<div class="space-y-4" data-testid="admin-mgmt-users-modal">
 			<p class="text-sm text-muted" data-testid="admin-mgmt-users-summary">
@@ -469,7 +477,7 @@
 					type="button"
 					class="btn-secondary"
 					data-testid="admin-mgmt-users-close"
-					on:click={closeManageableUsersModal}>Close</button
+					onclick={closeManageableUsersModal}>Close</button
 				>
 			</div>
 		</div>
@@ -482,17 +490,18 @@
 	labelledBy="superuser-admin-groups-title"
 	wide
 	preferDialogFocus
-	on:close={closeManageUsersModal}
+	onClose={closeManageUsersModal}
 >
-	<button
-		slot="header-end"
-		type="button"
-		class="text-muted hover:text-accent"
-		on:click={closeManageUsersModal}
-		aria-label="Close"
-	>
-		<X size={20} />
-	</button>
+	{#snippet headerEnd()}
+		<button
+			type="button"
+			class="text-muted hover:text-accent"
+			onclick={closeManageUsersModal}
+			aria-label="Close"
+		>
+			<X size={20} />
+		</button>
+	{/snippet}
 	{#if managingMembership}
 		<div class="space-y-4" data-testid="admin-mgmt-groups-modal">
 			<p class="text-xs text-muted">
@@ -516,30 +525,32 @@
 				title="Pending save"
 				items={memberChangeItems}
 				emptyText="No unsaved changes."
-				on:revert={revertMemberChange}
+				onRevert={revertMemberChange}
 			/>
 		</div>
 	{/if}
-	<div slot="footer" class="contents">
-		{#if managingMembership}
-			<button
-				type="button"
-				class="btn-secondary"
-				data-testid="admin-mgmt-groups-cancel"
-				on:click={closeManageUsersModal}
-				disabled={membershipSaving}>Cancel</button
-			>
-			<button
-				type="button"
-				class="btn-primary"
-				data-testid="admin-mgmt-groups-save"
-				on:click={requestMembershipSave}
-				disabled={membershipSaving || !membershipDirty}
-			>
-				{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
-			</button>
-		{/if}
-	</div>
+	{#snippet footer()}
+		<div class="contents">
+			{#if managingMembership}
+				<button
+					type="button"
+					class="btn-secondary"
+					data-testid="admin-mgmt-groups-cancel"
+					onclick={closeManageUsersModal}
+					disabled={membershipSaving}>Cancel</button
+				>
+				<button
+					type="button"
+					class="btn-primary"
+					data-testid="admin-mgmt-groups-save"
+					onclick={requestMembershipSave}
+					disabled={membershipSaving || !membershipDirty}
+				>
+					{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
+				</button>
+			{/if}
+		</div>
+	{/snippet}
 </Modal>
 
 <ConfirmModal
@@ -548,5 +559,5 @@
 	message={membershipSaveMessage}
 	confirmText="Save Changes"
 	confirmClass="btn-primary"
-	on:confirm={saveMembership}
+	onConfirm={saveMembership}
 />

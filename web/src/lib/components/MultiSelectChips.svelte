@@ -1,69 +1,84 @@
 <script>
-	import { createEventDispatcher, onMount } from 'svelte';
-	import { X } from 'lucide-svelte';
+	import { onMount } from 'svelte';
+	import { X } from '@lucide/svelte';
 
-	/** @type {{ key: string, name: string, description?: string }[]} */
-	export let options = [];
-	/** @type {Set<string>} */
-	export let selected = new Set();
-	/** @type {Set<string>} */
-	export let initial = new Set();
-	/** @type {'permission' | 'group' | 'scope'} */
-	export let variant = 'permission';
-	export let placeholder = 'Search to add…';
-	export let label = '';
-	/** When true, parent supplies options via `search` events (paginated API). Local text filter is skipped. */
-	export let remote = false;
-	export let remoteHint = 'Type at least 2 characters to search…';
+	/** @type {{
+	 *   options?: { key: string, name: string, description?: string }[],
+	 *   selected?: Set<string>,
+	 *   initial?: Set<string>,
+	 *   variant?: 'permission' | 'group' | 'scope',
+	 *   placeholder?: string,
+	 *   label?: string,
+	 *   remote?: boolean,
+	 *   remoteHint?: string,
+	 *   onChange?: (next: Set<string>) => void,
+	 *   onSearch?: (query: string) => void
+	 * }} */
+	let {
+		options = [],
+		selected = $bindable(new Set()),
+		initial = new Set(),
+		variant = 'permission',
+		placeholder = 'Search to add…',
+		label = '',
+		remote = false,
+		remoteHint = 'Type at least 2 characters to search…',
+		onChange,
+		onSearch
+	} = $props();
 
 	const PAGE_SIZE = 25;
-	const dispatch = createEventDispatcher();
 	const listId = `ms-list-${Math.random().toString(36).slice(2, 9)}`;
 
-	let query = '';
-	let open = false;
-	let highlight = 0;
-	let visibleLimit = PAGE_SIZE;
+	let query = $state('');
+	let open = $state(false);
+	let highlight = $state(0);
+	let visibleLimit = $state(PAGE_SIZE);
 	/** @type {HTMLElement | null} */
-	let rootEl = null;
+	let rootEl = $state(null);
 	/** @type {HTMLInputElement | null} */
-	let inputEl = null;
+	let inputEl = $state(null);
 	/** @type {HTMLUListElement | null} */
-	let listEl = null;
+	let listEl = $state(null);
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
 	let searchTimer;
 
-	$: selectedStyle =
-		variant === 'group' ? 'badge-group' : variant === 'scope' ? 'badge-scope' : 'badge-permission';
+	let selectedStyle = $derived(
+		variant === 'group' ? 'badge-group' : variant === 'scope' ? 'badge-scope' : 'badge-permission'
+	);
 
 	/** Selected chips, then pending removals (still visible until undo). */
-	$: trayItems = [
+	let trayItems = $derived([
 		...options.filter((o) => selected.has(o.key)).map((o) => ({ ...o, state: pendingState(o.key) })),
 		...options
 			.filter((o) => !selected.has(o.key) && initial.has(o.key))
 			.map((o) => ({ ...o, state: 'removed' }))
-	];
+	]);
 
 	/** Addable options: not selected; pending removals stay in the tray only. */
-	$: filtered = options.filter((o) => {
-		if (selected.has(o.key)) return false;
-		if (initial.has(o.key) && !selected.has(o.key)) return false;
-		if (remote) return true;
-		if (!query) return true;
-		const q = query.toLowerCase();
-		return (
-			o.name.toLowerCase().includes(q) ||
-			o.key.toLowerCase().includes(q) ||
-			(o.description && o.description.toLowerCase().includes(q))
-		);
+	let filtered = $derived(
+		options.filter((o) => {
+			if (selected.has(o.key)) return false;
+			if (initial.has(o.key) && !selected.has(o.key)) return false;
+			if (remote) return true;
+			if (!query) return true;
+			const q = query.toLowerCase();
+			return (
+				o.name.toLowerCase().includes(q) ||
+				o.key.toLowerCase().includes(q) ||
+				(o.description && o.description.toLowerCase().includes(q))
+			);
+		})
+	);
+
+	let visibleOptions = $derived(filtered.slice(0, visibleLimit));
+	let hasMore = $derived(visibleLimit < filtered.length);
+
+	$effect(() => {
+		if (highlight >= visibleOptions.length) {
+			highlight = Math.max(0, visibleOptions.length - 1);
+		}
 	});
-
-	$: visibleOptions = filtered.slice(0, visibleLimit);
-	$: hasMore = visibleLimit < filtered.length;
-
-	$: if (highlight >= visibleOptions.length) {
-		highlight = Math.max(0, visibleOptions.length - 1);
-	}
 
 	function pendingState(/** @type {string} */ key) {
 		if (selected.has(key) && !initial.has(key)) return 'added';
@@ -79,7 +94,7 @@
 
 	function emit(/** @type {Set<string>} */ next) {
 		selected = next;
-		dispatch('change', next);
+		onChange?.(next);
 	}
 
 	function resetVisible() {
@@ -133,7 +148,7 @@
 		if (!remote) return;
 		if (searchTimer) clearTimeout(searchTimer);
 		searchTimer = setTimeout(() => {
-			dispatch('search', query);
+			onSearch?.(query);
 		}, 300);
 	}
 
@@ -228,9 +243,9 @@
 			autocomplete="off"
 			aria-autocomplete="list"
 			aria-label={label || placeholder}
-			on:focus={openList}
-			on:input={onInput}
-			on:keydown={onKeydown}
+			onfocus={openList}
+			oninput={onInput}
+			onkeydown={onKeydown}
 		/>
 		{#if trayItems.length > 0}
 			<div class="ms-tray" data-testid="multiselect-tray">
@@ -242,7 +257,7 @@
 						data-key={item.key}
 						data-state={item.state}
 						title={item.description || (item.state === 'removed' ? 'Restore' : 'Remove')}
-						on:click={() => onChipAction(item)}
+						onclick={() => onChipAction(item)}
 					>
 						{#if item.state === 'added'}
 							<span class="ms-chip-mark" aria-hidden="true">+</span>
@@ -266,7 +281,7 @@
 			role="listbox"
 			data-testid="multiselect-dropdown"
 			bind:this={listEl}
-			on:scroll={onListScroll}
+			onscroll={onListScroll}
 		>
 			{#if remote && query.trim().length > 0 && query.trim().length < 2}
 				<li class="ms-empty" role="presentation">{remoteHint}</li>
@@ -290,8 +305,8 @@
 							data-testid="multiselect-option"
 							data-key={opt.key}
 							title={opt.description}
-							on:click={() => add(opt.key)}
-							on:mouseenter={() => (highlight = i)}
+							onclick={() => add(opt.key)}
+							onmouseenter={() => (highlight = i)}
 						>
 							<span class="ms-option-name">{opt.name}</span>
 							{#if opt.description}

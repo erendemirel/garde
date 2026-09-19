@@ -8,48 +8,52 @@
 		getAllPermissionVisibility
 	} from '$lib/api';
 	import { showToast } from '$lib/toast';
-	import { Edit, Grid3x3, List, Plus, Check, X } from 'lucide-svelte';
+	import { Edit, Grid3x3, List, Plus, Check, X } from '@lucide/svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import MultiSelectChips from '$lib/components/MultiSelectChips.svelte';
 	import ChangeSummary from '$lib/components/ChangeSummary.svelte';
 	import TablePagination from '$lib/components/TablePagination.svelte';
 
-	let loading = true;
-	let error = '';
+	let loading = $state(true);
+	let error = $state('');
 	/** @type {{ key: string, name: string, description?: string }[]} */
-	let permissions = [];
+	let permissions = $state([]);
 	/** @type {{ key: string, name: string, description?: string }[]} */
-	let groups = [];
+	let groups = $state([]);
 	/** @type {Record<string, string[]>} */
-	let permissionVisibility = {};
+	let permissionVisibility = $state({});
 
-	let visibilityViewMode = 'list';
-	let visibilitySearch = '';
-	let visibilityPage = 1;
-	let visibilityPageSize = 30;
+	let visibilityViewMode = $state('list');
+	let visibilitySearch = $state('');
+	let visibilityPage = $state(1);
+	let visibilityPageSize = $state(30);
 
-	let showRemoveVisibilityConfirm = false;
-	/** @type {{ permissionKey: string, groupKey: string } | null} */
-	let pendingVisibilityRemove = null;
+	let showRemoveVisibilityConfirm = $state(false);
+	let pendingVisibilityRemove = $state(
+		/** @type {{ permissionKey: string, groupKey: string } | null} */ (null)
+	);
 
-	let showManageUsersModal = false;
-	let showMembershipSaveConfirm = false;
-	let membershipSaving = false;
-	/** @type {{ type: 'visibility', name: string, key: string } | null} */
-	let managingMembership = null;
+	let showManageUsersModal = $state(false);
+	let showMembershipSaveConfirm = $state(false);
+	let membershipSaving = $state(false);
+	let managingMembership = $state(
+		/** @type {{ type: 'visibility', name: string, key: string } | null} */ (null)
+	);
 	/** @type {Set<string>} */
-	let selectedMembers = new Set();
+	let selectedMembers = $state(new Set());
 	/** @type {Set<string>} */
-	let initialMembers = new Set();
+	let initialMembers = $state(new Set());
 
-	$: groupOptions = groups.map((g) => ({
-		key: g.key,
-		name: g.name,
-		description: g.description || undefined
-	}));
+	let groupOptions = $derived(
+		groups.map((g) => ({
+			key: g.key,
+			name: g.name,
+			description: g.description || undefined
+		}))
+	);
 
-	$: filteredVisibilityPermissions = (() => {
+	let filteredVisibilityPermissions = $derived.by(() => {
 		const q = visibilitySearch.trim().toLowerCase();
 		if (!q) return permissions;
 		return permissions.filter((p) => {
@@ -65,22 +69,22 @@
 				return (group?.name || '').toLowerCase().includes(q);
 			});
 		});
-	})();
+	});
 
-	$: {
+	$effect(() => {
 		void visibilitySearch;
 		visibilityPage = 1;
-	}
+	});
 
-	$: pagedVisibilityPermissions = (() => {
+	let pagedVisibilityPermissions = $derived.by(() => {
 		const size = Number(visibilityPageSize) || 30;
 		const start = (visibilityPage - 1) * size;
 		return filteredVisibilityPermissions.slice(start, start + size);
-	})();
+	});
 
-	$: memberAdds = [...selectedMembers].filter((id) => !initialMembers.has(id));
-	$: memberRemoves = [...initialMembers].filter((id) => !selectedMembers.has(id));
-	$: memberChangeItems = [
+	let memberAdds = $derived([...selectedMembers].filter((id) => !initialMembers.has(id)));
+	let memberRemoves = $derived([...initialMembers].filter((id) => !selectedMembers.has(id)));
+	let memberChangeItems = $derived([
 		...memberAdds.map((id) => ({
 			label: assignmentLabelForKey(id),
 			kind: 'add',
@@ -93,25 +97,29 @@
 			target: 'group',
 			key: id
 		}))
-	];
-	$: membershipDirty = memberChangeItems.length > 0;
-	$: membershipSaveMessage = managingMembership
-		? `Save changes for visibility of permission "${managingMembership.name}"?\n\n${memberChangeItems
-				.map((i) => `• ${i.kind === 'add' ? 'Add' : 'Remove'}: ${i.label}`)
-				.join('\n')}`
-		: '';
-	$: manageUsersTitle = managingMembership
-		? `Manage visibility for permission: ${managingMembership.name}`
-		: 'Manage visibility';
+	]);
+	let membershipDirty = $derived(memberChangeItems.length > 0);
+	let membershipSaveMessage = $derived(
+		managingMembership
+			? `Save changes for visibility of permission "${managingMembership.name}"?\n\n${memberChangeItems
+					.map((i) => `• ${i.kind === 'add' ? 'Add' : 'Remove'}: ${i.label}`)
+					.join('\n')}`
+			: ''
+	);
+	let manageUsersTitle = $derived(
+		managingMembership
+			? `Manage visibility for permission: ${managingMembership.name}`
+			: 'Manage visibility'
+	);
 
-	$: removeVisibilityMessage = (() => {
+	let removeVisibilityMessage = $derived.by(() => {
 		const pending = pendingVisibilityRemove;
 		if (!pending) return 'Remove this visibility mapping?';
 		const permName =
 			permissions.find((p) => p.key === pending.permissionKey)?.name || pending.permissionKey;
 		const groupName = groups.find((g) => g.key === pending.groupKey)?.name || pending.groupKey;
 		return `Remove visibility of "${permName}" from "${groupName}"?`;
-	})();
+	});
 
 	onMount(() => {
 		void loadData();
@@ -184,9 +192,8 @@
 		selectedMembers = new Set(selectedMembers);
 	}
 
-	/** @param {CustomEvent} event */
-	function revertMemberChange(event) {
-		const item = event.detail;
+	/** @param {{ label: string, kind: string, target?: string, key?: string }} item */
+	function revertMemberChange(item) {
 		if (!item?.key) return;
 		toggleMember(item.key);
 	}
@@ -380,7 +387,7 @@
 				type="button"
 				data-testid="superuser-visibility-view-list"
 				aria-pressed={visibilityViewMode === 'list'}
-				on:click={() => (visibilityViewMode = 'list')}
+				onclick={() => (visibilityViewMode = 'list')}
 				title="List view"
 			>
 				<List size={16} />
@@ -391,7 +398,7 @@
 				type="button"
 				data-testid="superuser-visibility-view-matrix"
 				aria-pressed={visibilityViewMode === 'matrix'}
-				on:click={() => (visibilityViewMode = 'matrix')}
+				onclick={() => (visibilityViewMode = 'matrix')}
 				title="Matrix view"
 			>
 				<Grid3x3 size={16} />
@@ -460,7 +467,7 @@
 											title="Manage visibility"
 											aria-label="Manage visibility for permission {perm.name}"
 											data-testid="superuser-visibility-manage"
-											on:click={() => openManageVisibilityGroups(perm)}
+											onclick={() => openManageVisibilityGroups(perm)}
 										>
 											<Edit size={20} />
 										</button>
@@ -513,7 +520,7 @@
 												data-testid="superuser-visibility-cell"
 												data-permission-name={perm.name}
 												data-group-name={group.name}
-												on:click={() => toggleVisibility(perm.key, group.key)}
+												onclick={() => toggleVisibility(perm.key, group.key)}
 												title={hasVisibility ? 'Remove visibility' : 'Add visibility'}
 												aria-label="{hasVisibility
 													? 'Remove'
@@ -550,8 +557,8 @@
 	message={removeVisibilityMessage}
 	confirmText="Remove"
 	confirmClass="btn-danger"
-	on:confirm={handleRemoveVisibilityConfirm}
-	on:cancel={() => {
+	onConfirm={handleRemoveVisibilityConfirm}
+	onCancel={() => {
 		pendingVisibilityRemove = null;
 	}}
 />
@@ -562,18 +569,19 @@
 	labelledBy="superuser-visibility-manage-title"
 	wide
 	preferDialogFocus
-	on:close={closeManageUsersModal}
+	onClose={closeManageUsersModal}
 >
-	<button
-		slot="header-end"
-		type="button"
-		class="text-muted hover:text-accent"
-		data-testid="superuser-visibility-manage-close"
-		on:click={closeManageUsersModal}
-		aria-label="Close"
-	>
-		<X size={20} />
-	</button>
+	{#snippet headerEnd()}
+		<button
+			type="button"
+			class="text-muted hover:text-accent"
+			data-testid="superuser-visibility-manage-close"
+			onclick={closeManageUsersModal}
+			aria-label="Close"
+		>
+			<X size={20} />
+		</button>
+	{/snippet}
 	{#if managingMembership}
 		<div class="space-y-4" data-testid="superuser-visibility-manage-modal">
 			<p class="text-xs text-muted">
@@ -599,30 +607,32 @@
 				title="Pending save"
 				items={memberChangeItems}
 				emptyText="No unsaved changes."
-				on:revert={revertMemberChange}
+				onRevert={revertMemberChange}
 			/>
 		</div>
 	{/if}
-	<div slot="footer" class="contents">
-		{#if managingMembership}
-			<button
-				type="button"
-				class="btn-secondary"
-				data-testid="superuser-visibility-manage-cancel"
-				on:click={closeManageUsersModal}
-				disabled={membershipSaving}>Cancel</button
-			>
-			<button
-				type="button"
-				class="btn-primary"
-				data-testid="superuser-visibility-manage-save"
-				on:click={requestMembershipSave}
-				disabled={membershipSaving || !membershipDirty}
-			>
-				{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
-			</button>
-		{/if}
-	</div>
+	{#snippet footer()}
+		<div class="contents">
+			{#if managingMembership}
+				<button
+					type="button"
+					class="btn-secondary"
+					data-testid="superuser-visibility-manage-cancel"
+					onclick={closeManageUsersModal}
+					disabled={membershipSaving}>Cancel</button
+				>
+				<button
+					type="button"
+					class="btn-primary"
+					data-testid="superuser-visibility-manage-save"
+					onclick={requestMembershipSave}
+					disabled={membershipSaving || !membershipDirty}
+				>
+					{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
+				</button>
+			{/if}
+		</div>
+	{/snippet}
 </Modal>
 
 <ConfirmModal
@@ -631,5 +641,5 @@
 	message={membershipSaveMessage}
 	confirmText="Save Changes"
 	confirmClass="btn-primary"
-	on:confirm={saveMembership}
+	onConfirm={saveMembership}
 />

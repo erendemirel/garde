@@ -1,9 +1,9 @@
 <script>
-	import { CircleCheck, CircleX, CircleAlert } from 'lucide-svelte';
+	import { CircleCheck, CircleX, CircleAlert } from '@lucide/svelte';
 	import { formatStatus, getStatusClass } from '$lib/userStatus';
 
-	/** @type {string} */
-	export let status = '';
+	/** @type {{ status?: string }} */
+	let { status = '' } = $props();
 </script>
 
 <span

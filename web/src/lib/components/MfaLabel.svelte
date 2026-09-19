@@ -1,16 +1,12 @@
 <script>
 	import { formatMfaLabel, getMfaKind, mfaToneClass } from '$lib/userStatus';
 
-	/** @type {boolean} */
-	export let enabled = false;
-	/** @type {boolean} */
-	export let enforced = false;
-	/** Prefer shorter labels on narrow tables */
-	export let compact = false;
+	/** @type {{ enabled?: boolean, enforced?: boolean, compact?: boolean }} */
+	let { enabled = false, enforced = false, compact = false } = $props();
 
-	$: kind = getMfaKind(enabled, enforced);
-	$: label = formatMfaLabel(kind, compact);
-	$: full = formatMfaLabel(kind, false);
+	let kind = $derived(getMfaKind(enabled, enforced));
+	let label = $derived(formatMfaLabel(kind, compact));
+	let full = $derived(formatMfaLabel(kind, false));
 </script>
 
 <span class={mfaToneClass(kind)} title={full}>{label}</span>

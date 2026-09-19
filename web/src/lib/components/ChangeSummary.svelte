@@ -1,20 +1,24 @@
 <script>
-	import { createEventDispatcher } from 'svelte';
+	/** @type {{
+	 *   items?: { label: string, kind: string, target?: string, key?: string }[],
+	 *   title?: string,
+	 *   emptyText?: string,
+	 *   onRevert?: (item: { label: string, kind: string, target?: string, key?: string }) => void
+	 * }} */
+	let {
+		items = [],
+		title = 'Changes',
+		emptyText = '',
+		onRevert
+	} = $props();
 
-	/** @type {{ label: string, kind: string, target?: string, key?: string }[]} */
-	export let items = [];
-	export let title = 'Changes';
-	export let emptyText = '';
-
-	const dispatch = createEventDispatcher();
-
-	$: added = items.filter((i) => i.kind === 'add');
-	$: removed = items.filter((i) => i.kind === 'remove');
-	$: changed = items.filter((i) => i.kind === 'change');
+	let added = $derived(items.filter((i) => i.kind === 'add'));
+	let removed = $derived(items.filter((i) => i.kind === 'remove'));
+	let changed = $derived(items.filter((i) => i.kind === 'change'));
 
 	/** @param {{ label: string, kind: string, target?: string, key?: string }} item */
 	function handleRevert(item) {
-		dispatch('revert', item);
+		onRevert?.(item);
 	}
 </script>
 
@@ -34,7 +38,7 @@
 							data-kind="add"
 							data-key={item.key}
 							title="Undo"
-							on:click={() => handleRevert(item)}
+							onclick={() => handleRevert(item)}
 						>
 							+ {item.label}
 						</button>
@@ -55,7 +59,7 @@
 							data-kind="remove"
 							data-key={item.key}
 							title="Undo"
-							on:click={() => handleRevert(item)}
+							onclick={() => handleRevert(item)}
 						>
 							− {item.label}
 						</button>
@@ -76,7 +80,7 @@
 							data-kind="change"
 							data-key={item.key}
 							title="Undo"
-							on:click={() => handleRevert(item)}
+							onclick={() => handleRevert(item)}
 						>
 							~ {item.label}
 						</button>
