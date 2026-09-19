@@ -40,6 +40,10 @@ export async function enableMfaViaUi(page: Page): Promise<string> {
 	await page.getByTestId('mfa-verify-submit').click();
 	const verifyRes = await verifyResponse;
 	expect(verifyRes.ok()).toBeTruthy();
+	// Success renders before the UX 2s auto-redirect; navigate explicitly so
+	// parallel runs do not race that timer (dashboard ↔ /mfa bounce).
+	await expect(page.getByTestId('mfa-success')).toBeVisible();
+	await page.goto('/dashboard');
 	await waitForPageShell(page, 'dashboard-page');
 	return secret;
 }
