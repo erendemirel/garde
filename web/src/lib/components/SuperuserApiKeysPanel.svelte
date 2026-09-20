@@ -350,7 +350,7 @@
 							</button>
 							<button
 								type="button"
-								class="btn-small text-error border-error/40"
+								class="btn-small text-[#FF4E44] border-[#FF4E44]"
 								data-testid="api-keys-revoke-tenant"
 								title="Revoke every key for this tenant"
 								onclick={() => askRevokeTenant(group.tenantId, group.keys.length)}
