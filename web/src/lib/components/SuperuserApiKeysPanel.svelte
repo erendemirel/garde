@@ -57,7 +57,80 @@
 
 	let activeKeys = $derived(keys.filter((k) => !k.revoked_at));
 
+	/** @type {'name' | 'tenant_id' | 'audience' | 'scopes' | 'rate_limit' | 'expires_at' | 'last_used_at'} */
+	let sortField = $state('name');
+	let sortDirection = $state(/** @type {'asc' | 'desc'} */ ('asc'));
+
+	/**
+	 * @param {import('$lib/api').APIKeyInfo} key
+	 * @param {typeof sortField} field
+	 */
+	function sortValue(key, field) {
+		switch (field) {
+			case 'name':
+				return key.name.toLowerCase();
+			case 'tenant_id':
+				return key.tenant_id.toLowerCase();
+			case 'audience':
+				return (key.audience || 'any').toLowerCase();
+			case 'scopes':
+				return (key.scopes || []).slice().sort().join(',').toLowerCase();
+			case 'rate_limit':
+				return key.rate_limit && key.rate_limit > 0 ? key.rate_limit : -1;
+			case 'expires_at': {
+				if (!key.expires_at) return Number.POSITIVE_INFINITY;
+				const at = Date.parse(key.expires_at);
+				return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
+			}
+			case 'last_used_at': {
+				if (!key.last_used_at) return Number.NEGATIVE_INFINITY;
+				const at = Date.parse(key.last_used_at);
+				return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at;
+			}
+			default:
+				return '';
+		}
+	}
+
+	/**
+	 * @param {import('$lib/api').APIKeyInfo} a
+	 * @param {import('$lib/api').APIKeyInfo} b
+	 */
+	function compareKeys(a, b) {
+		const av = sortValue(a, sortField);
+		const bv = sortValue(b, sortField);
+		let cmp = 0;
+		if (typeof av === 'number' && typeof bv === 'number') {
+			cmp = av - bv;
+		} else {
+			cmp = String(av).localeCompare(String(bv));
+		}
+		if (cmp === 0) {
+			cmp = a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+		}
+		return sortDirection === 'asc' ? cmp : -cmp;
+	}
+
+	/** @param {typeof sortField} field */
+	function handleSort(field) {
+		if (sortField === field) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sortField = field;
+			sortDirection = 'asc';
+		}
+	}
+
+	/** @param {typeof sortField} field */
+	function sortAria(field) {
+		if (sortField !== field) return 'none';
+		return sortDirection === 'asc' ? 'ascending' : 'descending';
+	}
+
 	let tenantGroups = $derived.by(() => {
+		// Touch sort state so this derived re-runs when headers are clicked.
+		const field = sortField;
+		const direction = sortDirection;
 		/** @type {Map<string, import('$lib/api').APIKeyInfo[]>} */
 		const map = new Map();
 		for (const key of activeKeys) {
@@ -66,10 +139,10 @@
 			map.set(key.tenant_id, list);
 		}
 		const q = search.trim().toLowerCase();
-		return [...map.entries()]
+		const groups = [...map.entries()]
 			.map(([tenantId, tenantKeys]) => ({
 				tenantId,
-				keys: tenantKeys.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+				keys: tenantKeys.slice().sort(compareKeys)
 			}))
 			.filter((group) => {
 				if (!q) return true;
@@ -81,8 +154,17 @@
 						(k.audience || '').toLowerCase().includes(q) ||
 						(k.scopes || []).some((s) => s.toLowerCase().includes(q))
 				);
-			})
-			.sort((a, b) => a.tenantId.localeCompare(b.tenantId));
+			});
+
+		if (field === 'tenant_id') {
+			groups.sort((a, b) => {
+				const cmp = a.tenantId.localeCompare(b.tenantId);
+				return direction === 'asc' ? cmp : -cmp;
+			});
+		} else {
+			groups.sort((a, b) => a.tenantId.localeCompare(b.tenantId));
+		}
+		return groups;
 	});
 
 	let canIssue = $derived(
@@ -364,11 +446,125 @@
 								<table class="w-full text-sm">
 									<thead>
 										<tr class="text-left text-muted border-t border-borderc">
-											<th class="px-3 py-2 font-medium">Name</th>
-											<th class="px-3 py-2 font-medium">Audience</th>
-											<th class="px-3 py-2 font-medium">Scopes</th>
-											<th class="px-3 py-2 font-medium">Expires</th>
-											<th class="px-3 py-2 font-medium">Last used</th>
+											<th class="px-3 py-2 font-medium" aria-sort={sortAria('name')}>
+												<button
+													type="button"
+													class="flex items-center gap-1 hover:text-accent transition-colors"
+													data-testid="api-keys-sort-name"
+													data-sort-active={sortField === 'name' ? 'true' : 'false'}
+													data-sort-direction={sortField === 'name' ? sortDirection : ''}
+													onclick={() => handleSort('name')}
+												>
+													Name
+													{#if sortField === 'name'}
+														<span class="text-xs" data-testid="api-keys-sort-indicator" aria-hidden="true"
+															>{sortDirection === 'asc' ? '↑' : '↓'}</span
+														>
+													{/if}
+												</button>
+											</th>
+											<th class="px-3 py-2 font-medium" aria-sort={sortAria('tenant_id')}>
+												<button
+													type="button"
+													class="flex items-center gap-1 hover:text-accent transition-colors"
+													data-testid="api-keys-sort-tenant-id"
+													data-sort-active={sortField === 'tenant_id' ? 'true' : 'false'}
+													data-sort-direction={sortField === 'tenant_id' ? sortDirection : ''}
+													onclick={() => handleSort('tenant_id')}
+												>
+													Tenant ID
+													{#if sortField === 'tenant_id'}
+														<span class="text-xs" data-testid="api-keys-sort-indicator" aria-hidden="true"
+															>{sortDirection === 'asc' ? '↑' : '↓'}</span
+														>
+													{/if}
+												</button>
+											</th>
+											<th class="px-3 py-2 font-medium" aria-sort={sortAria('audience')}>
+												<button
+													type="button"
+													class="flex items-center gap-1 hover:text-accent transition-colors"
+													data-testid="api-keys-sort-audience"
+													data-sort-active={sortField === 'audience' ? 'true' : 'false'}
+													data-sort-direction={sortField === 'audience' ? sortDirection : ''}
+													onclick={() => handleSort('audience')}
+												>
+													Audience
+													{#if sortField === 'audience'}
+														<span class="text-xs" data-testid="api-keys-sort-indicator" aria-hidden="true"
+															>{sortDirection === 'asc' ? '↑' : '↓'}</span
+														>
+													{/if}
+												</button>
+											</th>
+											<th class="px-3 py-2 font-medium" aria-sort={sortAria('scopes')}>
+												<button
+													type="button"
+													class="flex items-center gap-1 hover:text-accent transition-colors"
+													data-testid="api-keys-sort-scopes"
+													data-sort-active={sortField === 'scopes' ? 'true' : 'false'}
+													data-sort-direction={sortField === 'scopes' ? sortDirection : ''}
+													onclick={() => handleSort('scopes')}
+												>
+													Scopes
+													{#if sortField === 'scopes'}
+														<span class="text-xs" data-testid="api-keys-sort-indicator" aria-hidden="true"
+															>{sortDirection === 'asc' ? '↑' : '↓'}</span
+														>
+													{/if}
+												</button>
+											</th>
+											<th class="px-3 py-2 font-medium" aria-sort={sortAria('rate_limit')}>
+												<button
+													type="button"
+													class="flex items-center gap-1 hover:text-accent transition-colors"
+													data-testid="api-keys-sort-rate-limit"
+													data-sort-active={sortField === 'rate_limit' ? 'true' : 'false'}
+													data-sort-direction={sortField === 'rate_limit' ? sortDirection : ''}
+													onclick={() => handleSort('rate_limit')}
+												>
+													Rate limit
+													{#if sortField === 'rate_limit'}
+														<span class="text-xs" data-testid="api-keys-sort-indicator" aria-hidden="true"
+															>{sortDirection === 'asc' ? '↑' : '↓'}</span
+														>
+													{/if}
+												</button>
+											</th>
+											<th class="px-3 py-2 font-medium" aria-sort={sortAria('expires_at')}>
+												<button
+													type="button"
+													class="flex items-center gap-1 hover:text-accent transition-colors"
+													data-testid="api-keys-sort-expires"
+													data-sort-active={sortField === 'expires_at' ? 'true' : 'false'}
+													data-sort-direction={sortField === 'expires_at' ? sortDirection : ''}
+													onclick={() => handleSort('expires_at')}
+												>
+													Expires
+													{#if sortField === 'expires_at'}
+														<span class="text-xs" data-testid="api-keys-sort-indicator" aria-hidden="true"
+															>{sortDirection === 'asc' ? '↑' : '↓'}</span
+														>
+													{/if}
+												</button>
+											</th>
+											<th class="px-3 py-2 font-medium" aria-sort={sortAria('last_used_at')}>
+												<button
+													type="button"
+													class="flex items-center gap-1 hover:text-accent transition-colors"
+													data-testid="api-keys-sort-last-used"
+													data-sort-active={sortField === 'last_used_at' ? 'true' : 'false'}
+													data-sort-direction={sortField === 'last_used_at' ? sortDirection : ''}
+													onclick={() => handleSort('last_used_at')}
+												>
+													Last used
+													{#if sortField === 'last_used_at'}
+														<span class="text-xs" data-testid="api-keys-sort-indicator" aria-hidden="true"
+															>{sortDirection === 'asc' ? '↑' : '↓'}</span
+														>
+													{/if}
+												</button>
+											</th>
 											<th class="px-3 py-2 font-medium sr-only">Actions</th>
 										</tr>
 									</thead>
@@ -385,6 +581,9 @@
 													<div class="font-medium">{key.name}</div>
 													<div class="text-xs text-muted font-mono">{key.id}</div>
 												</td>
+												<td class="px-3 py-2 font-mono text-xs" data-testid="api-keys-row-tenant-id">
+													{key.tenant_id}
+												</td>
 												<td class="px-3 py-2" data-testid="api-keys-row-audience">
 													{#if key.audience}
 														<span class="ms-chip text-xs px-2 py-0.5">{key.audience}</span>
@@ -398,6 +597,13 @@
 															<span class="ms-chip badge-scope text-xs px-2 py-0.5">{scope}</span>
 														{/each}
 													</div>
+												</td>
+												<td class="px-3 py-2" data-testid="api-keys-row-rate-limit">
+													{#if key.rate_limit && key.rate_limit > 0}
+														{key.rate_limit}/min
+													{:else}
+														<span class="text-muted">Default</span>
+													{/if}
 												</td>
 												<td class="px-3 py-2" data-testid="api-keys-row-expires">
 													{#if expiryState(key.expires_at) === 'none'}
