@@ -19,7 +19,7 @@ type MFAResponse struct {
 }
 
 type SuccessResponse struct {
-	Data interface{} `json:"data"`
+	Data any `json:"data"`
 }
 
 type ErrorResponse struct {
@@ -82,7 +82,7 @@ type GroupResponse struct {
 	Description string `json:"description"`
 }
 
-func NewSuccessResponse(data interface{}) *SuccessResponse {
+func NewSuccessResponse(data any) *SuccessResponse {
 	return &SuccessResponse{
 		Data: data,
 	}

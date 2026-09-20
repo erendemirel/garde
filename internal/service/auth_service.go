@@ -19,7 +19,7 @@ import (
 	"garde/pkg/session"
 	"garde/pkg/validation"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 const (
@@ -691,7 +691,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Track update attempt in audit log
-	err = s.repo.RecordAuditLog(ctx, targetUserID, map[string]interface{}{
+	err = s.repo.RecordAuditLog(ctx, targetUserID, map[string]any{
 		"type":      "update_attempt",
 		"admin_id":  adminID,
 		"timestamp": time.Now(),
@@ -933,7 +933,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 		}
 
 		// Record successful update in audit log
-		s.repo.RecordAuditLog(ctx, targetUserID, map[string]interface{}{
+		s.repo.RecordAuditLog(ctx, targetUserID, map[string]any{
 			"type":      "update_success",
 			"admin_id":  adminID,
 			"timestamp": time.Now(),
@@ -1086,7 +1086,7 @@ func (s *AuthService) DeleteUser(ctx context.Context, adminID string, targetUser
 	}
 
 	// Record deletion in audit log (using admin's audit log since target user is deleted)
-	s.repo.RecordAuditLog(ctx, adminID, map[string]interface{}{
+	s.repo.RecordAuditLog(ctx, adminID, map[string]any{
 		"type":            "user_deleted",
 		"deleted_user_id": targetUserID,
 		"deleted_email":   targetUser.Email,

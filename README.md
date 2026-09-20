@@ -118,7 +118,7 @@ Single-VPS and multi-node use the same application image and secret names. Multi
 
 ## Requirements
 
-- **Go**: 1.25 or later (see `go.mod`)
+- **Go**: 1.27 or later (see `go.mod`)
 - **PostgreSQL**: 16 or later
 - **Redis**: 6.0 or later
 - **Docker and Docker Compose**: 17.06+ and v2.0+

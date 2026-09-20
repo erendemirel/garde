@@ -153,7 +153,7 @@ func (d *SecurityAnalyzer) RecordPattern(ctx context.Context, userID, pattern, i
 	}
 
 	// Also record in audit log (last N records with longer TTL)
-	if err := d.repo.RecordAuditLog(ctx, userID, map[string]interface{}{
+	if err := d.repo.RecordAuditLog(ctx, userID, map[string]any{
 		"type":       "security_pattern",
 		"pattern":    pattern,
 		"ip":         ip,

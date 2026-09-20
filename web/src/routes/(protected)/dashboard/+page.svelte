@@ -2,7 +2,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { user, isSuperuser } from '$lib/stores';
 	import { refreshSession } from '$lib/session';
-	import { ShieldCheck, KeyRound, MailQuestion } from '@lucide/svelte';
+	import { ShieldCheck, KeyRound, MailQuestion, UserKey } from '@lucide/svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
@@ -133,7 +133,7 @@
 					><ShieldCheck size={18} />{$user.mfa_enabled ? 'Manage MFA' : 'Setup MFA'}</a
 				>
 				<a href="/password" class="btn-secondary" data-testid="dashboard-link-password"
-					><KeyRound size={18} />Change Password</a
+					><UserKey size={18} />Change Password</a
 				>
 				<a href="/tokens" class="btn-secondary" data-testid="dashboard-link-tokens"
 					><KeyRound size={18} />Access tokens</a

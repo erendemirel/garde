@@ -148,7 +148,7 @@ func (r *PermissionRepository) GetVisiblePermissions(ctx context.Context, groupN
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	args := make([]interface{}, len(groupNames))
+	args := make([]any, len(groupNames))
 	for i, groupName := range groupNames {
 		args[i] = groupName
 	}
@@ -248,7 +248,7 @@ func (r *PermissionRepository) IsPermissionVisibleToGroups(ctx context.Context, 
 		WHERE p.name = $1 AND g.name IN (%s)
 	`, buildPlaceholders(2, len(groupNames)))
 
-	args := make([]interface{}, len(groupNames)+1)
+	args := make([]any, len(groupNames)+1)
 	args[0] = permissionName
 	for i, groupName := range groupNames {
 		args[i+1] = groupName

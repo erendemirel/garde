@@ -1,6 +1,6 @@
 module garde
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
@@ -9,7 +9,6 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
 	github.com/pquerna/otp v1.4.0
 	github.com/swaggo/files v1.0.1

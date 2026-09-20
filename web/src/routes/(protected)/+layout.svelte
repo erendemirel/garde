@@ -7,7 +7,7 @@
 	import { user, isAdmin, isSuperuser, clearAuthState } from '$lib/stores';
 	import { invalidateUsersCache } from '$lib/usersCache';
 	import { refreshSession } from '$lib/session';
-	import { LogOut } from '@lucide/svelte';
+	import { LogOut, House, UserCog } from '@lucide/svelte';
 
 	let { children } = $props();
 
@@ -82,7 +82,7 @@
 					class:nav-link-active={path.startsWith('/dashboard')}
 					aria-current={path.startsWith('/dashboard') ? 'page' : undefined}
 					data-testid="nav-dashboard"
-				>Dashboard</a>
+				><House size={18} />Dashboard</a>
 				{#if $isSuperuser}
 					<a
 						href="/superuser"
@@ -90,7 +90,7 @@
 						class:nav-link-active={path.startsWith('/superuser')}
 						aria-current={path.startsWith('/superuser') ? 'page' : undefined}
 						data-testid="nav-superuser"
-					>Superuser</a>
+					><UserCog size={18} />Superuser</a>
 				{:else if $isAdmin}
 					<a
 						href="/admin"
@@ -98,7 +98,7 @@
 						class:nav-link-active={path.startsWith('/admin')}
 						aria-current={path.startsWith('/admin') ? 'page' : undefined}
 						data-testid="nav-admin"
-					>Admin</a>
+					><UserCog size={18} />Admin</a>
 				{/if}
 			{/if}
 			<button class="btn-secondary" type="button" data-testid="nav-logout" onclick={handleLogout}>

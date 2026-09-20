@@ -74,9 +74,9 @@
 					tabindex={activeTab === 'users' ? 0 : -1}
 					data-testid="superuser-tab-users"
 					aria-selected={activeTab === 'users'}
-					class="px-4 py-2 font-medium transition-colors {activeTab === 'users'
-						? 'text-accent border-b-2 border-accent'
-						: 'text-muted hover:text-accent'}"
+					class="px-4 py-2 font-medium transition-colors border-b-2 {activeTab === 'users'
+						? 'text-accent border-accent'
+						: 'text-muted border-transparent hover:text-accent'}"
 					onclick={() => setActiveTab('users')}
 				>
 					<Users size={18} class="inline mr-2" />
@@ -90,9 +90,9 @@
 					tabindex={activeTab === 'permissions' ? 0 : -1}
 					data-testid="superuser-tab-permissions"
 					aria-selected={activeTab === 'permissions'}
-					class="px-4 py-2 font-medium transition-colors {activeTab === 'permissions'
-						? 'text-accent border-b-2 border-accent'
-						: 'text-muted hover:text-accent'}"
+					class="px-4 py-2 font-medium transition-colors border-b-2 {activeTab === 'permissions'
+						? 'text-accent border-accent'
+						: 'text-muted border-transparent hover:text-accent'}"
 					onclick={() => setActiveTab('permissions')}
 				>
 					<Ungroup size={18} class="inline mr-2" />
@@ -106,9 +106,9 @@
 					tabindex={activeTab === 'groups' ? 0 : -1}
 					data-testid="superuser-tab-groups"
 					aria-selected={activeTab === 'groups'}
-					class="px-4 py-2 font-medium transition-colors {activeTab === 'groups'
-						? 'text-accent border-b-2 border-accent'
-						: 'text-muted hover:text-accent'}"
+					class="px-4 py-2 font-medium transition-colors border-b-2 {activeTab === 'groups'
+						? 'text-accent border-accent'
+						: 'text-muted border-transparent hover:text-accent'}"
 					onclick={() => setActiveTab('groups')}
 				>
 					<Blocks size={18} class="inline mr-2" />
@@ -122,9 +122,9 @@
 					tabindex={activeTab === 'visibility' ? 0 : -1}
 					data-testid="superuser-tab-visibility"
 					aria-selected={activeTab === 'visibility'}
-					class="px-4 py-2 font-medium transition-colors {activeTab === 'visibility'
-						? 'text-accent border-b-2 border-accent'
-						: 'text-muted hover:text-accent'}"
+					class="px-4 py-2 font-medium transition-colors border-b-2 {activeTab === 'visibility'
+						? 'text-accent border-accent'
+						: 'text-muted border-transparent hover:text-accent'}"
 					onclick={() => setActiveTab('visibility')}
 				>
 					<Combine size={18} class="inline mr-2" />
@@ -138,9 +138,9 @@
 					tabindex={activeTab === 'admin-management' ? 0 : -1}
 					data-testid="superuser-tab-admin-management"
 					aria-selected={activeTab === 'admin-management'}
-					class="px-4 py-2 font-medium transition-colors {activeTab === 'admin-management'
-						? 'text-accent border-b-2 border-accent'
-						: 'text-muted hover:text-accent'}"
+					class="px-4 py-2 font-medium transition-colors border-b-2 {activeTab === 'admin-management'
+						? 'text-accent border-accent'
+						: 'text-muted border-transparent hover:text-accent'}"
 					onclick={() => setActiveTab('admin-management')}
 				>
 					<UserGroup size={18} class="inline mr-2" />
@@ -154,9 +154,9 @@
 					tabindex={activeTab === 'api-keys' ? 0 : -1}
 					data-testid="superuser-tab-api-keys"
 					aria-selected={activeTab === 'api-keys'}
-					class="px-4 py-2 font-medium transition-colors {activeTab === 'api-keys'
-						? 'text-accent border-b-2 border-accent'
-						: 'text-muted hover:text-accent'}"
+					class="px-4 py-2 font-medium transition-colors border-b-2 {activeTab === 'api-keys'
+						? 'text-accent border-accent'
+						: 'text-muted border-transparent hover:text-accent'}"
 					onclick={() => setActiveTab('api-keys')}
 				>
 					<KeyRound size={18} class="inline mr-2" />
