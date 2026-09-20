@@ -6,7 +6,7 @@ import (
 
 	"garde/pkg/errors"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func TestValidatePasswordTable(t *testing.T) {
@@ -57,16 +57,16 @@ func TestValidateSessionIDLengths(t *testing.T) {
 		t.Fatalf("86-char id: %v", err)
 	}
 	for name, id := range map[string]string{
-		"empty":   "",
-		"short":   strings.Repeat("A", 85),
-		"long":    strings.Repeat("A", 87),
-		"padded":  strings.Repeat("A", 86) + "==",
+		"empty":    "",
+		"short":    strings.Repeat("A", 85),
+		"long":     strings.Repeat("A", 87),
+		"padded":   strings.Repeat("A", 86) + "==",
 		"legacy88": strings.Repeat("A", 88),
-		"spaces":  strings.Repeat("A", 85) + " ",
-		"plus":    strings.Repeat("A", 85) + "+",
-		"slash":   strings.Repeat("A", 85) + "/",
-		"angled":  strings.Repeat("A", 85) + "<",
-		"equals":  strings.Repeat("A", 85) + "=",
+		"spaces":   strings.Repeat("A", 85) + " ",
+		"plus":     strings.Repeat("A", 85) + "+",
+		"slash":    strings.Repeat("A", 85) + "/",
+		"angled":   strings.Repeat("A", 85) + "<",
+		"equals":   strings.Repeat("A", 85) + "=",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := ValidateSessionID(id); err == nil {
@@ -93,7 +93,7 @@ func TestValidateMFACodeTable(t *testing.T) {
 }
 
 func TestValidateUserIDTable(t *testing.T) {
-	if err := ValidateUserID(uuid.NewString()); err != nil {
+	if err := ValidateUserID(uuid.New().String()); err != nil {
 		t.Fatalf("fresh uuid: %v", err)
 	}
 	for name, id := range map[string]string{
@@ -168,11 +168,4 @@ func TestGenericInputLengthCap(t *testing.T) {
 	if _, err := Sanitize(strings.Repeat("a", 2000)); err == nil {
 		t.Fatal("overlong sanitize accepted")
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

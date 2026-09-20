@@ -102,8 +102,8 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		sessionID = cookie
 	} else {
 		header := c.GetHeader(middleware.AuthHeaderKey)
-		if strings.HasPrefix(header, middleware.SessionPrefix) {
-			sessionID = strings.TrimPrefix(header, middleware.SessionPrefix)
+		if after, ok := strings.CutPrefix(header, middleware.SessionPrefix); ok {
+			sessionID = after
 		}
 	}
 
@@ -753,10 +753,7 @@ func applyUserListQuery(users []models.UserResponse, c *gin.Context) models.List
 	if start >= total {
 		return models.ListUsersResponse{Users: []models.UserResponse{}, Total: total, Page: page, Limit: limit}
 	}
-	end := start + limit
-	if end > total {
-		end = total
-	}
+	end := min(start+limit, total)
 	return models.ListUsersResponse{Users: filtered[start:end], Total: total, Page: page, Limit: limit}
 }
 

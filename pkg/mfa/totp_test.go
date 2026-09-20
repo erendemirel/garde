@@ -89,10 +89,3 @@ func TestValidateCodeRejects(t *testing.T) {
 		t.Fatal("malformed secret validates")
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

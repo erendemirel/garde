@@ -228,7 +228,7 @@ func (s *Store) RecordSuspiciousActivity(ctx context.Context, userID, activityTy
 	}
 
 	key := suspiciousActivityKey(userID)
-	activity := map[string]interface{}{
+	activity := map[string]any{
 		"type":      activityType,
 		"details":   details,
 		"timestamp": time.Now(),
@@ -511,7 +511,7 @@ func (s *Store) DeleteKey(ctx context.Context, key string) error {
 
 // RecordAuditLog keeps a bounded, expiring trail per user. It stays in Redis:
 // it is a short window used by the security analyzer, not a compliance record.
-func (s *Store) RecordAuditLog(ctx context.Context, userID string, data map[string]interface{}, maxRecords int, ttl time.Duration) error {
+func (s *Store) RecordAuditLog(ctx context.Context, userID string, data map[string]any, maxRecords int, ttl time.Duration) error {
 	client := s.getClient()
 	if client == nil {
 		return errRedisClientUnavailable

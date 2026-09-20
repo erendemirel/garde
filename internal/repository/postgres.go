@@ -205,8 +205,7 @@ func migrationVersions() ([]string, error) {
 // failure (SQLSTATE 23505), which is how a duplicate email or a re-used id
 // arrives from the driver.
 func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) {
+	if pqErr, ok := errors.AsType[*pq.Error](err); ok {
 		return pqErr.Code == "23505"
 	}
 	return false

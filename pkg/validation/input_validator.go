@@ -9,7 +9,7 @@ import (
 
 	"garde/pkg/errors"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 const (

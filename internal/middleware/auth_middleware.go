@@ -57,13 +57,12 @@ func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 			return
 		}
-		if !strings.HasPrefix(authHeader, SessionPrefix) {
+		presented, ok := strings.CutPrefix(authHeader, SessionPrefix)
+		if !ok {
 			slog.Debug("Auth middleware: Invalid format", "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrInvalidRequest))
 			return
 		}
-
-		presented := strings.TrimPrefix(authHeader, SessionPrefix)
 
 		// PATs before sessions: a garde_pat_… token must not be treated as a
 		// session id (ValidateSession would fail noisily and clear cookies).
