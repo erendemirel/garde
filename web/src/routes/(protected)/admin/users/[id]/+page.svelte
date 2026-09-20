@@ -893,7 +893,7 @@
 					</div>
 					{#if isAccountLocked}
 						<button
-							class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/50 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+							class="security-action-btn"
 							type="button"
 							data-testid="user-detail-lock-btn"
 							data-action="unlock"
@@ -905,7 +905,7 @@
 						</button>
 					{:else if canAdminLock}
 						<button
-							class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/50 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+							class="security-action-btn"
 							type="button"
 							data-testid="user-detail-lock-btn"
 							data-action="lock"
@@ -948,7 +948,7 @@
 						</p>
 					</div>
 					<button
-						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/50 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="security-action-btn"
 						type="button"
 						data-testid="user-detail-mfa-enforce-btn"
 						data-action={userData.mfa_enforced ? 'stop' : 'enforce'}
@@ -970,7 +970,7 @@
 						</p>
 					</div>
 					<button
-						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-red-700 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-red-700 shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="security-action-btn-danger"
 						type="button"
 						data-testid="user-detail-revoke-btn"
 						onclick={requestRevokeSessions}
@@ -988,7 +988,7 @@
 						</p>
 					</div>
 					<button
-						class="security-action-btn inline-flex items-center justify-center gap-1.5 rounded-md border border-red-700 bg-red-700 px-3.5 py-2.5 text-sm font-semibold text-white shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-800 hover:border-red-800 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="security-action-btn-danger-solid"
 						type="button"
 						data-testid="user-detail-delete-btn"
 						onclick={requestDeleteConfirmation}

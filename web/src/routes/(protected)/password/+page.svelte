@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
-	import { ArrowLeft, KeyRound } from '@lucide/svelte';
+	import { ArrowLeft, UserKey } from '@lucide/svelte';
 
 	let oldPassword = $state('');
 	let newPassword = $state('');
@@ -142,7 +142,7 @@
 						data-testid="password-submit"
 						disabled={!formReady || loading}
 					>
-						<KeyRound size={18} />
+						<UserKey size={18} />
 						{loading ? 'Changing...' : formReady ? 'Change Password' : 'Loading...'}
 					</button>
 				</div>
