@@ -17,6 +17,7 @@
 html {
 	font-family: var(--font-sans);
 	font-size: 16px;
+	scrollbar-gutter: stable;
 }
 
 body {
@@ -284,7 +285,7 @@ a {
 	}
 
 	.nav-link {
-		@apply inline-flex items-center gap-1.5 text-sm font-semibold text-accent no-underline transition-colors duration-150 ease-out hover:text-accentHover;
+		@apply inline-flex items-center gap-1.5 text-sm font-semibold text-accent no-underline transition-colors duration-150 ease-out hover:text-accentHover outline-none focus-visible:text-accentHover;
 	}
 
 	.nav-link-active {
