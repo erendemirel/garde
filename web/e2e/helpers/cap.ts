@@ -1,5 +1,5 @@
 /** Shared Cap e2e helpers — keep API auth working when Cap is enabled locally. */
-import type { Page, Route } from '@playwright/test';
+import type { Browser, BrowserContext, Page, Route } from '@playwright/test';
 
 /** Must match CAP_BYPASS_TOKEN in Vault /dev.secrets (local/e2e only). */
 export const E2E_CAP_BYPASS_TOKEN =
@@ -89,4 +89,18 @@ export async function installCapE2EHarness(page: Page) {
 	// Inject first; Cap-disabled mock last so it wins over any broader routes.
 	await injectCapBypassOnAuthPosts(page);
 	await mockCapDisabled(page);
+}
+
+/**
+ * Fresh context + page with Cap harness. Use when a spec cannot reuse the
+ * fixture `page` (e.g. isolated MFA login flows) — otherwise login-submit can
+ * stay disabled while Cap config/progressive state races under parallel load.
+ */
+export async function newHarnessedPage(
+	browser: Browser
+): Promise<{ context: BrowserContext; page: Page }> {
+	const context = await browser.newContext();
+	const page = await context.newPage();
+	await installCapE2EHarness(page);
+	return { context, page };
 }

@@ -1,5 +1,6 @@
 import { test, expect } from '../helpers/fixtures';
 import { e2eAdmin, expectLoginRejected, fillLoginForm, loginAs, openLogin, submitLogin } from '../helpers/auth';
+import { newHarnessedPage } from '../helpers/cap';
 import { describeTags, TAG } from '../helpers/tags';
 import { LOAD_TIMEOUT, REDIRECT_TIMEOUT } from '../helpers/waits';
 import { enableMfaViaUi } from '../helpers/mfa';
@@ -89,8 +90,7 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 			browser,
 			ephemeralUser
 		}) => {
-			const context = await browser.newContext();
-			const page = await context.newPage();
+			const { context, page } = await newHarnessedPage(browser);
 			await loginAs(page, ephemeralUser);
 			await enableMfaViaUi(page);
 
@@ -114,8 +114,7 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 			browser,
 			ephemeralUser
 		}) => {
-			const context = await browser.newContext();
-			const page = await context.newPage();
+			const { context, page } = await newHarnessedPage(browser);
 			await loginAs(page, ephemeralUser);
 			await enableMfaViaUi(page);
 			await page.getByTestId('nav-logout').click();
