@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { E2E_CAP_BYPASS_TOKEN } from './cap';
 import { LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForPageShell, waitForSessionReady } from './waits';
 
 /** Dev bootstrap accounts from README / docker compose seed. Override via env. */
@@ -28,7 +29,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function loginViaRequest(request: APIRequestContext, creds: LoginCreds) {
 	const body: Record<string, string> = {
 		email: creds.email,
-		password: creds.password
+		password: creds.password,
+		// Harmless when Cap is off; required when Cap is on and CAP_BYPASS_TOKEN is set.
+		cap_token: E2E_CAP_BYPASS_TOKEN
 	};
 	if (creds.mfaCode) body.mfa_code = creds.mfaCode;
 

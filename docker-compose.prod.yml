@@ -182,6 +182,29 @@ services:
       - prod_network
     restart: unless-stopped
 
+  # Cap Standalone: PoW captcha dashboard + siteverify.
+  # Start with: docker compose -f docker-compose.prod.yml --profile cap up -d
+  # Then create a site key in the Cap UI and set Vault cap_* secrets (see INSTALLATION.md).
+  cap:
+    image: tiago2/cap:3.1.11
+    ports:
+      - "3000:3000"
+    environment:
+      ADMIN_KEY: ${CAP_ADMIN_KEY:?Set CAP_ADMIN_KEY in .env (min 32 chars)}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      REDIS_PREFIX: "cap:"
+      CORS_ORIGIN: ${CAP_CORS_ORIGIN:-*}
+      ENABLE_ASSETS_SERVER: "true"
+      WIDGET_VERSION: "0.1.57"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - prod_network
+    restart: unless-stopped
+    profiles:
+      - cap
+
 volumes:
   vault_data:
     driver: local

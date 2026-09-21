@@ -5,14 +5,15 @@
 	import { get } from 'svelte/store';
 	import { isSuperuser } from '$lib/stores';
 	import { onTabListKeydown } from '$lib/tabs';
-	import { Users, Ungroup, Blocks, Combine, KeyRound, UserGroup } from '@lucide/svelte';
+	import { Users, Ungroup, Blocks, Combine, KeyRound, UserGroup, ShieldCheck } from '@lucide/svelte';
 	import UsersListPanel from '$lib/components/UsersListPanel.svelte';
 	import SuperuserCatalogPanel from '$lib/components/SuperuserCatalogPanel.svelte';
 	import SuperuserVisibilityPanel from '$lib/components/SuperuserVisibilityPanel.svelte';
 	import SuperuserAdminManagementPanel from '$lib/components/SuperuserAdminManagementPanel.svelte';
 	import SuperuserApiKeysPanel from '$lib/components/SuperuserApiKeysPanel.svelte';
+	import SuperuserCapPanel from '$lib/components/SuperuserCapPanel.svelte';
 
-	const TAB_IDS = ['users', 'permissions', 'groups', 'visibility', 'admin-management', 'api-keys'];
+	const TAB_IDS = ['users', 'permissions', 'groups', 'visibility', 'admin-management', 'api-keys', 'captcha'];
 	const SUPERUSER_TABS = new Set(TAB_IDS);
 
 	let activeTab = $state('users');
@@ -54,7 +55,7 @@
 			<div>
 				<h1 class="page-title">Superuser</h1>
 				<p class="section-subtitle">
-					Manage all users, permissions, groups, visibility, admin scope, and API keys
+					Manage all users, permissions, groups, visibility, admin scope, API keys, and Cap captcha
 				</p>
 			</div>
 
@@ -162,6 +163,22 @@
 					<KeyRound size={18} class="inline mr-2" />
 					API Keys
 				</button>
+				<button
+					type="button"
+					role="tab"
+					id="tab-captcha"
+					aria-controls="panel-captcha"
+					tabindex={activeTab === 'captcha' ? 0 : -1}
+					data-testid="superuser-tab-captcha"
+					aria-selected={activeTab === 'captcha'}
+					class="px-4 py-2 font-medium transition-colors border-b-2 {activeTab === 'captcha'
+						? 'text-accent border-accent'
+						: 'text-muted border-transparent hover:text-accent'}"
+					onclick={() => setActiveTab('captcha')}
+				>
+					<ShieldCheck size={18} class="inline mr-2" />
+					Captcha
+				</button>
 			</div>
 
 			{#if activeTab === 'users'}
@@ -225,6 +242,15 @@
 					data-testid="superuser-panel-api-keys"
 				>
 					<SuperuserApiKeysPanel />
+				</div>
+			{:else if activeTab === 'captcha'}
+				<div
+					role="tabpanel"
+					id="panel-captcha"
+					aria-labelledby="tab-captcha"
+					data-testid="superuser-panel-captcha"
+				>
+					<SuperuserCapPanel />
 				</div>
 			{/if}
 		{/if}

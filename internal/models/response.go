@@ -27,7 +27,16 @@ type ErrorResponse struct {
 }
 
 type ErrorDetails struct {
-	Message string `json:"message"`
+	Message         string `json:"message"`
+	CaptchaRequired bool   `json:"captcha_required,omitempty"`
+}
+
+// WithCaptchaRequired marks that the client should present Cap on the next try.
+func (e *ErrorResponse) WithCaptchaRequired(required bool) *ErrorResponse {
+	if e != nil {
+		e.Details.CaptchaRequired = required
+	}
+	return e
 }
 
 type CreateUserResponse struct {

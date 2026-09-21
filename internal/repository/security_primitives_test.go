@@ -49,8 +49,20 @@ func TestFailedLoginCountsAndClear(t *testing.T) {
 			t.Fatalf("attempt %d: n=%d err=%v", want, n, err)
 		}
 	}
+	got, err := r.GetFailedLoginCount(ctx, "victim@example.com", "10.0.0.1")
+	if err != nil || got != 2 {
+		t.Fatalf("GetFailedLoginCount = %d err=%v, want 2", got, err)
+	}
+	ipOnly, err := r.GetFailedLoginCount(ctx, "", "10.0.0.1")
+	if err != nil || ipOnly != 2 {
+		t.Fatalf("GetFailedLoginCount IP-only = %d err=%v, want 2", ipOnly, err)
+	}
 	if err := r.ClearFailedLogins(ctx, "victim@example.com", "10.0.0.1"); err != nil {
 		t.Fatal(err)
+	}
+	got, err = r.GetFailedLoginCount(ctx, "victim@example.com", "10.0.0.1")
+	if err != nil || got != 0 {
+		t.Fatalf("after clear GetFailedLoginCount = %d err=%v", got, err)
 	}
 	n, err := r.RecordFailedLogin(ctx, "victim@example.com", "10.0.0.1")
 	if err != nil || n != 1 {

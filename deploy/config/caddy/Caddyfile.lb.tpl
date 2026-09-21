@@ -74,6 +74,18 @@ http://{$API_DOMAIN} {
 	}
 }
 
+# Cap Standalone (optional): add a site block when Cap is on the app network, e.g.
+#
+# http://{$CAP_DOMAIN} {
+# 	import hardening
+# 	encode zstd gzip
+# 	reverse_proxy cap:3000 {
+# 		header_up X-Forwarded-Proto https
+# 		header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+# 		header_up X-Real-IP {remote_host}
+# 	}
+# }
+
 # Health checks arrive with the target's address in the Host header, not a
 # domain, so they need a site that matches anything. Proxying to garde's own
 # /health is deliberate: a node whose API is broken should leave the pool, and

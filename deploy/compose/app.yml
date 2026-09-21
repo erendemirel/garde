@@ -129,6 +129,25 @@ services:
     networks:
       - app_net
 
+  # Optional Cap Standalone. Enable with COMPOSE_PROFILES=cap (or --profile cap).
+  # Set CAP_ADMIN_KEY and CAP_REDIS_URL (same Redis as garde, with a password URL).
+  # Point Vault cap_api_url at http://cap:3000 and cap_public_url at the public Cap host.
+  cap:
+    image: tiago2/cap:3.1.11
+    container_name: garde-cap
+    environment:
+      ADMIN_KEY: "${CAP_ADMIN_KEY:?Set CAP_ADMIN_KEY when using profile cap}"
+      REDIS_URL: "${CAP_REDIS_URL:?Set CAP_REDIS_URL when using profile cap}"
+      REDIS_PREFIX: "cap:"
+      CORS_ORIGIN: "https://${APP_DOMAIN}"
+      ENABLE_ASSETS_SERVER: "true"
+      WIDGET_VERSION: "0.1.57"
+    restart: unless-stopped
+    networks:
+      - app_net
+    profiles:
+      - cap
+
 volumes:
   caddy_data:
     driver: local

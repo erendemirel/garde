@@ -221,14 +221,14 @@ test.describe(
 
 				await suPage.getByTestId('superuser-tab-users').focus();
 				await suPage.keyboard.press('End');
-				await expect(suPage.getByTestId('superuser-tab-api-keys')).toHaveAttribute(
+				await expect(suPage.getByTestId('superuser-tab-captcha')).toHaveAttribute(
 					'aria-selected',
 					'true'
 				);
-				await expect(suPage).toHaveURL(/tab=api-keys/);
-				await expect(suPage.getByTestId('superuser-panel-api-keys')).toBeVisible();
+				await expect(suPage).toHaveURL(/tab=captcha/);
+				await expect(suPage.getByTestId('superuser-panel-captcha')).toBeVisible();
 
-				await suPage.getByTestId('superuser-tab-api-keys').focus();
+				await suPage.getByTestId('superuser-tab-captcha').focus();
 				await suPage.keyboard.press('Home');
 				await expect(suPage.getByTestId('superuser-tab-users')).toHaveAttribute(
 					'aria-selected',

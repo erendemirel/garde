@@ -4,6 +4,7 @@ type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
 	MFACode  string `json:"mfa_code,omitempty"`
+	CapToken string `json:"cap_token,omitempty"`
 }
 
 type MFASetupRequest struct {
@@ -23,6 +24,7 @@ type RevokeSessionRequest struct {
 type CreateUserRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
+	CapToken string `json:"cap_token,omitempty"`
 }
 
 type UpdateUserRequest struct {
@@ -45,7 +47,8 @@ type DisableMFARequest struct {
 }
 
 type RequestOTPRequest struct {
-	Email string `json:"email" binding:"required,email"`
+	Email    string `json:"email" binding:"required,email"`
+	CapToken string `json:"cap_token,omitempty"`
 }
 
 type PasswordResetRequest struct {
@@ -53,6 +56,7 @@ type PasswordResetRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=8"`
 	OTP         string `json:"otp" binding:"required,len=8"`
 	MFACode     string `json:"mfa_code,omitempty"`
+	CapToken    string `json:"cap_token,omitempty"`
 }
 
 // RequestUpdateFields is specifically for permission update requests

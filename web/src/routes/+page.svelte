@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { login } from '$lib/api';
 	import { goto } from '$app/navigation';
+	import CapWidget from '$lib/components/CapWidget.svelte';
+	import { isApiError } from '$lib/apiError';
 
 	let email = $state('');
 	let password = $state('');
@@ -11,6 +13,10 @@
 	let loading = $state(false);
 	/** True after mount — gates interactivity until Svelte handlers are wired. */
 	let formReady = $state(false);
+	let capToken = $state('');
+	let capActive = $state(false);
+	let capReady = $state(false);
+	let capRequired = $state(false);
 
 	onMount(() => {
 		formReady = true;
@@ -18,10 +24,14 @@
 
 	async function handleLogin() {
 		if (!formReady || loading) return;
+		if (capActive && !capToken) {
+			error = 'Complete the captcha first';
+			return;
+		}
 		error = '';
 		loading = true;
 		try {
-			await login(email, password, mfaCode || undefined);
+			await login(email, password, mfaCode || undefined, capToken || undefined);
 			goto('/dashboard');
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Login failed';
@@ -30,7 +40,11 @@
 				error = 'Enter your MFA code';
 			} else {
 				error = msg;
+				if ((isApiError(e) && e.captchaRequired) || msg.toLowerCase().includes('captcha')) {
+					capRequired = true;
+				}
 			}
+			capToken = '';
 		}
 		loading = false;
 	}
@@ -93,6 +107,13 @@
 					/>
 				</label>
 			{/if}
+			<CapWidget
+				bind:token={capToken}
+				bind:active={capActive}
+				bind:ready={capReady}
+				bind:required={capRequired}
+				mode="progressive"
+			/>
 			{#if error}
 				<p class="error font-semibold" data-testid="login-error">{error}</p>
 			{/if}
@@ -100,7 +121,7 @@
 				class="btn-secondary w-full justify-center font-bold"
 				type="submit"
 				data-testid="login-submit"
-				disabled={!formReady || loading}
+				disabled={!formReady || !capReady || loading || (capActive && !capToken)}
 			>
 				{loading ? 'Signing in...' : formReady ? 'Sign In' : 'Loading...'}
 			</button>

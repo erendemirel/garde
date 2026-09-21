@@ -74,3 +74,17 @@
 		format json
 	}
 }
+
+# Cap Standalone (optional): add a site block when Cap is on the app network, e.g.
+#
+# {$CAP_DOMAIN} {
+# 	import hardening
+# 	encode zstd gzip
+# 	reverse_proxy cap:3000 {
+# 		header_up X-Forwarded-Proto https
+# 		header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+# 		header_up X-Real-IP {remote_host}
+# 	}
+# }
+#
+# Set cap_public_url to https://$CAP_DOMAIN and cap_api_url to http://cap:3000.

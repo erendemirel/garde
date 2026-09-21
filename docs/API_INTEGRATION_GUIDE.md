@@ -305,6 +305,15 @@ or `tenant` (public `/validate` when published). On a dual-listener deploy, a
 key issued for the wrong surface is refused with `403`. Pre-audience keys
 (empty `audience`) remain usable on either surface until re-issued.
 
+`scopes` is an explicit grant list. Known scopes:
+
+| Scope | Effect |
+|-------|--------|
+| `validate` | Call `/validate` |
+| `auth` | Call public auth POSTs (login, register, password OTP/reset) **without Cap** when Cap is enabled |
+
+A `validate`-only key does not skip Cap. Junk or missing `X-API-Key` headers do not open a bypass — Cap still applies.
+
 `tenant_id` names the holder and `name` labels the individual key, so one
 holder can carry several — which is how you roll a credential without a gap:
 issue the new key, let the caller cut over, then revoke the old one.

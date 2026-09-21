@@ -51,6 +51,7 @@ type routerDeps struct {
 	authHandler      *handlers.AuthHandler
 	apiKeyHandler    *handlers.APIKeyHandler
 	patHandler       *handlers.PATHandler
+	captchaHandler   *handlers.CaptchaHandler
 	rateLimiter      *middleware.RateLimiter
 }
 
@@ -156,6 +157,7 @@ func main() {
 		authHandler:      handlers.NewAuthHandler(authService),
 		apiKeyHandler:    handlers.NewAPIKeyHandler(repo),
 		patHandler:       handlers.NewPATHandler(repo),
+		captchaHandler:   handlers.NewCaptchaHandler(repo),
 		rateLimiter:      middleware.NewRateLimiter(repo),
 	}
 
@@ -185,6 +187,15 @@ func main() {
 	if config.GetBool("ENABLE_SWAGGER") {
 		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 		slog.Info("Swagger UI enabled at /swagger/index.html")
+	}
+
+	if config.CapEnabled() {
+		slog.Info("Cap captcha enabled for public auth routes",
+			"api_url", config.CapAPIURL(),
+			"public_url", config.CapPublicURL(),
+			"site_key", config.CapSiteKey())
+	} else {
+		slog.Info("Cap captcha disabled")
 	}
 
 	servers := make([]*http.Server, 0, 2)
@@ -314,8 +325,12 @@ func newEngine(deps *routerDeps) *gin.Engine {
 func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 	authHandler := deps.authHandler
 
+	// Public captcha config — no SecurityMiddleware; site key is not secret.
+	router.GET("/captcha/config", deps.captchaHandler.GetConfig)
+
 	public := router.Group("")
 	public.Use(middleware.SecurityMiddleware(deps.securityAnalyzer))
+	public.Use(middleware.CapMiddleware(deps.repo))
 	{
 		public.POST("/login", authHandler.Login)
 		public.POST("/users", authHandler.CreateUser)
@@ -401,6 +416,8 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 		superuserProtected.GET("/admin/api-keys", deps.apiKeyHandler.ListAPIKeys)
 		superuserProtected.DELETE("/admin/api-keys/:key_id", deps.apiKeyHandler.RevokeAPIKey)
 		superuserProtected.DELETE("/admin/tenants/:tenant_id/api-keys", deps.apiKeyHandler.RevokeTenantAPIKeys)
+
+		superuserProtected.GET("/admin/captcha", deps.captchaHandler.GetAdminStatus)
 	}
 }
 

@@ -169,7 +169,9 @@
 	function onKeydown(e) {
 		if (e.key === 'Escape') {
 			if (open) {
+				// Keep Escape from reaching a parent Modal while the list is open.
 				e.preventDefault();
+				e.stopPropagation();
 				closeList();
 			}
 			return;

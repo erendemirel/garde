@@ -363,9 +363,11 @@
 		<div>
 			<h2 class="section-title">API Keys</h2>
 			<p class="text-sm text-muted mt-1">
-				Per-caller credentials for <code class="text-xs">/validate</code>. Audience binds each key to
-				the internal (mesh) or tenant (public) surface. Grouped by tenant so you can rotate one holder
-				or revoke everything they have.
+				Per-caller credentials. <code class="text-xs">validate</code> covers
+				<code class="text-xs">/validate</code>; <code class="text-xs">auth</code> skips Cap on public
+				login/register/password-reset when Cap is enabled. Audience binds each key to the internal
+				(mesh) or tenant (public) surface. Grouped by tenant so you can rotate one holder or revoke
+				everything they have.
 			</p>
 		</div>
 		<button

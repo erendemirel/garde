@@ -8,6 +8,7 @@ import {
 	deleteUserById,
 	type EphemeralUser
 } from './userApi';
+import { installCapE2EHarness } from './cap';
 
 const e2eBaseURL =
 	process.env.PLAYWRIGHT_BASE_URL ||
@@ -44,6 +45,13 @@ async function warmWorkerAuth(
 }
 
 export const test = base.extend<Fixtures, WorkerFixtures>({
+	// Cap widget off for non-Cap specs; inject bypass token on auth POSTs so the
+	// real API still accepts logins when Cap is enabled (progressive IP failures).
+	page: async ({ page }, use) => {
+		await installCapE2EHarness(page);
+		await use(page);
+	},
+
 	workerAdminState: [
 		async ({ playwright }, use, workerInfo) => {
 			const statePath = path.join(AUTH_DIR, `admin-w${workerInfo.workerIndex}.json`);
@@ -81,6 +89,7 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 	adminPage: async ({ browser, workerAdminState }, use) => {
 		const context = await browser.newContext({ storageState: workerAdminState });
 		const page = await context.newPage();
+		await installCapE2EHarness(page);
 		await use(page);
 		await context.close();
 	},
@@ -88,6 +97,7 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 	superuserPage: async ({ browser, workerSuperuserState }, use) => {
 		const context = await browser.newContext({ storageState: workerSuperuserState });
 		const page = await context.newPage();
+		await installCapE2EHarness(page);
 		await use(page);
 		await context.close();
 	},
@@ -96,6 +106,7 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 		const context = await browser.newContext();
 		await loginViaRequest(context.request, ephemeralUser);
 		const page = await context.newPage();
+		await installCapE2EHarness(page);
 		await openDashboardSession(page);
 		await use(page);
 		await context.close();

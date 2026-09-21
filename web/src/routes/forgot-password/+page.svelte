@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { requestOtp, resetPassword } from '$lib/api';
 	import { goto } from '$app/navigation';
+	import CapWidget from '$lib/components/CapWidget.svelte';
 
 	let step = $state('email');
 	let email = $state('');
@@ -13,6 +14,9 @@
 	let success = $state('');
 	let loading = $state(false);
 	let formReady = $state(false);
+	let capToken = $state('');
+	let capActive = $state(false);
+	let capReady = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | null} */
 	let redirectTimer = $state(null);
 
@@ -26,20 +30,30 @@
 
 	async function handleRequestOtp() {
 		if (!formReady || loading) return;
+		if (capActive && !capToken) {
+			error = 'Complete the captcha first';
+			return;
+		}
 		error = '';
 		loading = true;
 		try {
-			await requestOtp(email);
+			await requestOtp(email, capToken || undefined);
 			step = 'reset';
 			success = 'If the email exists, an OTP has been sent';
+			capToken = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to send OTP';
+			capToken = '';
 		}
 		loading = false;
 	}
 
 	async function handleReset() {
 		if (!formReady || loading) return;
+		if (capActive && !capToken) {
+			error = 'Complete the captcha first';
+			return;
+		}
 		error = '';
 		if (newPassword !== confirmPassword) {
 			error = 'Passwords do not match';
@@ -47,11 +61,12 @@
 		}
 		loading = true;
 		try {
-			await resetPassword(email, otp, newPassword, mfaCode || undefined);
+			await resetPassword(email, otp, newPassword, mfaCode || undefined, capToken || undefined);
 			success = 'Password reset successful. Waiting for admin approval.';
 			redirectTimer = setTimeout(() => goto('/'), 3000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Password reset failed';
+			capToken = '';
 		}
 		loading = false;
 	}
@@ -89,6 +104,7 @@
 						disabled={!formReady}
 					/>
 				</label>
+				<CapWidget bind:token={capToken} bind:active={capActive} bind:ready={capReady} />
 				{#if error}
 					<p class="error" data-testid="forgot-error">{error}</p>
 				{/if}
@@ -99,7 +115,7 @@
 					class="btn-secondary w-full justify-center"
 					type="submit"
 					data-testid="forgot-send-otp"
-					disabled={!formReady || loading}
+					disabled={!formReady || !capReady || loading || (capActive && !capToken)}
 				>
 					{loading ? 'Sending...' : formReady ? 'Send OTP' : 'Loading...'}
 				</button>
@@ -174,6 +190,7 @@
 						disabled={!formReady}
 					/>
 				</label>
+				<CapWidget bind:token={capToken} bind:active={capActive} bind:ready={capReady} />
 				{#if error}
 					<p class="error" data-testid="forgot-error">{error}</p>
 				{/if}
@@ -184,7 +201,7 @@
 					class="btn-secondary w-full justify-center"
 					type="submit"
 					data-testid="forgot-reset-submit"
-					disabled={!formReady || loading}
+					disabled={!formReady || !capReady || loading || (capActive && !capToken)}
 				>
 					{loading ? 'Resetting...' : 'Reset Password'}
 				</button>
@@ -196,6 +213,7 @@
 						step = 'email';
 						error = '';
 						success = '';
+						capToken = '';
 					}}
 				>
 					Back

@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { register } from '$lib/api';
 	import { goto } from '$app/navigation';
+	import CapWidget from '$lib/components/CapWidget.svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -10,6 +11,9 @@
 	let success = $state('');
 	let loading = $state(false);
 	let formReady = $state(false);
+	let capToken = $state('');
+	let capActive = $state(false);
+	let capReady = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | null} */
 	let redirectTimer = $state(null);
 
@@ -23,6 +27,10 @@
 
 	async function handleRegister() {
 		if (!formReady || loading) return;
+		if (capActive && !capToken) {
+			error = 'Complete the captcha first';
+			return;
+		}
 		error = '';
 		if (password !== confirmPassword) {
 			error = 'Passwords do not match';
@@ -34,11 +42,12 @@
 		}
 		loading = true;
 		try {
-			await register(email, password);
+			await register(email, password, capToken || undefined);
 			success = 'Account created! Waiting for admin approval.';
 			redirectTimer = setTimeout(() => goto('/'), 3000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Registration failed';
+			capToken = '';
 		}
 		loading = false;
 	}
@@ -105,6 +114,7 @@
 						disabled={!formReady}
 					/>
 				</label>
+				<CapWidget bind:token={capToken} bind:active={capActive} bind:ready={capReady} />
 				{#if error}
 					<p class="error" data-testid="register-error">{error}</p>
 				{/if}
@@ -112,7 +122,7 @@
 					class="btn-secondary w-full justify-center"
 					type="submit"
 					data-testid="register-submit"
-					disabled={!formReady || loading}
+					disabled={!formReady || !capReady || loading || (capActive && !capToken)}
 				>
 					{loading ? 'Creating...' : formReady ? 'Create Account' : 'Loading...'}
 				</button>
