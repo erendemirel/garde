@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"garde/internal/models"
 	"garde/internal/testutil"
 	"garde/pkg/crypto"
 	pkgerrors "garde/pkg/errors"
+	"garde/pkg/session"
 )
 
 // Login → ValidateSession → Logout through miniredis. Covers the core
@@ -53,6 +55,9 @@ func TestLoginValidateLogout(t *testing.T) {
 	if err != nil || valid == nil || !valid.Response.Valid {
 		t.Fatalf("validate = %+v, %v", valid, err)
 	}
+	if valid.CookieMaxAge <= 0 {
+		t.Fatalf("CookieMaxAge = %v, want sliding TTL > 0", valid.CookieMaxAge)
+	}
 
 	// A different IP trips the multiple-IP guard, which blacklists and
 	// deletes the session — so exercise it on a separate session.
@@ -77,6 +82,36 @@ func TestLoginValidateLogout(t *testing.T) {
 	}
 	if after != nil && after.Response.Valid {
 		t.Fatal("session still valid after logout")
+	}
+}
+
+func TestValidateSessionAbsoluteExpiry(t *testing.T) {
+	s := newSessionService(t)
+	ctx := context.Background()
+	testutil.InitConfig(t, map[string]string{
+		"superuser_email":          "root@example.com",
+		"session_idle_timeout":     "1h",
+		"session_absolute_timeout": "2h",
+	})
+	seedLoginUser(t, s, "abs@example.com", "DevAdminTest123!", models.UserStatusOk)
+	resp, err := s.Login(ctx, &models.LoginRequest{Email: "abs@example.com", Password: "DevAdminTest123!"}, "10.0.0.1", "ua")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := s.repo.GetSessionData(ctx, resp.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.CreatedAt = time.Now().Add(-3 * time.Hour)
+	if err := s.repo.StoreSessionData(ctx, resp.SessionID, data, session.IdleTimeout()); err != nil {
+		t.Fatal(err)
+	}
+	expired, err := s.ValidateSession(ctx, resp.SessionID, "10.0.0.1", "ua")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expired != nil && expired.Response.Valid {
+		t.Fatal("session past absolute timeout still valid")
 	}
 }
 

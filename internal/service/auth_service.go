@@ -39,6 +39,8 @@ type AuthService struct {
 type ValidationResult struct {
 	Response *models.SessionValidationResponse
 	UserID   string
+	// CookieMaxAge is the sliding TTL after a successful validation (for cookie refresh).
+	CookieMaxAge time.Duration
 }
 
 func NewAuthService(repo *repository.RedisRepository) *AuthService {
@@ -267,7 +269,7 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, session.SessionDuration); err != nil {
+	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, session.IdleTimeout()); err != nil {
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
@@ -390,9 +392,9 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
-	// Check session age
-	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
-		slog.Debug("Session has expired", "session_id_prefix", session.IDPrefix(sessionID))
+	// Absolute lifetime from CreatedAt — activity cannot extend past this.
+	if session.IsAbsolutelyExpired(sessionData.CreatedAt) {
+		slog.Debug("Session has expired (absolute)", "session_id_prefix", session.IDPrefix(sessionID))
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
@@ -401,13 +403,26 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
+	ttl := session.RemainingTTL(sessionData.CreatedAt)
+	if ttl <= 0 {
+		s.repo.DeleteSession(ctx, sessionID)
+		return &ValidationResult{
+			Response: &models.SessionValidationResponse{Valid: false},
+		}, nil
+	}
+	// Sliding idle: extend Redis TTL on each successful use.
+	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, ttl); err != nil {
+		slog.Warn("Failed to slide session TTL", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
+	}
+
 	slog.Debug("Session validation successful", "user_id", sessionData.UserID)
 
 	return &ValidationResult{
 		Response: &models.SessionValidationResponse{
 			Valid: true,
 		},
-		UserID: sessionData.UserID,
+		UserID:       sessionData.UserID,
+		CookieMaxAge: ttl,
 	}, nil
 }
 
@@ -428,9 +443,18 @@ func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID s
 		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
 	}
 
-	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
+	if session.IsAbsolutelyExpired(sessionData.CreatedAt) {
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+
+	ttl := session.RemainingTTL(sessionData.CreatedAt)
+	if ttl <= 0 {
+		s.repo.DeleteSession(ctx, sessionID)
+		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, ttl); err != nil {
+		slog.Warn("Failed to slide session TTL", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 	}
 
 	user, err := s.repo.GetUserByID(ctx, sessionData.UserID)
@@ -439,8 +463,9 @@ func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID s
 	}
 
 	return &ValidationResult{
-		Response: &models.SessionValidationResponse{Valid: true},
-		UserID:   sessionData.UserID,
+		Response:     &models.SessionValidationResponse{Valid: true},
+		UserID:       sessionData.UserID,
+		CookieMaxAge: ttl,
 	}, nil
 }
 

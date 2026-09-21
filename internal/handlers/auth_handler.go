@@ -67,17 +67,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	cookieDomain := config.Get("DOMAIN_NAME")
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    resp.SessionID,
-		Path:     "/",
-		Domain:   cookieDomain,
-		MaxAge:   int(session.SessionDuration.Seconds()),
-		Secure:   config.GetCookieSecure(),
-		HttpOnly: true,
-		SameSite: config.GetCookieSameSite(),
-	})
+	middleware.SetSessionCookie(c, resp.SessionID, session.IdleTimeout())
 
 	// Browser clients use the HttpOnly cookie. API clients that need a Bearer
 	// session must opt in so the credential is not exposed to page JS by default.

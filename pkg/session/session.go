@@ -13,14 +13,22 @@ import (
 )
 
 const (
-	SessionIDLength          = 64 // = 512 bits
-	SessionDuration          = 1 * time.Hour
-	BlacklistPrefix          = "blacklist:"
-	BlacklistDuration        = 24 * time.Hour // How long to keep track of revoked sessions
-	FailedLoginPrefix        = "failed_login:"
-	FailedLoginThreshold     = 5
-	FailedLoginBlockDuration = 30 * time.Minute
-	IPBlockPrefix            = "ip_block:"
+	SessionIDLength = 64 // = 512 bits
+	// SessionDuration is the default idle sliding window. Prefer IdleTimeout()
+	// so Vault overrides (SESSION_IDLE_TIMEOUT) apply.
+	SessionDuration = DefaultSessionIdleTimeout
+	// DefaultSessionIdleTimeout: Redis TTL and cookie MaxAge are refreshed on
+	// each successful validation, up to this length of inactivity.
+	DefaultSessionIdleTimeout = 12 * time.Hour
+	// DefaultSessionAbsoluteTimeout: hard ceiling from CreatedAt; no amount of
+	// activity extends past this.
+	DefaultSessionAbsoluteTimeout = 24 * time.Hour
+	BlacklistPrefix               = "blacklist:"
+	BlacklistDuration             = 24 * time.Hour // How long to keep track of revoked sessions
+	FailedLoginPrefix             = "failed_login:"
+	FailedLoginThreshold          = 5
+	FailedLoginBlockDuration      = 30 * time.Minute
+	IPBlockPrefix                 = "ip_block:"
 	// Activity Types
 	ActivityFailedLogin       = "failed_login"
 	ActivityPasswordMismatch  = "password_mismatch"
@@ -86,6 +94,54 @@ type SessionData struct {
 	IP        string    `json:"ip"`
 	UserAgent string    `json:"user_agent"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// IdleTimeout is the sliding inactivity window (default 12h). Override with
+// SESSION_IDLE_TIMEOUT (Go duration, e.g. 12h).
+func IdleTimeout() time.Duration {
+	return durationSecret("SESSION_IDLE_TIMEOUT", DefaultSessionIdleTimeout)
+}
+
+// AbsoluteTimeout is the hard max lifetime from CreatedAt (default 24h).
+// Override with SESSION_ABSOLUTE_TIMEOUT. Never shorter than IdleTimeout.
+func AbsoluteTimeout() time.Duration {
+	abs := durationSecret("SESSION_ABSOLUTE_TIMEOUT", DefaultSessionAbsoluteTimeout)
+	idle := IdleTimeout()
+	if abs < idle {
+		return idle
+	}
+	return abs
+}
+
+// IsAbsolutelyExpired reports whether createdAt is past AbsoluteTimeout.
+func IsAbsolutelyExpired(createdAt time.Time) bool {
+	return time.Since(createdAt) > AbsoluteTimeout()
+}
+
+// RemainingTTL is how long Redis/cookie should live after a successful touch:
+// min(idle window, time left until absolute expiry). Zero if already expired.
+func RemainingTTL(createdAt time.Time) time.Duration {
+	left := AbsoluteTimeout() - time.Since(createdAt)
+	if left <= 0 {
+		return 0
+	}
+	idle := IdleTimeout()
+	if idle < left {
+		return idle
+	}
+	return left
+}
+
+func durationSecret(key string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(config.Get(key))
+	if raw == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
 }
 
 func IDPrefix(id string) string {

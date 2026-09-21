@@ -103,6 +103,11 @@ func authenticateSession(
 		return
 	}
 
+	// Sliding idle: refresh cookie MaxAge for browser sessions (Bearer has no cookie).
+	if authMethod == AuthMethodCookie && validationResult.CookieMaxAge > 0 {
+		SetSessionCookie(c, sessionID, validationResult.CookieMaxAge)
+	}
+
 	c.Set("session_id", sessionID)
 	c.Set(ContextAuthMethod, authMethod)
 	c.Next()
@@ -148,6 +153,24 @@ func authenticatePAT(
 // SameSite attributes used when the cookie was issued, so browsers actually drop it.
 func ClearSessionCookie(c *gin.Context) {
 	clearSessionCookie(c)
+}
+
+// SetSessionCookie issues or refreshes the HttpOnly session cookie.
+func SetSessionCookie(c *gin.Context, sessionID string, maxAge time.Duration) {
+	secs := int(maxAge.Seconds())
+	if secs < 1 {
+		secs = 1
+	}
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    sessionID,
+		Path:     "/",
+		Domain:   config.Get("DOMAIN_NAME"),
+		MaxAge:   secs,
+		Secure:   config.GetCookieSecure(),
+		HttpOnly: true,
+		SameSite: config.GetCookieSameSite(),
+	})
 }
 
 func clearSessionCookie(c *gin.Context) {

@@ -314,6 +314,18 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/session_idle_timeout\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/session_idle_timeout"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/session_absolute_timeout\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/session_absolute_timeout"
+  error_on_missing_key = false
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/trusted_proxies\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/trusted_proxies"
   error_on_missing_key = false
