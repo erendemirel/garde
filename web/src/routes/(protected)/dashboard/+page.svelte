@@ -139,7 +139,7 @@
 					><KeyRound size={18} />Access tokens</a
 				>
 				<a href="/sessions" class="btn-secondary" data-testid="dashboard-link-sessions"
-					><Monitor size={18} />Sessions</a
+					><Monitor size={18} />Active sessions</a
 				>
 				{#if !$isSuperuser}
 					<a href="/request-update" class="btn-secondary" data-testid="dashboard-link-request-update"

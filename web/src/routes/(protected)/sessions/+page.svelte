@@ -248,8 +248,7 @@
 									{/if}
 								</button>
 							</th>
-							<th>Status</th>
-							<th class="w-[1%] whitespace-nowrap !text-center">Actions</th>
+							<th>Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -281,24 +280,20 @@
 										<span data-testid="sessions-row-summary"
 											>{s.ua_summary || s.ua_family || 'Session'}</span
 										>
+										{#if s.current}
+											<span class="badge badge-permission" data-testid="sessions-row-current"
+												>This device</span
+											>
+										{/if}
 									</span>
 								</td>
 								<td data-testid="sessions-row-place">{s.approx_place || s.ip_display || 'unknown'}</td>
-								<td>{formatWhen(s.last_seen_at)}</td>
-								<td>{formatWhen(s.created_at)}</td>
+								<td class="whitespace-nowrap">{formatWhen(s.last_seen_at)}</td>
+								<td class="whitespace-nowrap">{formatWhen(s.created_at)}</td>
 								<td>
-									{#if s.current}
-										<span class="badge badge-permission" data-testid="sessions-row-current"
-											>This device</span
-										>
-									{:else}
-										<span class="text-muted">—</span>
-									{/if}
-								</td>
-								<td class="w-[1%] whitespace-nowrap text-center">
 									<button
 										type="button"
-										class="btn-secondary min-w-[8.5rem] justify-center !border-0 hover:!shadow-none"
+										class="btn-secondary border-transparent !px-0 hover:!translate-y-0 hover:!shadow-none hover:bg-accent/10"
 										data-testid="sessions-row-revoke"
 										onclick={() => askRevokeOne(s)}
 									>
