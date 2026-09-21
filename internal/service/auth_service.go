@@ -1173,6 +1173,11 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		return err
 	}
 
+	// Reject reuse of the current password (single previous only — no history store).
+	if same, err := crypto.VerifyPassword(req.NewPassword, user.PasswordHash); err == nil && same {
+		return fmt.Errorf("%s", errors.ErrPasswordSameAsCurrent)
+	}
+
 	// All verifications passed, update password
 	hashedPassword, err := crypto.HashPassword(req.NewPassword)
 	if err != nil {
@@ -1255,6 +1260,11 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	valid, err := crypto.VerifyPassword(req.OldPassword, user.PasswordHash)
 	if err != nil || !valid {
 		return fmt.Errorf("%s", errors.ErrInvalidCredentials)
+	}
+
+	// Reject reuse of the current password (single previous only — no history store).
+	if same, err := crypto.VerifyPassword(req.NewPassword, user.PasswordHash); err == nil && same {
+		return fmt.Errorf("%s", errors.ErrPasswordSameAsCurrent)
 	}
 
 	// If user has MFA enabled, verify MFA code

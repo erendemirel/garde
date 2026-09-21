@@ -86,6 +86,7 @@ const (
 	ErrEmailFormat            = "invalid email format"
 	ErrPasswordLength         = "password must be between 8 and 64 characters"
 	ErrPasswordComplexity     = "password complexity requirements not met"
+	ErrPasswordSameAsCurrent  = "new password must be different from the current password"
 	ErrDisallowedCharacters  = "disallowed characters"
 	ErrInvalidPermissionName  = "permission and group names must be 1-128 characters, alphanumeric and underscore only"
 	ErrInvalidAPIKeyName      = "API key name must be 1-64 characters, alphanumeric with underscore, hyphen or dot"

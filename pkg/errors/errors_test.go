@@ -54,6 +54,7 @@ func TestErrorMessagesNonEmptyAndUnique(t *testing.T) {
 	add("ErrEmailFormat", ErrEmailFormat)
 	add("ErrPasswordLength", ErrPasswordLength)
 	add("ErrPasswordComplexity", ErrPasswordComplexity)
+	add("ErrPasswordSameAsCurrent", ErrPasswordSameAsCurrent)
 	add("ErrDisallowedCharacters", ErrDisallowedCharacters)
 	add("ErrInvalidPermissionName", ErrInvalidPermissionName)
 	add("ErrInvalidAPIKeyName", ErrInvalidAPIKeyName)

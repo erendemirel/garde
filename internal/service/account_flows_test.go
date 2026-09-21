@@ -231,6 +231,16 @@ func TestSendOTPAndResetPasswordEndToEnd(t *testing.T) {
 	}
 	otp = extractOTP(t, (*sent)[1])
 	if err := s.ResetPassword(ctx, &models.PasswordResetRequest{
+		Email: "otp@example.com", OTP: otp, NewPassword: "OldPassword1!",
+	}); err == nil || err.Error() != pkgerrors.ErrPasswordSameAsCurrent {
+		t.Fatalf("same password err = %v, want %q", err, pkgerrors.ErrPasswordSameAsCurrent)
+	}
+
+	if err := s.SendOTP(ctx, "otp@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	otp = extractOTP(t, (*sent)[2])
+	if err := s.ResetPassword(ctx, &models.PasswordResetRequest{
 		Email: "otp@example.com", OTP: otp, NewPassword: "NewPassword1!",
 	}); err != nil {
 		t.Fatalf("reset: %v", err)
@@ -266,6 +276,11 @@ func TestChangePasswordRotates(t *testing.T) {
 		OldPassword: "WrongOld1!", NewPassword: "NewPassword1!",
 	}); err == nil || err.Error() != pkgerrors.ErrInvalidCredentials {
 		t.Fatalf("wrong old err = %v, want %q", err, pkgerrors.ErrInvalidCredentials)
+	}
+	if err := s.ChangePassword(ctx, "cp-1", &models.ChangePasswordRequest{
+		OldPassword: "OldPassword1!", NewPassword: "OldPassword1!",
+	}); err == nil || err.Error() != pkgerrors.ErrPasswordSameAsCurrent {
+		t.Fatalf("same password err = %v, want %q", err, pkgerrors.ErrPasswordSameAsCurrent)
 	}
 	if err := s.ChangePassword(ctx, "cp-1", &models.ChangePasswordRequest{
 		OldPassword: "OldPassword1!", NewPassword: "NewPassword1!",
