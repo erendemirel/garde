@@ -1,7 +1,14 @@
 import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { e2eAdmin, e2eSuperuser, ensureApiAuth, loginViaRequest, openDashboardSession } from './auth';
+import {
+	e2eAdmin,
+	e2eBrowserUserAgent,
+	e2eSuperuser,
+	ensureApiAuth,
+	loginViaRequest,
+	openDashboardSession
+} from './auth';
 import {
 	AUTH_DIR,
 	createEphemeralUser,
@@ -87,7 +94,10 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 	},
 
 	adminPage: async ({ browser, workerAdminState }, use) => {
-		const context = await browser.newContext({ storageState: workerAdminState });
+		const context = await browser.newContext({
+			storageState: workerAdminState,
+			userAgent: e2eBrowserUserAgent
+		});
 		const page = await context.newPage();
 		await installCapE2EHarness(page);
 		await use(page);
@@ -95,7 +105,10 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 	},
 
 	superuserPage: async ({ browser, workerSuperuserState }, use) => {
-		const context = await browser.newContext({ storageState: workerSuperuserState });
+		const context = await browser.newContext({
+			storageState: workerSuperuserState,
+			userAgent: e2eBrowserUserAgent
+		});
 		const page = await context.newPage();
 		await installCapE2EHarness(page);
 		await use(page);

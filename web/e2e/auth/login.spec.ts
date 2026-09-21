@@ -175,7 +175,6 @@ test.describe('Login page', describeTags(TAG.auth, TAG.focused), () => {
 				groups: ['group_a']
 			});
 			try {
-				await adminPage.goto('/admin');
 				await openUserDetailFromAdmin(adminPage, user.email);
 				await adminPage.getByTestId('user-detail-reject-account').click();
 				await adminPage.getByTestId('confirm-modal-confirm').click();

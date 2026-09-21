@@ -1,6 +1,12 @@
 import { test, expect } from '../helpers/fixtures';
 import { describeTags, TAG } from '../helpers/tags';
-import { waitForAdminCatalog, waitForPageShell, waitForSuperuserCatalog, waitForVisibilityPanel } from '../helpers/waits';
+import {
+	gotoProtected,
+	waitForAdminCatalog,
+	waitForPageShell,
+	waitForSuperuserCatalog,
+	waitForVisibilityPanel
+} from '../helpers/waits';
 import { SCOPE_GROUP } from '../helpers/catalog';
 
 test.describe('Superuser catalog modals', describeTags(TAG.catalog, TAG.superuser, TAG.focused), () => {
@@ -119,7 +125,7 @@ test.describe('Admin catalog modals', describeTags(TAG.catalog, TAG.admin, TAG.f
 		adminPage: page,
 		ephemeralUser
 	}) => {
-		await page.goto('/admin');
+		await gotoProtected(page, '/admin', { shellTestId: 'admin-page' });
 		await page.getByTestId('admin-tab-groups').click();
 		await waitForAdminCatalog(page);
 		await page.getByTestId('admin-catalog-search').fill(SCOPE_GROUP);

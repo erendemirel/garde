@@ -386,8 +386,11 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
-	// Verify IP and user agent match
-	if session.HashString(ip) != sessionData.IP || session.HashString(userAgent) != sessionData.UserAgent {
+	// Verify IP (always) and user-agent binding (unless DISABLE_USER_AGENT_CHECK).
+	ipMismatch := session.HashString(ip) != sessionData.IP
+	uaMismatch := !config.GetBool("DISABLE_USER_AGENT_CHECK") &&
+		session.HashString(userAgent) != sessionData.UserAgent
+	if ipMismatch || uaMismatch {
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,

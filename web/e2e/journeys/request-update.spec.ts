@@ -9,7 +9,7 @@ import {
 	openUserDetailFromSuperuser,
 	patchUserMaps
 } from '../helpers/userApi';
-import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast, waitForRequestUpdateGroups } from '../helpers/waits';
+import { waitForPageShell, waitForUserDetail, waitForUsersList, matchUserUpdate, LOAD_TIMEOUT, REDIRECT_TIMEOUT, dismissToast, waitForRequestUpdateGroups, gotoProtected } from '../helpers/waits';
 import { gotoDashboardFresh } from '../helpers/journeyActs';
 import { describeTags, TAG } from '../helpers/tags';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from '../helpers/catalog';
@@ -196,19 +196,18 @@ async function superuserApproveUpdate(suPage: Page, email: string, userId?: stri
 test.describe('Request update', describeTags(TAG.journey, TAG.requestUpdate), () => {
 	test.describe('form', () => {
 		test('shows the request-update form from the dashboard', async ({ adminPage: page }) => {
-			await page.goto('/dashboard');
-			await waitForPageShell(page, 'dashboard-page');
+			await gotoProtected(page, '/dashboard', { shellTestId: 'dashboard-page' });
 			await page.getByTestId('dashboard-link-request-update').click();
 			await expect(page).toHaveURL(/\/request-update/);
-			await expect(page.getByTestId('request-update-page')).toBeVisible();
+			await waitForPageShell(page, 'request-update-page');
 			await expect(page.getByTestId('request-update-submit')).toBeDisabled();
 		});
 
 		test('back link returns to dashboard without submitting', async ({ adminPage: page }) => {
-			await page.goto('/request-update');
-			await waitForPageShell(page, 'request-update-page');
+			await gotoProtected(page, '/request-update', { shellTestId: 'request-update-page' });
 			await page.getByTestId('request-update-back').click();
 			await expect(page).toHaveURL(/\/dashboard/);
+			await waitForPageShell(page, 'dashboard-page');
 		});
 
 		test('reverts a staged group change via change summary', async ({ browser, ephemeralUser }) => {

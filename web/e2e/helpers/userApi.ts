@@ -5,9 +5,9 @@ import { E2E_CAP_BYPASS_TOKEN } from './cap';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from './catalog';
 import {
 	LOAD_TIMEOUT,
+	gotoProtected,
 	isFrameworkErrorPage,
 	matchUsersListRequest,
-	waitForPageShell,
 	waitForUserDetail,
 	waitForUsersList
 } from './waits';
@@ -318,10 +318,8 @@ export async function openUserDetailById(page: Page, userId: string, expectedEma
 
 /** Open a user detail page from the admin users tab. */
 export async function openUserDetailFromAdmin(page: Page, email: string) {
-	if (!page.url().includes('/admin')) {
-		await page.goto('/admin');
-	}
-	await waitForPageShell(page, 'admin-page');
+	// Always re-navigate with retries — a stale /admin URL can leave a blank shell under load.
+	await gotoProtected(page, '/admin', { shellTestId: 'admin-page' });
 	await waitForUsersList(page);
 
 	const usersResponse = page.waitForResponse((res) => matchUsersListRequest(res, { q: email }));
@@ -337,10 +335,7 @@ export async function openUserDetailFromAdmin(page: Page, email: string) {
 
 /** Open a user detail page from the superuser users tab. */
 export async function openUserDetailFromSuperuser(page: Page, email: string) {
-	if (!page.url().includes('/superuser')) {
-		await page.getByTestId('nav-superuser').click();
-	}
-	await waitForPageShell(page, 'superuser-page');
+	await gotoProtected(page, '/superuser', { shellTestId: 'superuser-page' });
 	await page.getByTestId('superuser-tab-users').click();
 	await waitForUsersList(page);
 

@@ -1,8 +1,11 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { devices, expect, type APIRequestContext, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { E2E_CAP_BYPASS_TOKEN } from './cap';
 import { LOAD_TIMEOUT, REDIRECT_TIMEOUT, waitForPageShell, waitForSessionReady } from './waits';
+
+/** Must match playwright.config chromium project so API-minted cookies bind to the browser UA. */
+export const e2eBrowserUserAgent = devices['Desktop Chrome'].userAgent;
 
 /** Dev bootstrap accounts from README / docker compose seed. Override via env. */
 export const e2eAdmin = {
@@ -76,6 +79,7 @@ export async function ensureApiAuth(
 	const createContext = (storageState?: string) =>
 		playwright.request.newContext({
 			baseURL,
+			userAgent: e2eBrowserUserAgent,
 			...(storageState ? { storageState } : {})
 		});
 

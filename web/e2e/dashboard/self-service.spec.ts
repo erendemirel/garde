@@ -3,13 +3,18 @@ import { loginAs, loginViaRequest, startUserSession, e2eAdmin } from '../helpers
 import { enableMfaViaUi, startMfaSetup } from '../helpers/mfa';
 import { totpCode } from '../helpers/totp';
 import { createEphemeralUser, deleteUserById } from '../helpers/userApi';
-import { waitForPageShell, waitForPasswordChangeSignOut, LOAD_TIMEOUT, REDIRECT_TIMEOUT } from '../helpers/waits';
+import {
+	gotoProtected,
+	waitForPageShell,
+	waitForPasswordChangeSignOut,
+	LOAD_TIMEOUT,
+	REDIRECT_TIMEOUT
+} from '../helpers/waits';
 import { describeTags, TAG } from '../helpers/tags';
 
 test.describe('Dashboard account overview', describeTags(TAG.dashboard, TAG.focused), () => {
 	test('shows account summary and self-service links', async ({ adminPage: page }) => {
-		await page.goto('/dashboard');
-		await waitForPageShell(page, 'dashboard-page');
+		await gotoProtected(page, '/dashboard', { shellTestId: 'dashboard-page' });
 		await expect(page.getByTestId('dashboard-email')).toHaveText(e2eAdmin.email);
 		await expect(page.getByTestId('dashboard-status')).toBeVisible();
 		await expect(page.getByTestId('dashboard-mfa')).toBeVisible();
@@ -29,16 +34,14 @@ test.describe('Dashboard account overview', describeTags(TAG.dashboard, TAG.focu
 	});
 
 	test('opens change-password from the dashboard', async ({ adminPage: page }) => {
-		await page.goto('/dashboard');
-		await waitForPageShell(page, 'dashboard-page');
+		await gotoProtected(page, '/dashboard', { shellTestId: 'dashboard-page' });
 		await page.getByTestId('dashboard-link-password').click();
 		await expect(page).toHaveURL(/\/password/);
 		await expect(page.getByTestId('password-page')).toBeVisible();
 	});
 
 	test('opens MFA from the dashboard', async ({ adminPage: page }) => {
-		await page.goto('/dashboard');
-		await waitForPageShell(page, 'dashboard-page');
+		await gotoProtected(page, '/dashboard', { shellTestId: 'dashboard-page' });
 		await page.getByTestId('dashboard-link-mfa').click();
 		await expect(page).toHaveURL(/\/mfa/);
 		await expect(page.getByTestId('mfa-page')).toBeVisible();

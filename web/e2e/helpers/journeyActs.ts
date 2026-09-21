@@ -3,6 +3,7 @@ import { totpCode } from './totp';
 import {
 	LOAD_TIMEOUT,
 	REDIRECT_TIMEOUT,
+	gotoProtected,
 	matchMeGet,
 	matchUserUpdate,
 	waitForPageShell,
@@ -42,9 +43,8 @@ async function dismissToastAfterAction(page: Page, pattern?: string | RegExp, op
 /** Navigate to dashboard and wait for a fresh /api/users/me (dashboard refetches on mount). */
 export async function gotoDashboardFresh(page: Page) {
 	const meResponse = page.waitForResponse(matchMeGet, { timeout: LOAD_TIMEOUT });
-	await page.goto('/dashboard');
-	await meResponse;
-	await waitForPageShell(page, 'dashboard-page');
+	await gotoProtected(page, '/dashboard', { shellTestId: 'dashboard-page' });
+	await meResponse.catch(() => undefined);
 }
 
 /** User still unauthenticated — outcome check for epics (details in auth/registration specs). */
@@ -184,7 +184,6 @@ export async function adminApproveAccount(
 	email: string,
 	opts?: JourneyActOptions
 ) {
-	await adminPage.goto('/admin');
 	await openUserDetailFromAdmin(adminPage, email);
 	const updateResponse = adminPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 	await adminPage.getByTestId('user-detail-approve-account').click();
@@ -198,7 +197,6 @@ export async function adminRejectAccount(
 	email: string,
 	opts?: JourneyActOptions
 ) {
-	await adminPage.goto('/admin');
 	await openUserDetailFromAdmin(adminPage, email);
 	const updateResponse = adminPage.waitForResponse(matchUserUpdate, { timeout: LOAD_TIMEOUT });
 	await adminPage.getByTestId('user-detail-reject-account').click();
@@ -229,8 +227,6 @@ export async function adminApproveUpdate(
 	if (opts?.userId) {
 		await openUserDetailById(adminPage, opts.userId, email);
 	} else {
-		await adminPage.goto('/admin');
-		await waitForPageShell(adminPage, 'admin-page');
 		await openUserDetailFromAdmin(adminPage, email);
 	}
 	if (!opts?.outcomesOnly) {
@@ -248,8 +244,6 @@ export async function adminRejectUpdate(
 	email: string,
 	opts?: JourneyActOptions
 ) {
-	await adminPage.goto('/admin');
-	await waitForPageShell(adminPage, 'admin-page');
 	await openUserDetailFromAdmin(adminPage, email);
 	if (!opts?.outcomesOnly) {
 		await expect(adminPage.getByTestId('user-detail-pending-update')).toBeVisible();

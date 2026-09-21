@@ -115,7 +115,7 @@
 		{@render children()}
 	{/if}
 {:else if bootError}
-	<div class="container-base max-w-md mx-auto pt-32 text-center">
+	<div class="container-base max-w-md mx-auto pt-32 text-center" data-testid="session-boot-error">
 		<p class="error">{bootError}</p>
 		<a href="/" class="btn-secondary mt-4 inline-flex">Sign in</a>
 	</div>
