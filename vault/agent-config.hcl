@@ -349,3 +349,40 @@ template {
   destination = "/run/secrets/smtp_from"
   error_on_missing_key = false
 }
+
+# Cap captcha (optional). Leave unset / cap_enabled=false to skip challenges.
+template {
+  contents = "{{ with secret \"secret/data/garde/cap_enabled\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cap_enabled"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/cap_site_key\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cap_site_key"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/cap_secret_key\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cap_secret_key"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/cap_api_url\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cap_api_url"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/cap_public_url\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cap_public_url"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/cap_bypass_token\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/cap_bypass_token"
+  error_on_missing_key = false
+}

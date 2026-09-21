@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import path from 'node:path';
 import { e2eAdmin, e2eAdmin2, e2eSuperuser, loginAs } from './auth';
+import { E2E_CAP_BYPASS_TOKEN } from './cap';
 import { SCOPE_GROUP, VISIBILITY_GROUP } from './catalog';
 import {
 	LOAD_TIMEOUT,
@@ -238,7 +239,7 @@ export async function createEphemeralUser(
 	const groups = opts.groups ?? ['group_a'];
 
 	const regRes = await api.post('/api/users', {
-		data: { email, password }
+		data: { email, password, cap_token: E2E_CAP_BYPASS_TOKEN }
 	});
 	if (!regRes.ok()) {
 		throw new Error(`Register failed: ${regRes.status()} ${await regRes.text()}`);

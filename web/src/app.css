@@ -285,11 +285,11 @@ a {
 	}
 
 	.nav-link {
-		@apply inline-flex items-center gap-1.5 border-b-2 border-transparent px-1 pb-0.5 text-sm font-semibold text-muted no-underline transition-colors duration-150 ease-out hover:text-accent outline-none focus-visible:text-accent;
+		@apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-muted no-underline transition-colors duration-150 ease-out hover:bg-accent/10 hover:text-accent outline-none focus-visible:bg-accent/10 focus-visible:text-accent;
 	}
 
 	.nav-link-active {
-		@apply border-accent text-accent;
+		@apply bg-accent/15 text-accent;
 	}
 
 	.qr-code {

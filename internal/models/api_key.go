@@ -2,10 +2,14 @@ package models
 
 import "time"
 
-// Scopes an issued key can carry. Only session validation exists today; the
-// stored field is a list so that adding a second scope later does not change
-// the shape of records already in Redis.
-const ScopeValidate = "validate"
+// Scopes an issued key can carry. Stored as a list so adding a scope later
+// does not change the shape of records already in Postgres.
+const (
+	ScopeValidate = "validate"
+	// ScopeAuth skips Cap on public auth POSTs (login, register, password
+	// reset) when Cap is enabled. Validate-only keys do not get this.
+	ScopeAuth = "auth"
+)
 
 // Audience binds a key to one /validate surface. It is set at issue time and
 // enforced by the listener that mounts the route — not by the key string.
@@ -29,7 +33,7 @@ type APIKeyAudienceInfo struct {
 }
 
 func IsKnownAPIKeyScope(scope string) bool {
-	return scope == ScopeValidate
+	return scope == ScopeValidate || scope == ScopeAuth
 }
 
 func IsKnownAPIKeyAudience(audience string) bool {
@@ -44,6 +48,10 @@ func AllAPIKeyScopes() []APIKeyScopeInfo {
 		{
 			Name:        ScopeValidate,
 			Description: "Call /validate to check whether a session is still valid",
+		},
+		{
+			Name:        ScopeAuth,
+			Description: "Call public auth routes (login, register, password reset) without Cap when Cap is enabled",
 		},
 	}
 }

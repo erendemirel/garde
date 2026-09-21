@@ -37,6 +37,8 @@ func TestErrorMessagesNonEmptyAndUnique(t *testing.T) {
 	add("ErrUserCreationFailed", ErrUserCreationFailed)
 	add("ErrRequestTooLarge", ErrRequestTooLarge)
 	add("ErrTooManyRequests", ErrTooManyRequests)
+	add("ErrCaptchaRequired", ErrCaptchaRequired)
+	add("ErrCaptchaFailed", ErrCaptchaFailed)
 	add("ErrOperationFailed", ErrOperationFailed)
 	add("ErrUserNotFound", ErrUserNotFound)
 	add("ErrEmailAlreadyExists", ErrEmailAlreadyExists)

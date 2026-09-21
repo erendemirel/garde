@@ -54,6 +54,7 @@ pnpm-lock.yaml
 .cursor/
 .idea/
 .vscode/
+.kilo/
 *.swp
 *.swo
 *.sublime-project

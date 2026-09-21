@@ -177,10 +177,10 @@ Full step-by-step: [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-v
 - Vault Agent authenticates with AppRole and auto-renews tokens
 - Templates rerender when secrets rotate
 - Prod Vault listens on `127.0.0.1:8200` only in single-VPS Compose; HA Vault speaks on the WireGuard mesh only. Never publish `:8200` on a public interface.
-- The app reloads the in-memory secret map when files under `/run/secrets` change. Only some keys apply live (API key, CORS, cookies, feature flags, SMTP, Redis reconnect, superuser/admin bootstrap). **TLS binding, trusted proxies, rate-limit / rapid-request thresholds, log level, and PostgreSQL DSN settings require a restart.** See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
+- The app reloads the in-memory secret map when files under `/run/secrets` change. Only some keys apply live (API key, CORS, cookies, feature flags including Cap, SMTP, Redis reconnect, superuser/admin bootstrap). **TLS binding, trusted proxies, rate-limit / rapid-request thresholds, log level, and PostgreSQL DSN settings require a restart.** See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
 ## Development (dev profile)
 
-- The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`.
+- The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`. Cap Standalone also starts on `:3000` (dashboard + siteverify); leave `CAP_ENABLED=false` until you create a site key.
 - `init-vault.sh` writes the Vault Agent token into a shared Docker volume (`vault-agent-token`); you do **not** need a host-side `vault/dev-token` file.
 - The agent writes one file per secret to `/run/secrets`; the app watches for changes and reconnects to Redis/reloads credentials as described above.
 - Start with: `docker compose --profile dev up --build`. See [Development Installation](../docs/INSTALLATION.md#development-installation) in the installation guide.

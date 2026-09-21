@@ -32,6 +32,8 @@ const (
 	ErrRequestTooLarge    = "request body exceeds maximum allowed size"
 	ErrTooManyRequests    = "too many requests"
 	ErrHTTPRequestBodyTooLarge = "http: request body too large"
+	ErrCaptchaRequired    = "captcha verification required"
+	ErrCaptchaFailed      = "captcha verification failed"
 )
 
 // Generic error message

@@ -1,11 +1,13 @@
 /** Structured API failure so callers can branch on HTTP status instead of message text. */
 export class ApiError extends Error {
 	status: number;
+	captchaRequired: boolean;
 
-	constructor(message: string, status: number) {
+	constructor(message: string, status: number, captchaRequired = false) {
 		super(message);
 		this.name = 'ApiError';
 		this.status = status;
+		this.captchaRequired = captchaRequired;
 	}
 }
 

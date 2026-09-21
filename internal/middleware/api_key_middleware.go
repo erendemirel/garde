@@ -133,3 +133,38 @@ func rejectAPIKey(c *gin.Context, reason string) {
 	slog.Info("Invalid API key attempt", "path", c.Request.URL.Path, "ip", c.ClientIP(), "reason", reason)
 	c.AbortWithStatusJSON(http.StatusUnauthorized, models.NewErrorResponse(errors.ErrUnauthorized))
 }
+
+// serviceAPIKeyHasScope reports whether the request presents a usable issued
+// key that carries scope. Failures (missing, malformed, wrong secret, missing
+// scope) return false without aborting — Cap and other optional gates use this
+// as a privilege check, not as required authentication.
+func serviceAPIKeyHasScope(c *gin.Context, repo *repository.RedisRepository, scope string) bool {
+	if repo == nil || scope == "" {
+		return false
+	}
+	presented := c.GetHeader(APIKeyHeader)
+	if presented == "" {
+		return false
+	}
+	id, secret, ok := crypto.ParseAPIKey(presented)
+	if !ok {
+		return false
+	}
+	key, err := repo.GetServiceAPIKey(c.Request.Context(), id)
+	if err != nil {
+		return false
+	}
+	if !crypto.APIKeySecretMatches(secret, key.SecretHash) {
+		return false
+	}
+	if !key.Usable(time.Now().UTC()) || !key.HasScope(scope) {
+		return false
+	}
+	if err := repo.TouchServiceAPIKey(c.Request.Context(), id); err != nil {
+		slog.Warn("Failed to record API key use (Cap bypass)", "error", err, "api_key_id", id)
+	}
+	c.Set("is_api_request", true)
+	c.Set(ContextAPIKeyID, key.ID)
+	c.Set(ContextAPIKeyName, key.Name)
+	return true
+}

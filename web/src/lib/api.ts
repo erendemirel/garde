@@ -10,7 +10,9 @@ const API_BASE = import.meta.env.PUBLIC_API_URL || '/api';
 const PUBLIC_PATHS = new Set(['/', '/register', '/forgot-password']);
 const CREDENTIAL_401_ENDPOINTS = new Set(['/login']);
 
-type ApiResponse<T> = { data: T } | { error: { message: string } };
+type ApiResponse<T> =
+	| { data: T }
+	| { error: { message: string; captcha_required?: boolean } };
 
 function isPublicLocation() {
 	if (!browser) return true;
@@ -70,13 +72,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 	}
 
 	const errorMessage = 'error' in json ? json.error.message : '';
+	const captchaRequired = 'error' in json ? !!json.error.captcha_required : false;
 
 	if (shouldExpireSession(res.status, path, errorMessage)) {
 		handleExpiredSession();
 	}
 
 	if ('error' in json) {
-		throw new ApiError(json.error.message, res.status);
+		throw new ApiError(json.error.message, res.status, captchaRequired);
 	}
 
 	if (!res.ok) {
@@ -87,32 +90,62 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 // Auth
-export const login = (email: string, password: string, mfa_code?: string) =>
+export const login = (email: string, password: string, mfa_code?: string, cap_token?: string) =>
 	request<{ session_id: string }>('/login', {
 		method: 'POST',
-		body: JSON.stringify({ email, password, mfa_code })
+		body: JSON.stringify({ email, password, mfa_code, cap_token })
 	});
 
 export const logout = () => request('/logout', { method: 'POST' });
 
-export const register = (email: string, password: string) =>
+export const register = (email: string, password: string, cap_token?: string) =>
 	request<{ user_id: string }>('/users', {
 		method: 'POST',
-		body: JSON.stringify({ email, password })
+		body: JSON.stringify({ email, password, cap_token })
 	});
 
 // Password
-export const requestOtp = (email: string) =>
+export const requestOtp = (email: string, cap_token?: string) =>
 	request('/users/password/otp', {
 		method: 'POST',
-		body: JSON.stringify({ email })
+		body: JSON.stringify({ email, cap_token })
 	});
 
-export const resetPassword = (email: string, otp: string, new_password: string, mfa_code?: string) =>
+export const resetPassword = (
+	email: string,
+	otp: string,
+	new_password: string,
+	mfa_code?: string,
+	cap_token?: string
+) =>
 	request('/users/password/reset', {
 		method: 'POST',
-		body: JSON.stringify({ email, otp, new_password, mfa_code })
+		body: JSON.stringify({ email, otp, new_password, mfa_code, cap_token })
 	});
+
+export const getCaptchaConfig = () =>
+	request<{
+		enabled: boolean;
+		site_key?: string;
+		widget_endpoint?: string;
+		public_url?: string;
+		login_progressive?: boolean;
+		login_required?: boolean;
+		register_required?: boolean;
+	}>('/captcha/config');
+
+export const getCaptchaAdminStatus = () =>
+	request<{
+		enabled: boolean;
+		site_key?: string;
+		public_url?: string;
+		api_url?: string;
+		widget_endpoint?: string;
+		secret_configured: boolean;
+		dashboard_url?: string;
+		login_progressive?: boolean;
+		login_failure_threshold?: number;
+	}>('/admin/captcha');
 
 export const changePassword = (old_password: string, new_password: string, mfa_code?: string) =>
 	request('/users/password/change', {

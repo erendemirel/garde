@@ -139,6 +139,30 @@ services:
     profiles:
       - dev
 
+  # DEV: Cap Standalone (optional PoW captcha + dashboard). Enforcement is off
+  # until CAP_ENABLED=true and site/secret keys are set in Vault /dev.secrets.
+  # Dashboard: http://localhost:3000 (ADMIN_KEY from CAP_ADMIN_KEY).
+  cap:
+    image: tiago2/cap:3.1.11
+    ports:
+      - "3000:3000"
+    environment:
+      ADMIN_KEY: ${CAP_ADMIN_KEY:-dev-cap-admin-key-change-me-please-32c}
+      REDIS_URL: redis://:redis@dev-redis:6379
+      REDIS_PREFIX: "cap:"
+      CORS_ORIGIN: http://localhost:5173,http://localhost:3000
+      ENABLE_ASSETS_SERVER: "true"
+      WIDGET_VERSION: "0.1.57"
+    depends_on:
+      dev-redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - redis_network
+      - auth_network
+    profiles:
+      - dev
+
 volumes:
   redis_data:
     driver: local

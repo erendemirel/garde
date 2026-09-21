@@ -109,4 +109,8 @@ export async function selectIssueScope(
 	await expect(
 		scopes.locator(`[data-testid="multiselect-chip"][data-key="${scopeName}"]`)
 	).toBeVisible();
+	// Dropdown stays open after add(); close it so option text cannot cover expiry radios.
+	// Prefer outside click over Escape so a parent Modal is never dismissed.
+	await page.getByTestId('api-keys-issue-name').click();
+	await expect(scopes.getByTestId('multiselect-dropdown')).toHaveCount(0);
 }

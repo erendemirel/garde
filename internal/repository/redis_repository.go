@@ -221,6 +221,39 @@ func (s *Store) ClearFailedLogins(ctx context.Context, email, ip string) error {
 	return err
 }
 
+// GetFailedLoginCount returns the higher of email and IP failed-login counters
+// without incrementing. Empty email or IP skips that side of the check.
+func (s *Store) GetFailedLoginCount(ctx context.Context, email, ip string) (int64, error) {
+	client := s.getClient()
+	if client == nil {
+		return 0, errRedisClientUnavailable
+	}
+
+	var emailCount, ipCount int64
+	if email != "" {
+		n, err := client.Get(ctx, session.FailedLoginPrefix+email).Int64()
+		if err != nil && err != redis.Nil {
+			return 0, err
+		}
+		if err == nil {
+			emailCount = n
+		}
+	}
+	if ip != "" {
+		n, err := client.Get(ctx, session.FailedLoginPrefix+session.HashString(ip)).Int64()
+		if err != nil && err != redis.Nil {
+			return 0, err
+		}
+		if err == nil {
+			ipCount = n
+		}
+	}
+	if ipCount > emailCount {
+		return ipCount, nil
+	}
+	return emailCount, nil
+}
+
 func (s *Store) RecordSuspiciousActivity(ctx context.Context, userID, activityType string, details map[string]string, ttl time.Duration) error {
 	client := s.getClient()
 	if client == nil {

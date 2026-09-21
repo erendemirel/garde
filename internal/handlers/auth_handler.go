@@ -58,7 +58,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	resp, err := h.authService.Login(c.Request.Context(), &req, c.ClientIP(), c.Request.UserAgent())
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err.Error()))
+		errResp := models.NewErrorResponse(err.Error())
+		// Progressive Cap: after a real failure (not MFA step-up), tell the UI to show the widget.
+		if config.CapEnabled() && err.Error() != pkgerrors.ErrMFARequired {
+			errResp.WithCaptchaRequired(true)
+		}
+		c.JSON(http.StatusUnauthorized, errResp)
 		return
 	}
 

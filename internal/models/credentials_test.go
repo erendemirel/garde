@@ -42,6 +42,9 @@ func TestAPIKeyScopeVocabularyLockstep(t *testing.T) {
 	if !IsKnownAPIKeyScope(ScopeValidate) {
 		t.Fatal("ScopeValidate must always be known")
 	}
+	if !IsKnownAPIKeyScope(ScopeAuth) {
+		t.Fatal("ScopeAuth must always be known")
+	}
 	if IsKnownAPIKeyScope("admin") {
 		t.Fatal("unknown scope accepted")
 	}

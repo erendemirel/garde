@@ -32,6 +32,7 @@
   "type": "module",
   "dependencies": {
     "@fontsource-variable/google-sans": "^5.2.1",
-    "@lucide/svelte": "^1.47.0"
+    "@lucide/svelte": "^1.47.0",
+    "cap-widget": "^0.1.57"
   }
 }

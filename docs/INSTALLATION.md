@@ -303,6 +303,24 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/service_mtls` | `required` (default) or `off`. `off` leaves `/validate` on the API key and the network alone. |
 | `secret/garde/service_tls_cert_path`, `…_key_path`, `…_ca_path` | The listener's keypair and the CA that signs callers. Required when `service_listener` is `true`. |
 | `secret/garde/public_validate` | Also serve `/validate` on the public listener, for external callers. Defaults to the opposite of `service_listener`. Callers present issued per-tenant keys (`POST /admin/api-keys`). |
+| `secret/garde/cap_enabled` | Optional. Enables Cap on public auth routes. Register and password-reset always require a token when enabled; login requires Cap only after a failed attempt. Needs site key, secret, and API URL. |
+| `secret/garde/cap_site_key` | Cap site key from the Cap Standalone dashboard. |
+| `secret/garde/cap_secret_key` | Cap key secret (not the dashboard `ADMIN_KEY`). Used only for server-side `/siteverify`. |
+| `secret/garde/cap_api_url` | Internal Cap Standalone base URL for siteverify (e.g. `http://cap:3000`). |
+| `secret/garde/cap_public_url` | Browser-facing Cap URL for the widget and dashboard link (e.g. `http://localhost:3000` or `https://cap.example.com`). |
+| `secret/garde/cap_bypass_token` | Optional. Local/e2e only: accept this value as a Cap token without siteverify. Leave empty in production. |
+
+### Cap captcha (optional)
+
+[Cap](https://github.com/tiagozip/cap) is a self-hosted proof-of-work captcha. garde verifies tokens on public auth POSTs; the Cap Standalone container owns the challenge API and dashboard.
+
+**Dev (`docker compose --profile dev up`):** Cap listens on `http://localhost:3000`. Sign in with `CAP_ADMIN_KEY` (compose default is fine for local). Create a site key, put `cap_site_key` / `cap_secret_key` into `dev.secrets` (or Vault), set `CAP_ENABLED=true`, and re-run vault-init / wait for Agent to rewrite secrets. Auth forms load the widget via `GET /captcha/config`. For Playwright, set `cap_bypass_token` (e2e helpers send it as `cap_token`) and leave it empty in production.
+
+**Single VPS:** `docker compose -f docker-compose.prod.yml --profile cap up -d` (requires `CAP_ADMIN_KEY` in `.env`). Point `cap_api_url` at `http://cap:3000` and `cap_public_url` at the URL browsers can reach (host `:3000` or a reverse-proxied hostname). Set `CAP_CORS_ORIGIN` to your UI origin if Cap rejects widget calls.
+
+**Superuser UI:** Superuser → Captcha shows enablement status and a link to the Cap dashboard. Machine clients that present an issued API key with the `auth` scope skip Cap on login/register/password-reset; `validate`-only keys do not.
+
+> Cap is off when `cap_enabled` is unset/false or any of site key, secret, or API URL is missing — e2e and API clients keep working without a widget.
 
 **Admin Configuration**:
 | Secret Path | Description |
@@ -337,6 +355,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `domain_name` | Cookie domain + mTLS CN/SAN checks |
 | `enforce_mfa`, `testing_mode` | Read on relevant auth/mTLS paths |
 | `disable_user_agent_check`, `disable_ip_blacklisting`, `disable_multiple_ip_check` | Read when those checks run |
+| `cap_enabled`, `cap_site_key`, `cap_secret_key`, `cap_api_url`, `cap_public_url` | Read on each Cap-protected request and `/captcha/config` |
 | `smtp_*` | Read when sending mail |
 | `mfa_encryption_key` | Used for new encrypt/decrypt calls (**does not** re-encrypt existing MFA secrets). **Required** at startup |
 | `redis_*` | Reload hook reconnects the Redis client |
