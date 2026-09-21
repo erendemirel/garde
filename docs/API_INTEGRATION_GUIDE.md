@@ -170,7 +170,28 @@ Content-Type: application/json
 API session cannot be upgraded into a long-lived PAT.
 
 The plaintext (`garde_pat_<id>_<secret>`) is returned once in `data.token`.
-List with `GET /users/me/tokens`; revoke with `DELETE /users/me/tokens/{token_id}`.
+#### Sessions (self-service)
+
+List active sessions (opaque ids + display metadata; never the cookie secret):
+
+```http
+GET /users/me/sessions
+```
+
+Revoke one session by opaque id (MFA required when enabled and the target is not the current session):
+
+```http
+POST /users/me/sessions/{session_id}/revoke
+{"mfa_code":"123456"}
+```
+
+Revoke all other sessions (keep current; MFA required when enabled):
+
+```http
+POST /users/me/sessions/revoke-others
+{"mfa_code":"123456"}
+```
+
 Default lifetime is 90 days; pass `never_expires: true` to opt out (max 25
 tokens per user).
 

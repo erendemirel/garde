@@ -21,6 +21,11 @@ type RevokeSessionRequest struct {
 	MFACode string `json:"mfa_code,omitempty"`
 }
 
+// SelfServiceSessionRevokeRequest is used when a user revokes their own session(s).
+type SelfServiceSessionRevokeRequest struct {
+	MFACode string `json:"mfa_code,omitempty"`
+}
+
 type CreateUserRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`

@@ -2,7 +2,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { user, isSuperuser } from '$lib/stores';
 	import { refreshSession } from '$lib/session';
-	import { ShieldCheck, KeyRound, MailQuestion, UserKey } from '@lucide/svelte';
+	import { ShieldCheck, KeyRound, MailQuestion, UserKey, Monitor } from '@lucide/svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import MfaLabel from '$lib/components/MfaLabel.svelte';
 
@@ -137,6 +137,9 @@
 				>
 				<a href="/tokens" class="btn-secondary" data-testid="dashboard-link-tokens"
 					><KeyRound size={18} />Access tokens</a
+				>
+				<a href="/sessions" class="btn-secondary" data-testid="dashboard-link-sessions"
+					><Monitor size={18} />Sessions</a
 				>
 				{#if !$isSuperuser}
 					<a href="/request-update" class="btn-secondary" data-testid="dashboard-link-request-update"

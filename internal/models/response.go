@@ -79,6 +79,23 @@ type ListUsersResponse struct {
 	Limit int            `json:"limit,omitempty"`
 }
 
+// SessionInfo is a non-secret view of an active browser/API session.
+type SessionInfo struct {
+	ID           string    `json:"id"` // opaque PublicID — not the cookie/Bearer secret
+	Current      bool      `json:"current"`
+	CreatedAt    time.Time `json:"created_at"`
+	LastSeenAt   time.Time `json:"last_seen_at"`
+	IPDisplay    string    `json:"ip_display"`
+	UAFamily     string    `json:"ua_family"`
+	UASummary    string    `json:"ua_summary"`
+	DeviceKind   string    `json:"device_kind"` // desktop | mobile | tool | unknown
+	ApproxPlace  string    `json:"approx_place"` // coarse hint (masked IP); no geo DB
+}
+
+type ListSessionsResponse struct {
+	Sessions []SessionInfo `json:"sessions"`
+}
+
 type PermissionResponse struct {
 	Key         string `json:"key"`
 	Name        string `json:"name"`

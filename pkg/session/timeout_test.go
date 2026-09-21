@@ -76,3 +76,18 @@ func TestRemainingTTLAndAbsoluteExpiry(t *testing.T) {
 		t.Fatal("expired RemainingTTL want 0")
 	}
 }
+
+func TestMaxActiveSecret(t *testing.T) {
+	writeSecrets(t, map[string]string{})
+	if MaxActive() != DefaultSessionMaxActive {
+		t.Fatalf("default MaxActive = %d, want %d", MaxActive(), DefaultSessionMaxActive)
+	}
+	writeSecrets(t, map[string]string{"session_max_active": "3"})
+	if MaxActive() != 3 {
+		t.Fatalf("MaxActive = %d, want 3", MaxActive())
+	}
+	writeSecrets(t, map[string]string{"session_max_active": "0"})
+	if MaxActive() != 0 {
+		t.Fatalf("MaxActive = %d, want 0 (unlimited)", MaxActive())
+	}
+}

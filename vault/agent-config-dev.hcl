@@ -219,6 +219,12 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/session_max_active\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/session_max_active"
+  error_on_missing_key = false
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/trusted_proxies\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/trusted_proxies"
   error_on_missing_key = false

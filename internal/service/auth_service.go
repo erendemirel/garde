@@ -6,6 +6,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -262,15 +263,17 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
-	sessionData := &session.SessionData{
-		UserID:    user.ID,
-		IP:        session.HashString(ip),
-		UserAgent: session.HashString(userAgent),
-		CreatedAt: time.Now(),
+	sessionData, err := session.NewSessionData(user.ID, ip, userAgent)
+	if err != nil {
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
 	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, session.IdleTimeout()); err != nil {
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
+	}
+
+	if err := s.enforceSessionMaxActive(ctx, user.ID, sessionID); err != nil {
+		slog.Warn("Failed to enforce session max-active cap", "error", err, "user_id", user.ID)
 	}
 
 	// Successful auth resets lockout counters for this email/IP.
@@ -410,6 +413,9 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 			Response: &models.SessionValidationResponse{Valid: false},
 		}, nil
 	}
+	if err := sessionData.TouchDisplay(); err != nil {
+		slog.Warn("Failed to touch session display metadata", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
+	}
 	// Sliding idle: extend Redis TTL on each successful use.
 	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, ttl); err != nil {
 		slog.Warn("Failed to slide session TTL", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
@@ -452,6 +458,9 @@ func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID s
 	if ttl <= 0 {
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+	if err := sessionData.TouchDisplay(); err != nil {
+		slog.Warn("Failed to touch session display metadata", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 	}
 	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, ttl); err != nil {
 		slog.Warn("Failed to slide session TTL", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
@@ -1311,6 +1320,213 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	}
 
 	return nil
+}
+
+// ListSessions returns non-secret views of the caller's active sessions.
+// currentSessionID is the raw session secret from the request (never returned).
+func (s *AuthService) ListSessions(ctx context.Context, userID, currentSessionID string) (*models.ListSessionsResponse, error) {
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+
+	out := make([]models.SessionInfo, 0, len(sessionIDs))
+	for _, sid := range sessionIDs {
+		data, err := s.repo.GetSessionData(ctx, sid)
+		if err != nil || data == nil {
+			continue
+		}
+		if data.PublicID == "" {
+			if err := data.TouchDisplay(); err != nil {
+				slog.Warn("Failed to assign session public id", "error", err)
+				continue
+			}
+			ttl := session.RemainingTTL(data.CreatedAt)
+			if ttl <= 0 {
+				continue
+			}
+			_ = s.repo.StoreSessionData(ctx, sid, data, ttl)
+		}
+		lastSeen := data.LastSeenAt
+		if lastSeen.IsZero() {
+			lastSeen = data.CreatedAt
+		}
+		ipDisplay := data.IPDisplay
+		if ipDisplay == "" {
+			ipDisplay = "unknown"
+		}
+		uaFamily := data.UAFamily
+		if uaFamily == "" {
+			uaFamily = "Unknown"
+		}
+		uaSummary := data.UASummary
+		if uaSummary == "" {
+			uaSummary = "Unknown client"
+		}
+		deviceKind := data.DeviceKind
+		if deviceKind == "" {
+			deviceKind = session.InferDeviceKind(uaFamily, uaSummary)
+		}
+		out = append(out, models.SessionInfo{
+			ID:          data.PublicID,
+			Current:     sid == currentSessionID,
+			CreatedAt:   data.CreatedAt,
+			LastSeenAt:  lastSeen,
+			IPDisplay:   ipDisplay,
+			UAFamily:    uaFamily,
+			UASummary:   uaSummary,
+			DeviceKind:  deviceKind,
+			ApproxPlace: ipDisplay, // masked IP only — no geo database
+		})
+	}
+
+	// Current session first, then most recently seen.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Current != out[j].Current {
+			return out[i].Current
+		}
+		return out[i].LastSeenAt.After(out[j].LastSeenAt)
+	})
+
+	return &models.ListSessionsResponse{Sessions: out}, nil
+}
+
+// RevokeOwnSession revokes one of the caller's sessions by opaque PublicID.
+// When MFA is enabled and the target is not the current session, mfaCode is required.
+// Returns (revokedCurrent, error).
+func (s *AuthService) RevokeOwnSession(ctx context.Context, userID, currentSessionID, publicID, mfaCode string) (bool, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("%s", errors.ErrUserNotFound)
+	}
+
+	sid, data, err := s.findSessionByPublicID(ctx, userID, publicID)
+	if err != nil {
+		return false, err
+	}
+	_ = data
+
+	isCurrent := sid == currentSessionID
+	if user.MFAEnabled && !isCurrent {
+		if mfaCode == "" {
+			return false, fmt.Errorf("%s", errors.ErrMFARequired)
+		}
+		if !mfa.ValidateCode(user.MFASecret, mfaCode) {
+			return false, fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		}
+	}
+
+	if err := s.revokeAllUserSessions(ctx, userID, []string{sid}); err != nil {
+		return false, err
+	}
+	return isCurrent, nil
+}
+
+// RevokeOtherSessions revokes every session except the current one.
+// MFA is required when the account has MFA enabled.
+func (s *AuthService) RevokeOtherSessions(ctx context.Context, userID, currentSessionID, mfaCode string) (int, error) {
+	if currentSessionID == "" {
+		return 0, fmt.Errorf("%s", errors.ErrNoActiveSession)
+	}
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("%s", errors.ErrUserNotFound)
+	}
+	if user.MFAEnabled {
+		if mfaCode == "" {
+			return 0, fmt.Errorf("%s", errors.ErrMFARequired)
+		}
+		if !mfa.ValidateCode(user.MFASecret, mfaCode) {
+			return 0, fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		}
+	}
+
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	others := make([]string, 0, len(sessionIDs))
+	for _, sid := range sessionIDs {
+		if sid != currentSessionID {
+			others = append(others, sid)
+		}
+	}
+	if err := s.revokeAllUserSessions(ctx, userID, others); err != nil {
+		return 0, err
+	}
+	return len(others), nil
+}
+
+func (s *AuthService) findSessionByPublicID(ctx context.Context, userID, publicID string) (string, *session.SessionData, error) {
+	publicID = strings.TrimSpace(strings.ToLower(publicID))
+	if publicID == "" || len(publicID) != session.PublicIDBytes*2 {
+		return "", nil, fmt.Errorf("%s", errors.ErrSessionInvalid)
+	}
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	for _, sid := range sessionIDs {
+		data, err := s.repo.GetSessionData(ctx, sid)
+		if err != nil || data == nil {
+			continue
+		}
+		if strings.EqualFold(data.PublicID, publicID) {
+			return sid, data, nil
+		}
+	}
+	return "", nil, fmt.Errorf("%s", errors.ErrSessionInvalid)
+}
+
+// enforceSessionMaxActive drops the oldest sessions when the user exceeds the
+// global SESSION_MAX_ACTIVE cap, keeping keepSessionID (the new login).
+func (s *AuthService) enforceSessionMaxActive(ctx context.Context, userID, keepSessionID string) error {
+	max := session.MaxActive()
+	if max <= 0 {
+		return nil
+	}
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(sessionIDs) <= max {
+		return nil
+	}
+
+	type ranked struct {
+		id      string
+		created time.Time
+	}
+	rankedList := make([]ranked, 0, len(sessionIDs))
+	for _, sid := range sessionIDs {
+		if sid == keepSessionID {
+			continue
+		}
+		data, err := s.repo.GetSessionData(ctx, sid)
+		if err != nil || data == nil {
+			continue
+		}
+		rankedList = append(rankedList, ranked{id: sid, created: data.CreatedAt})
+	}
+	sort.Slice(rankedList, func(i, j int) bool {
+		return rankedList[i].created.Before(rankedList[j].created)
+	})
+
+	// After keeping the new session, we may keep (max-1) older ones.
+	keepOlder := max - 1
+	if keepOlder < 0 {
+		keepOlder = 0
+	}
+	if len(rankedList) <= keepOlder {
+		return nil
+	}
+	drop := rankedList[:len(rankedList)-keepOlder]
+	ids := make([]string, len(drop))
+	for i, r := range drop {
+		ids[i] = r.id
+	}
+	slog.Info("Enforcing session max-active", "user_id", userID, "max", max, "revoking", len(ids))
+	return s.revokeAllUserSessions(ctx, userID, ids)
 }
 
 // revokeAllUserSessions blacklists then deletes each session so the 24h ban

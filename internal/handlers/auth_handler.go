@@ -127,6 +127,112 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
 }
 
+// @Summary List my active sessions
+// @Description Returns opaque session ids and display metadata (masked IP, UA summary). Never returns the session secret.
+// @Tags User Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=models.ListSessionsResponse}
+// @Failure 401 {object} models.ErrorResponse
+// @Router /users/me/sessions [get]
+func (h *AuthHandler) ListSessions(c *gin.Context) {
+	userID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+	currentID, _ := c.Get("session_id")
+	current, _ := currentID.(string)
+	resp, err := h.authService.ListSessions(c.Request.Context(), userID, current)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
+}
+
+// @Summary Revoke one of my sessions
+// @Description Revokes a session by opaque id. MFA required when enabled and the target is not the current session.
+// @Tags User Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param session_id path string true "Opaque session public id"
+// @Param request body models.SelfServiceSessionRevokeRequest false "Optional MFA code"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /users/me/sessions/{session_id}/revoke [post]
+func (h *AuthHandler) RevokeOwnSession(c *gin.Context) {
+	userID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+	publicID := c.Param("session_id")
+	var req models.SelfServiceSessionRevokeRequest
+	_ = c.ShouldBindJSON(&req) // body optional
+
+	currentID, _ := c.Get("session_id")
+	current, _ := currentID.(string)
+	revokedCurrent, err := h.authService.RevokeOwnSession(c.Request.Context(), userID, current, publicID, req.MFACode)
+	if err != nil {
+		errStr := err.Error()
+		switch errStr {
+		case pkgerrors.ErrMFARequired, pkgerrors.ErrInvalidMFACode, pkgerrors.ErrSessionInvalid:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		default:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		}
+		return
+	}
+	if revokedCurrent {
+		middleware.ClearSessionCookie(c)
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(map[string]any{
+		"revoked_current": revokedCurrent,
+	}))
+}
+
+// @Summary Revoke my other sessions
+// @Description Keeps the current session; revokes all others. MFA required when enabled on the account.
+// @Tags User Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param request body models.SelfServiceSessionRevokeRequest false "Optional MFA code"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /users/me/sessions/revoke-others [post]
+func (h *AuthHandler) RevokeOtherSessions(c *gin.Context) {
+	userID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+	var req models.SelfServiceSessionRevokeRequest
+	_ = c.ShouldBindJSON(&req)
+
+	currentID, _ := c.Get("session_id")
+	current, _ := currentID.(string)
+	n, err := h.authService.RevokeOtherSessions(c.Request.Context(), userID, current, req.MFACode)
+	if err != nil {
+		errStr := err.Error()
+		switch errStr {
+		case pkgerrors.ErrMFARequired, pkgerrors.ErrInvalidMFACode, pkgerrors.ErrNoActiveSession:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		default:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		}
+		return
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(map[string]any{"revoked": n}))
+}
+
 type ValidateResponse struct {
 	UserID    string    `json:"user_id"`
 	ExpiresAt time.Time `json:"expires_at"`

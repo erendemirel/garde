@@ -297,6 +297,7 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/cookie_secure` | Optional. `true`/`false` to force the cookie `Secure` flag. When unset: follows `use_tls`, or forced true if `cookie_same_site=none`. Set `true` behind HTTPS reverse proxies with `use_tls=false`. |
 | `secret/garde/session_idle_timeout` | Optional. Sliding inactivity window (Go duration, e.g. `12h`). Redis TTL and cookie `MaxAge` refresh on each authenticated request. Default `12h`. |
 | `secret/garde/session_absolute_timeout` | Optional. Hard max session lifetime from login (Go duration, e.g. `24h`). Default `24h`. Clamped to be at least the idle timeout. |
+| `secret/garde/session_max_active` | Optional. Max concurrent sessions per user (global integer). Default `10`. Set `0` for unlimited. On login past the cap, oldest other sessions are revoked. |
 | `secret/garde/trusted_proxies` | Optional. Comma-separated proxy CIDRs/IPs trusted for `X-Forwarded-For`. When unset, forwarded headers are ignored. |
 | `secret/garde/testing_mode` | Set to `true` to relax mTLS checks (e.g. for testing). Do not use in production. |
 | `secret/garde/browser_mtls` | Client certificates on the public listener: `off` (default), `optional`, `required`. Needs `use_tls` and `tls_ca_path`. Leave `off` for anything browsers reach. |
@@ -354,7 +355,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | Per-tenant API keys | Issued, revoked and rate-limited through the admin API, not through Vault; changes take effect on the caller's next request |
 | `cors_allow_origins` | Read on each request |
 | `cookie_same_site`, `cookie_secure` | Applied when setting/clearing session cookies |
-| `session_idle_timeout`, `session_absolute_timeout` | Read on login and each session validation (sliding TTL + absolute expiry) |
+| `session_idle_timeout`, `session_absolute_timeout`, `session_max_active` | Read on login and each session validation (sliding TTL, absolute expiry, concurrent-session cap) |
 | `domain_name` | Cookie domain + mTLS CN/SAN checks |
 | `enforce_mfa`, `testing_mode` | Read on relevant auth/mTLS paths |
 | `disable_user_agent_check`, `disable_ip_blacklisting`, `disable_multiple_ip_check` | Read when those checks run |

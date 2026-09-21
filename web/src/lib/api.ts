@@ -180,6 +180,33 @@ export interface User {
 
 export const getMe = () => request<User>('/users/me');
 
+export interface SessionInfo {
+	id: string;
+	current: boolean;
+	created_at: string;
+	last_seen_at: string;
+	ip_display: string;
+	ua_family: string;
+	ua_summary: string;
+	device_kind?: 'desktop' | 'mobile' | 'tool' | 'unknown' | string;
+	approx_place: string;
+}
+
+export const listSessions = () =>
+	request<{ sessions: SessionInfo[] }>('/users/me/sessions');
+
+export const revokeSession = (sessionId: string, mfa_code?: string) =>
+	request<{ revoked_current: boolean }>(`/users/me/sessions/${encodeURIComponent(sessionId)}/revoke`, {
+		method: 'POST',
+		body: JSON.stringify(mfa_code ? { mfa_code } : {})
+	});
+
+export const revokeOtherSessions = (mfa_code?: string) =>
+	request<{ revoked: number }>('/users/me/sessions/revoke-others', {
+		method: 'POST',
+		body: JSON.stringify(mfa_code ? { mfa_code } : {})
+	});
+
 export const requestUpdate = (updates: {
 	permissions_add?: string[];
 	permissions_remove?: string[];

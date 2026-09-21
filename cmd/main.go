@@ -346,6 +346,9 @@ func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
 	{
 		protected.GET("/users/me", authHandler.GetCurrentUser)
 		protected.POST("/logout", authHandler.Logout)
+		protected.GET("/users/me/sessions", authHandler.ListSessions)
+		protected.POST("/users/me/sessions/revoke-others", authHandler.RevokeOtherSessions)
+		protected.POST("/users/me/sessions/:session_id/revoke", authHandler.RevokeOwnSession)
 		protected.POST("/users/password/change", authHandler.ChangePassword)
 		protected.POST("/users/mfa/setup", authHandler.SetupMFA)
 		protected.POST("/users/mfa/verify", authHandler.VerifyAndEnableMFA)
