@@ -53,6 +53,7 @@ const (
 	ErrCannotRemoveAllPermissions = "cannot approve update request that would remove all permissions"
 	ErrCannotRemoveAllGroups      = "cannot approve update request that would remove all groups"
 	ErrCannotAddGroupsNotIn       = "cannot approve adding groups you are not a member of"
+	ErrEmailVerificationRequired  = "email verification required before this status change"
 )
 
 // Service API key errors

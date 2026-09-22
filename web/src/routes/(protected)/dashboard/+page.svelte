@@ -10,7 +10,7 @@
 	const hasEnabled = (record) => Object.values(record || {}).some(Boolean);
 
 	/** Public auth routes already hand off into a layout that just called refreshSession. */
-	const PUBLIC_FROM = new Set(['/', '/register', '/forgot-password']);
+	const PUBLIC_FROM = new Set(['/', '/register', '/forgot-password', '/verify-email']);
 
 	afterNavigate(({ from }) => {
 		// Skip first paint / login handoff — (protected)/+layout already refreshed.

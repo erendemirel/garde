@@ -27,6 +27,8 @@ func validationRouter() *gin.Engine {
 	router.POST("/users", ok)
 	router.POST("/users/password/otp", ok)
 	router.POST("/users/password/reset", ok)
+	router.POST("/users/email/verify", ok)
+	router.POST("/users/email/verify/resend", ok)
 	router.POST("/users/password/change", ok)
 	router.POST("/users/mfa/setup", ok)
 	router.POST("/users/mfa/verify", ok)
@@ -63,6 +65,9 @@ func TestValidationDispatchTable(t *testing.T) {
 		{"register bad", "/users", `{"email":"a@example.com","password":"x"}`, http.StatusBadRequest},
 		{"otp valid", "/users/password/otp", `{"email":"a@example.com"}`, http.StatusOK},
 		{"otp bad email", "/users/password/otp", `{"email":"nope"}`, http.StatusBadRequest},
+		{"verify email valid", "/users/email/verify", `{"email":"a@example.com","token":"ABCDEFGHABCDEFGHABCDEFGHABCDEFGH"}`, http.StatusOK},
+		{"verify email short token", "/users/email/verify", `{"email":"a@example.com","token":"SHORT"}`, http.StatusBadRequest},
+		{"resend verify valid", "/users/email/verify/resend", `{"email":"a@example.com"}`, http.StatusOK},
 		{"disable mfa valid", "/users/mfa/disable", `{"mfa_code":"123456"}`, http.StatusOK},
 		{"disable mfa bad code", "/users/mfa/disable", `{"mfa_code":"abc"}`, http.StatusBadRequest},
 		{"mfa verify valid", "/users/mfa/verify", `{"code":"123456"}`, http.StatusOK},

@@ -72,6 +72,7 @@ func TestErrorMessagesNonEmptyAndUnique(t *testing.T) {
 	add("ErrPATExpiryTooLong", ErrPATExpiryTooLong)
 	add("ErrPATExpiryConflict", ErrPATExpiryConflict)
 	add("ErrEmailSendFailed", ErrEmailSendFailed)
+	add("ErrEmailVerificationRequired", ErrEmailVerificationRequired)
 	add("ErrInvalidOTP", ErrInvalidOTP)
 	add("ErrTooManyAttempts", ErrTooManyAttempts)
 }

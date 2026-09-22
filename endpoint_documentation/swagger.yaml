@@ -56,6 +56,9 @@ definitions:
     type: object
   models.CreateUserResponse:
     properties:
+      next:
+        description: Config-derived post-register hint (verify_email, await_admin, or ready)
+        type: string
       user_id:
         type: string
     type: object
@@ -285,6 +288,7 @@ definitions:
     - locked by security
     - pending admin approval
     - admin approval rejected
+    - email not verified
     type: string
     x-enum-varnames:
     - UserStatusOk
@@ -292,6 +296,7 @@ definitions:
     - UserStatusLockedBySecurity
     - UserStatusPendingApproval
     - UserStatusApprovalRejected
+    - UserStatusEmailNotVerified
   models.UserUpdateFields:
     properties:
       groups_add:

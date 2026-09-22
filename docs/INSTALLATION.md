@@ -305,7 +305,10 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/service_port` | Port for that listener. Default `8444`; must differ from `port`. |
 | `secret/garde/service_mtls` | `required` (default) or `off`. `off` leaves `/validate` on the API key and the network alone. |
 | `secret/garde/service_tls_cert_path`, `…_key_path`, `…_ca_path` | The listener's keypair and the CA that signs callers. Required when `service_listener` is `true`. |
-| `secret/garde/public_validate` | Also serve `/validate` on the public listener, for external callers. Defaults to the opposite of `service_listener`. Callers present issued per-tenant keys (`POST /admin/api-keys`). |
+| `secret/garde/public_self_service` | Optional. Public kill switch. When `false`, public serves only probes + `/public/config`; login/user self-service/public `/validate` move to the service listener (`service_listener=true`). Admin/superuser mount only on the service listener when it is enabled (single-listener compat keeps them on public). Default `true`. |
+| `secret/garde/require_admin_approval` | Optional. New accounts wait for admin approval. Default `false`. |
+| `secret/garde/require_email_verification` | Optional. New accounts must verify email. Default `true`. If both this and admin approval are off, email verification is forced on. |
+| `secret/garde/public_validate` | Public `/validate` when the kill switch is off. Ignored (forced off) when `public_self_service=false`. Defaults to the opposite of `service_listener`. |
 | `secret/garde/cap_enabled` | Optional. Enables Cap on public auth routes. Register and password-reset always require a token when enabled; login requires Cap only after a failed attempt. Needs site key, secret, and API URL. |
 | `secret/garde/cap_site_key` | Cap site key from the Cap Standalone dashboard. |
 | `secret/garde/cap_secret_key` | Cap key secret (not the dashboard `ADMIN_KEY`). Used only for server-side `/siteverify`. |

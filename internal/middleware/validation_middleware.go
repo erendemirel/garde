@@ -72,6 +72,10 @@ func ValidateRequestParameters() gin.HandlerFunc {
 				handleRequestValidation(c, &models.PasswordResetRequest{}, validatePasswordResetRequest)
 			case "/users/password/otp":
 				handleRequestValidation(c, &models.RequestOTPRequest{}, validateOTPRequest)
+			case "/users/email/verify":
+				handleRequestValidation(c, &models.VerifyEmailRequest{}, validateVerifyEmailRequest)
+			case "/users/email/verify/resend":
+				handleRequestValidation(c, &models.ResendVerifyEmailRequest{}, validateResendVerifyEmailRequest)
 			case "/users/mfa/setup":
 				handleRequestValidation(c, &models.MFASetupRequest{}, validateMFASetupRequest)
 			case "/users/mfa/disable":
@@ -222,6 +226,25 @@ func validatePasswordResetRequest(req *models.PasswordResetRequest) error {
 }
 
 func validateOTPRequest(req *models.RequestOTPRequest) error {
+	return validation.ValidateEmail(req.Email)
+}
+
+func validateVerifyEmailRequest(req *models.VerifyEmailRequest) error {
+	if err := validation.ValidateEmail(req.Email); err != nil {
+		return err
+	}
+	sanitized, err := validation.Sanitize(req.Token)
+	if err != nil {
+		return err
+	}
+	req.Token = sanitized
+	if len(req.Token) < 16 || len(req.Token) > 128 {
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
+	}
+	return nil
+}
+
+func validateResendVerifyEmailRequest(req *models.ResendVerifyEmailRequest) error {
 	return validation.ValidateEmail(req.Email)
 }
 

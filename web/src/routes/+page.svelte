@@ -1,6 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
-	import { login } from '$lib/api';
+	import { login, getPublicConfig } from '$lib/api';
 	import { goto } from '$app/navigation';
 	import CapWidget from '$lib/components/CapWidget.svelte';
 	import { isApiError } from '$lib/apiError';
@@ -13,12 +13,22 @@
 	let loading = $state(false);
 	/** True after mount — gates interactivity until Svelte handlers are wired. */
 	let formReady = $state(false);
+	let selfService = $state(true);
+	let emailVerify = $state(false);
 	let capToken = $state('');
 	let capActive = $state(false);
 	let capReady = $state(false);
 	let capRequired = $state(false);
 
-	onMount(() => {
+	onMount(async () => {
+		try {
+			const cfg = await getPublicConfig();
+			selfService = cfg.public_self_service;
+			emailVerify = cfg.require_email_verification;
+		} catch {
+			selfService = true;
+			emailVerify = false;
+		}
 		formReady = true;
 	});
 
@@ -57,79 +67,92 @@
 <div class="container-auth" data-testid="login-page">
 	<div class="card space-y-4 w-full">
 		<h1 class="text-xl font-extrabold text-accent">garde</h1>
-		<form
-			class="space-y-4"
-			data-testid="login-form"
-			data-ready={formReady ? 'true' : 'false'}
-			aria-busy={!formReady}
-			method="post"
-			action="#"
-			onsubmit={(e) => {
-				e.preventDefault();
-				void handleLogin();
-			}}
-		>
-			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
-				Email
-				<input
-					class="input"
-					type="email"
-					data-testid="login-email"
-					bind:value={email}
-					required
-					autocomplete="email"
-					disabled={!formReady}
-				/>
-			</label>
-			<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
-				Password
-				<input
-					class="input"
-					type="password"
-					data-testid="login-password"
-					bind:value={password}
-					required
-					autocomplete="current-password"
-					disabled={!formReady}
-				/>
-			</label>
-			{#if needsMfa}
+		{#if formReady && !selfService}
+			<p class="text-sm text-muted" data-testid="login-disabled">
+				Public sign-in is disabled. Authenticate on the private service listener (internal
+				network / VPN).
+			</p>
+		{:else}
+			<form
+				class="space-y-4"
+				data-testid="login-form"
+				data-ready={formReady ? 'true' : 'false'}
+				aria-busy={!formReady}
+				method="post"
+				action="#"
+				onsubmit={(e) => {
+					e.preventDefault();
+					void handleLogin();
+				}}
+			>
 				<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
-					MFA Code
+					Email
 					<input
 						class="input"
-						type="text"
-						data-testid="login-mfa"
-						bind:value={mfaCode}
-						placeholder="6-digit code"
-						autocomplete="one-time-code"
+						type="email"
+						data-testid="login-email"
+						bind:value={email}
+						required
+						autocomplete="email"
 						disabled={!formReady}
 					/>
 				</label>
-			{/if}
-			<CapWidget
-				bind:token={capToken}
-				bind:active={capActive}
-				bind:ready={capReady}
-				bind:required={capRequired}
-				mode="progressive"
-			/>
-			{#if error}
-				<p class="error font-semibold" data-testid="login-error">{error}</p>
-			{/if}
-			<button
-				class="btn-secondary w-full justify-center font-bold"
-				type="submit"
-				data-testid="login-submit"
-				disabled={!formReady || !capReady || loading || (capActive && !capToken)}
-			>
-				{loading ? 'Signing in...' : formReady ? 'Sign In' : 'Loading...'}
-			</button>
-		</form>
-		<div class="links font-semibold">
-			<a href="/register" data-testid="login-register-link">Create account</a>
-			<span class="text-muted">·</span>
-			<a href="/forgot-password" data-testid="login-forgot-link">Forgot password?</a>
-		</div>
+				<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
+					Password
+					<input
+						class="input"
+						type="password"
+						data-testid="login-password"
+						bind:value={password}
+						required
+						autocomplete="current-password"
+						disabled={!formReady}
+					/>
+				</label>
+				{#if needsMfa}
+					<label class="flex flex-col gap-2 text-sm font-semibold text-muted">
+						MFA Code
+						<input
+							class="input"
+							type="text"
+							data-testid="login-mfa"
+							bind:value={mfaCode}
+							placeholder="6-digit code"
+							autocomplete="one-time-code"
+							disabled={!formReady}
+						/>
+					</label>
+				{/if}
+				<CapWidget
+					bind:token={capToken}
+					bind:active={capActive}
+					bind:ready={capReady}
+					bind:required={capRequired}
+					mode="progressive"
+				/>
+				{#if error}
+					<p class="error font-semibold" data-testid="login-error">{error}</p>
+				{/if}
+				<button
+					class="btn-secondary w-full justify-center font-bold"
+					type="submit"
+					data-testid="login-submit"
+					disabled={!formReady || !capReady || loading || (capActive && !capToken)}
+				>
+					{loading ? 'Signing in...' : formReady ? 'Sign In' : 'Loading...'}
+				</button>
+			</form>
+			<div class="links font-semibold">
+				{#if selfService}
+					<a href="/register" data-testid="login-register-link">Create account</a>
+					<span class="text-muted">·</span>
+					<a href="/forgot-password" data-testid="login-forgot-link">Forgot password?</a>
+					{#if emailVerify}
+						<span class="text-muted">·</span>
+						<a href="/verify-email" data-testid="login-verify-link">Verify email</a>
+					{/if}
+				{/if}
+			</div>
+		{/if}
 	</div>
 </div>

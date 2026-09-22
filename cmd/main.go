@@ -1,15 +1,15 @@
-package main
+﻿package main
 
 import (
 	"context"
 	"fmt"
 	"garde/internal/handlers"
+	"garde/internal/httpmount"
 	"garde/internal/middleware"
 	"garde/internal/repository"
 	"garde/internal/service"
 	"garde/pkg/config"
 	"garde/pkg/session"
-	"garde/pkg/tlsconfig"
 	"garde/pkg/validation"
 	"log/slog"
 	"net/http"
@@ -20,8 +20,6 @@ import (
 	"time"
 
 	_ "garde/endpoint_documentation" // Swagger docs
-
-	"garde/internal/models"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -162,28 +160,18 @@ func main() {
 	}
 
 	router := newEngine(deps)
-	mountPublicRoutes(router, deps)
-
-	// /validate answers on the public listener only when nothing more private
-	// is carrying it. A service endpoint that can validate any user's session
-	// does not belong on the hostname browsers reach.
-	if config.PublicValidateEnabled() {
-		opts := validateRouteOptions{mtls: config.PublicValidateMTLS()}
-		// Dual-listener: public /validate is for tenant keys only. Single-listener:
-		// leave audience unrestricted so internal and tenant keys both work.
-		if config.ServiceListenerEnabled() {
-			opts.audience = models.AudienceTenant
-		}
-		mountValidateRoute(router, deps, opts)
-		slog.Info("/validate mounted on the public listener",
-			"mtls", opts.mtls.String(),
-			"audience", audienceLogLabel(opts.audience),
-			"credentials", "per-caller keys only")
-	} else {
-		slog.Info("/validate is not served on the public listener")
+	mountDeps := &httpmount.Deps{
+		Repo:             deps.repo,
+		AuthService:      deps.authService,
+		SecurityAnalyzer: deps.securityAnalyzer,
+		AuthHandler:      deps.authHandler,
+		APIKeyHandler:    deps.apiKeyHandler,
+		PATHandler:       deps.patHandler,
+		CaptchaHandler:   deps.captchaHandler,
+		RateLimiter:      deps.rateLimiter,
 	}
+	httpmount.MountPublicListener(router, mountDeps)
 
-	// Swagger — opt-in via ENABLE_SWAGGER (off by default)
 	if config.GetBool("ENABLE_SWAGGER") {
 		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 		slog.Info("Swagger UI enabled at /swagger/index.html")
@@ -197,6 +185,7 @@ func main() {
 	} else {
 		slog.Info("Cap captcha disabled")
 	}
+	config.LogRegistrationGates()
 
 	servers := make([]*http.Server, 0, 2)
 
@@ -208,12 +197,14 @@ func main() {
 	servers = append(servers, publicSrv)
 
 	if config.ServiceListenerEnabled() {
-		serviceSrv, err := newServiceServer(deps)
+		serviceSrv, err := newServiceServer(deps, mountDeps)
 		if err != nil {
 			slog.Error("Failed to configure the service listener", "error", err)
 			os.Exit(1)
 		}
 		servers = append(servers, serviceSrv)
+	} else if !config.PublicSelfServiceEnabled() {
+		slog.Error("PUBLIC_SELF_SERVICE is off but SERVICE_LISTENER is off â€” no auth listener is available")
 	}
 
 	for _, srv := range servers {
@@ -296,9 +287,9 @@ func newEngine(deps *routerDeps) *gin.Engine {
 	router.Use(middleware.ValidateRequestParameters())
 
 	// Probes run before the rate limiter so load balancers are never throttled.
-	// /live  — process is up (do not check backends; used for restart loops)
-	// /ready — node can serve traffic (Postgres + Redis)
-	// /health — alias of /ready for older LB configs
+	// /live  â€” process is up (do not check backends; used for restart loops)
+	// /ready â€” node can serve traffic (Postgres + Redis)
+	// /health â€” alias of /ready for older LB configs
 	router.GET("/live", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -322,215 +313,6 @@ func newEngine(deps *routerDeps) *gin.Engine {
 	router.Use(deps.rateLimiter.Limit())
 
 	return router
-}
-
-// mountPublicRoutes registers everything browsers and API clients use. None of
-// it requires a client certificate.
-func mountPublicRoutes(router *gin.Engine, deps *routerDeps) {
-	authHandler := deps.authHandler
-
-	// Public captcha config — no SecurityMiddleware; site key is not secret.
-	router.GET("/captcha/config", deps.captchaHandler.GetConfig)
-
-	public := router.Group("")
-	public.Use(middleware.SecurityMiddleware(deps.securityAnalyzer))
-	public.Use(middleware.CapMiddleware(deps.repo))
-	{
-		public.POST("/login", authHandler.Login)
-		public.POST("/users", authHandler.CreateUser)
-		public.POST("/users/password/otp", authHandler.RequestOTP)
-		public.POST("/users/password/reset", authHandler.ResetPassword)
-	}
-
-	// Regular protected routes (no mTLS or admin login required)
-	protected := router.Group("")
-	protected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
-	protected.Use(middleware.CookieCSRFMiddleware())
-	protected.Use(deps.rateLimiter.LimitByUser())
-	{
-		protected.GET("/users/me", authHandler.GetCurrentUser)
-		protected.POST("/logout", authHandler.Logout)
-		protected.GET("/users/me/sessions", authHandler.ListSessions)
-		protected.POST("/users/me/sessions/revoke-others", authHandler.RevokeOtherSessions)
-		protected.POST("/users/me/sessions/:session_id/revoke", authHandler.RevokeOwnSession)
-		protected.POST("/users/password/change", authHandler.ChangePassword)
-		protected.POST("/users/mfa/setup", authHandler.SetupMFA)
-		protected.POST("/users/mfa/verify", authHandler.VerifyAndEnableMFA)
-		protected.POST("/users/mfa/disable", authHandler.DisableMFA)
-		protected.POST("/users/request-update-from-admin", authHandler.RequestUpdate)
-		protected.GET("/permissions", authHandler.ListPermissions)
-		protected.GET("/groups", authHandler.ListGroups)
-		protected.POST("/users/me/tokens", deps.patHandler.CreatePAT)
-		protected.GET("/users/me/tokens", deps.patHandler.ListPATs)
-		protected.DELETE("/users/me/tokens/:token_id", deps.patHandler.RevokePAT)
-	}
-
-	// Admin-only endpoints (require admin login, but no mTLS)
-	// AuthMiddleware runs first to set is_admin/is_superuser flags
-	// AdminMiddleware then checks those flags and blocks non-admins
-	adminProtected := router.Group("")
-	adminProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
-	adminProtected.Use(middleware.CookieCSRFMiddleware())
-	adminProtected.Use(middleware.AdminMiddleware(deps.authService))
-	adminProtected.Use(deps.rateLimiter.LimitByUser())
-	// RequireAdminScope is per route, not on the group, because separating
-	// these five is the whole point: an admin listed in ADMIN_SCOPES_JSON can
-	// be given reading and updating without deletion. An admin with no entry
-	// keeps all five, as before.
-	{
-		adminProtected.GET("/users",
-			middleware.RequireAdminScope(config.ScopeAdminUsersRead), authHandler.ListUsers)
-		adminProtected.GET("/users/:user_id",
-			middleware.RequireAdminScope(config.ScopeAdminUsersRead), authHandler.GetUser)
-		adminProtected.PUT("/users/:user_id",
-			middleware.RequireAdminScope(config.ScopeAdminUsersWrite), authHandler.UpdateUser)
-		adminProtected.DELETE("/users/:user_id",
-			middleware.RequireAdminScope(config.ScopeAdminUsersDelete), authHandler.DeleteUser)
-		adminProtected.POST("/sessions/revoke",
-			middleware.RequireAdminScope(config.ScopeAdminSessionsRevoke), authHandler.RevokeUserSession)
-	}
-
-	// Superuser-only endpoints (require superuser login)
-	// AuthMiddleware runs first to set is_superuser flag
-	// SuperuserMiddleware then checks that flag and blocks non-superusers
-	superuserProtected := router.Group("")
-	superuserProtected.Use(middleware.AuthMiddleware(deps.authService, deps.securityAnalyzer, deps.repo))
-	superuserProtected.Use(middleware.CookieCSRFMiddleware())
-	superuserProtected.Use(middleware.SuperuserMiddleware())
-	superuserProtected.Use(deps.rateLimiter.LimitByUser())
-	{
-		// Permission management
-		superuserProtected.POST("/admin/permissions", authHandler.CreatePermission)
-		superuserProtected.PUT("/admin/permissions/:permission_name", authHandler.UpdatePermission)
-		superuserProtected.DELETE("/admin/permissions/:permission_name", authHandler.DeletePermission)
-
-		// Group management
-		superuserProtected.POST("/admin/groups", authHandler.CreateGroup)
-		superuserProtected.PUT("/admin/groups/:group_name", authHandler.UpdateGroup)
-		superuserProtected.DELETE("/admin/groups/:group_name", authHandler.DeleteGroup)
-
-		// Permission visibility management
-		superuserProtected.GET("/admin/permissions/visibility", authHandler.GetAllPermissionVisibility)
-		superuserProtected.POST("/admin/permissions/visibility", authHandler.AddPermissionVisibility)
-		superuserProtected.DELETE("/admin/permissions/visibility", authHandler.RemovePermissionVisibility)
-
-		// Admin-user management mapping
-		superuserProtected.GET("/admin/users/management", authHandler.GetAdminUserManagement)
-
-		// Per-tenant credentials for external callers of /validate
-		superuserProtected.GET("/admin/api-key-scopes", deps.apiKeyHandler.ListAPIKeyScopes)
-		superuserProtected.POST("/admin/api-keys", deps.apiKeyHandler.CreateAPIKey)
-		superuserProtected.GET("/admin/api-keys", deps.apiKeyHandler.ListAPIKeys)
-		superuserProtected.DELETE("/admin/api-keys/:key_id", deps.apiKeyHandler.RevokeAPIKey)
-		superuserProtected.DELETE("/admin/tenants/:tenant_id/api-keys", deps.apiKeyHandler.RevokeTenantAPIKeys)
-
-		superuserProtected.GET("/admin/captcha", deps.captchaHandler.GetAdminStatus)
-	}
-}
-
-// validateRouteOptions describes how one listener authenticates /validate.
-type validateRouteOptions struct {
-	// mtls requires a verified client certificate when it is required.
-	mtls config.ClientCertPolicy
-	// audience restricts which issued keys this mount accepts. Empty means any.
-	audience string
-}
-
-func audienceLogLabel(audience string) string {
-	if audience == "" {
-		return "any"
-	}
-	return audience
-}
-
-// mountValidateRoute registers the service session-validation endpoint.
-//
-// No cookie/Bearer AuthMiddleware — callers pass the session via X-Session-ID.
-// An issued per-caller API key is always required; the client certificate is
-// required whenever the listener carrying this route was built to verify one.
-func mountValidateRoute(router *gin.Engine, deps *routerDeps, opts validateRouteOptions) {
-	validateEndpoint := router.Group("/validate")
-
-	if opts.mtls == config.ClientCertRequired {
-		validateEndpoint.Use(middleware.MTLSMiddleware())
-	}
-
-	validateEndpoint.Use(middleware.APIKeyAuth(middleware.APIKeyAuthOptions{
-		Repo:             deps.repo,
-		RequiredScope:    models.ScopeValidate,
-		RequiredAudience: opts.audience,
-	}))
-
-	// Charges the request to the calling key rather than to its address,
-	// so that callers sharing one NAT do not share one budget.
-	validateEndpoint.Use(deps.rateLimiter.LimitByAPIKey())
-
-	validateEndpoint.GET("", deps.authHandler.ValidateSession)
-}
-
-// newPublicServer builds the listener browsers and API clients reach. Its
-// client-certificate policy defaults to off, because a public listener that
-// demands certificates cannot serve a login page.
-func newPublicServer(handler http.Handler) (*http.Server, error) {
-	port := config.GetWithDefault("PORT", "8443")
-	srv := newHTTPServer(":"+port, handler)
-
-	if !config.GetBool("USE_TLS") {
-		slog.Warn("Starting public listener without TLS", "port", port)
-		return srv, nil
-	}
-
-	tlsConfig, err := tlsconfig.Build(
-
-		config.Get("TLS_CERT_PATH"),
-		config.Get("TLS_KEY_PATH"),
-		strings.TrimSpace(config.Get("TLS_CA_PATH")),
-		config.BrowserMTLS(),
-		"public",
-	)
-	if err != nil {
-		return nil, err
-	}
-	srv.TLSConfig = tlsConfig
-
-	slog.Info("Starting public listener with TLS", "port", port, "browser_mtls", config.BrowserMTLS().String())
-	return srv, nil
-}
-
-// newServiceServer builds the private listener that carries /validate. It is
-// always TLS: the point of moving the endpoint here is that service calls can
-// be authenticated by certificate, which is impossible over plaintext.
-func newServiceServer(deps *routerDeps) (*http.Server, error) {
-	policy := config.ServiceMTLS()
-	router := newEngine(deps)
-	// Mesh callers present a client certificate and an issued internal key.
-	mountValidateRoute(router, deps, validateRouteOptions{
-		mtls:     policy,
-		audience: models.AudienceInternal,
-	})
-
-	tlsConfig, err := tlsconfig.Build(
-
-		config.ServiceTLSCertPath(),
-		config.ServiceTLSKeyPath(),
-		config.ServiceTLSCAPath(),
-		policy,
-		"service",
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	port := config.ServicePort()
-	srv := newHTTPServer(config.ServiceBind()+":"+port, router)
-	srv.TLSConfig = tlsConfig
-
-	if policy != config.ClientCertRequired {
-		slog.Warn("Service listener does not require client certificates — keep it on a private network",
-			"port", port)
-	}
-	slog.Info("Starting service listener with TLS", "port", port, "service_mtls", policy.String())
-	return srv, nil
 }
 
 func newHTTPServer(addr string, handler http.Handler) *http.Server {

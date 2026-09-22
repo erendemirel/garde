@@ -204,6 +204,10 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		slog.Info("Login attempt by unapproved user", "email", req.Email, "status", user.Status)
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
+	if user.Status == models.UserStatusEmailNotVerified {
+		slog.Info("Login attempt by unverified email", "email", req.Email, "status", user.Status)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
+	}
 	if user.Status != models.UserStatusOk {
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
@@ -601,6 +605,7 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 
 func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.CreateUserResponse, error) {
 	req.Email = validation.NormalizeEmail(req.Email)
+	next := config.RegistrationNextStep()
 
 	// Block public creation of the configured superuser; it is bootstrapped at startup
 	if isSuperuserEmail(req.Email) {
@@ -610,13 +615,13 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	// Block public creation of configured admin users; they are initialized from secrets.
 	// Same opaque success as duplicate emails to avoid account enumeration.
 	if isAdminEmail(req.Email) {
-		return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
+		return &models.CreateUserResponse{UserID: uuid.New().String(), Next: next}, nil
 	}
 
 	// Check if email already exists — do not reveal this to the client.
 	existingUser, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err == nil && existingUser != nil {
-		return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
+		return &models.CreateUserResponse{UserID: uuid.New().String(), Next: next}, nil
 	}
 
 	// Password is required for new users
@@ -632,11 +637,21 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	// Check if MFA is enforced globally
 	mfaEnforced := config.GetBool("ENFORCE_MFA")
 
+	status := models.UserStatusPendingApproval
+	if config.RequireEmailVerification() {
+		status = models.UserStatusEmailNotVerified
+	} else if config.RequireAdminApproval() {
+		status = models.UserStatusPendingApproval
+	} else {
+		// Coercion should prevent this; treat as ready.
+		status = models.UserStatusOk
+	}
+
 	user := &models.User{
 		ID:           uuid.New().String(),
 		Email:        req.Email,
 		PasswordHash: hashedPassword,
-		Status:       models.UserStatusPendingApproval,
+		Status:       status,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		MFAEnforced:  mfaEnforced,
@@ -648,13 +663,21 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	if err := s.repo.StoreUser(ctx, user); err != nil {
 		// Concurrent create of the same email — still look like success.
 		if stderrors.Is(err, repository.ErrEmailAlreadyExists) {
-			return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
+			return &models.CreateUserResponse{UserID: uuid.New().String(), Next: next}, nil
 		}
 		return nil, fmt.Errorf("%s", errors.ErrUserCreationFailed)
 	}
 
+	if status == models.UserStatusEmailNotVerified {
+		if err := s.sendEmailVerification(ctx, user); err != nil {
+			slog.Error("Failed to send email verification after register", "error", err, "user_id", user.ID)
+			// Account exists; client can resend. Still return success.
+		}
+	}
+
 	return &models.CreateUserResponse{
 		UserID: user.ID,
+		Next:   next,
 	}, nil
 }
 
@@ -866,7 +889,8 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 				}
 			}
 
-			// Update status to active if currently pending
+			// Promote pending → ok only. Never skip email verification: an
+			// email-not-verified account cannot reach pending until verified.
 			if targetUser.Status == models.UserStatusPendingApproval {
 				targetUser.Status = models.UserStatusOk
 			}
@@ -877,6 +901,19 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	// Update fields if provided
 	if req.Status != nil {
+		// Leaving "email not verified" requires the verify-email flow (or
+		// lock/reject). Admins must not activate or advance unverified accounts.
+		if targetUser.Status == models.UserStatusEmailNotVerified {
+			switch *req.Status {
+			case models.UserStatusEmailNotVerified,
+				models.UserStatusLockedByAdmin,
+				models.UserStatusLockedBySecurity,
+				models.UserStatusApprovalRejected:
+				// allowed
+			default:
+				return fmt.Errorf("%s", errors.ErrEmailVerificationRequired)
+			}
+		}
 		targetUser.Status = *req.Status
 
 		// If status is changed to locked, blacklist and revoke all sessions
@@ -1543,6 +1580,125 @@ func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, 
 			slog.Error("Failed to delete session during credential revoke", "error", err, "session_id_prefix", session.IDPrefix(sessionID), "user_id", userID)
 			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
+	}
+	return nil
+}
+
+func (s *AuthService) sendEmailVerification(ctx context.Context, user *models.User) error {
+	token, err := generateEmailVerifyToken()
+	if err != nil {
+		return err
+	}
+	hashed, err := crypto.HashPassword(token)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.StoreEmailVerifyToken(ctx, user.ID, hashed); err != nil {
+		return err
+	}
+	msg := fmt.Sprintf(
+		"Verify your email for garde.\n\nYour verification code is: %s\nThis code expires in 24 hours.\n\nIf you did not create an account, ignore this message.",
+		token,
+	)
+	if err := mail.SendMail(user.Email, "Verify your email", msg); err != nil {
+		_ = s.repo.DeleteEmailVerifyToken(ctx, user.ID)
+		return err
+	}
+	return nil
+}
+
+func generateEmailVerifyToken() (string, error) {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const n = 32
+	out := make([]byte, n)
+	for i := 0; i < n; {
+		var b [1]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", err
+		}
+		if int(b[0]) >= 256-(256%len(alphabet)) {
+			continue
+		}
+		out[i] = alphabet[int(b[0])%len(alphabet)]
+		i++
+	}
+	return string(out), nil
+}
+
+// VerifyEmail consumes a one-time token and advances status:
+// email not verified → pending admin approval (if approval required) or ok.
+// Always returns nil for unknown/wrong cases (anti-enumeration), except when
+// email verification is disabled entirely.
+func (s *AuthService) VerifyEmail(ctx context.Context, email, token string) error {
+	if !config.RequireEmailVerification() {
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
+	}
+	email = validation.NormalizeEmail(email)
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil
+	}
+
+	user, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return nil
+	}
+	if user.Status != models.UserStatusEmailNotVerified {
+		return nil
+	}
+
+	stored, err := s.repo.GetEmailVerifyToken(ctx, user.ID)
+	if err != nil || stored == "" {
+		return nil
+	}
+	ok, err := crypto.VerifyPassword(token, stored)
+	if err != nil || !ok {
+		return nil
+	}
+
+	_ = s.repo.DeleteEmailVerifyToken(ctx, user.ID)
+
+	if config.RequireAdminApproval() {
+		user.Status = models.UserStatusPendingApproval
+	} else {
+		user.Status = models.UserStatusOk
+	}
+	user.UpdatedAt = time.Now()
+	if err := s.repo.StoreUser(ctx, user); err != nil {
+		slog.Error("Failed to store user after email verify", "error", err, "user_id", user.ID)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	return nil
+}
+
+// ResendVerifyEmail regenerates and sends a verification token. Opaque success
+// for unknown emails / wrong status. Rate-limited per user.
+func (s *AuthService) ResendVerifyEmail(ctx context.Context, email string) error {
+	if !config.RequireEmailVerification() {
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
+	}
+	email = validation.NormalizeEmail(email)
+
+	user, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return nil
+	}
+	if isSuperuserEmail(user.Email) || user.Status != models.UserStatusEmailNotVerified {
+		return nil
+	}
+
+	n, err := s.repo.TrackEmailVerifyResend(ctx, user.ID)
+	if err != nil {
+		slog.Error("Failed to track email verify resend", "error", err, "user_id", user.ID)
+		return nil
+	}
+	if n > repository.EmailVerifyResendMax() {
+		slog.Info("Email verify resend rate limited", "user_id", user.ID, "count", n)
+		return nil
+	}
+
+	if err := s.sendEmailVerification(ctx, user); err != nil {
+		slog.Error("Failed to resend email verification", "error", err, "user_id", user.ID)
 	}
 	return nil
 }

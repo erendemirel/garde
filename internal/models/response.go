@@ -41,6 +41,10 @@ func (e *ErrorResponse) WithCaptchaRequired(required bool) *ErrorResponse {
 
 type CreateUserResponse struct {
 	UserID string `json:"user_id"`
+	// Next is a config-derived hint (verify_email | await_admin | ready).
+	// Always the same for a given deployment — including anti-enumeration
+	// fake successes — so it does not leak whether the email already existed.
+	Next string `json:"next,omitempty"`
 }
 
 type SessionValidationResponse struct {

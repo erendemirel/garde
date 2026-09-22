@@ -303,6 +303,8 @@ func (s *Store) DeleteUser(ctx context.Context, userID string) error {
 		pipe.Del(ctx, requestWindowKey(userID))
 		pipe.Del(ctx, auditLogKey(userID))
 		pipe.Del(ctx, otpKey(userID))
+		pipe.Del(ctx, emailVerifyKey(userID))
+		pipe.Del(ctx, emailVerifyResendKey(userID))
 		pipe.Del(ctx, resetAttemptsKey(userID))
 		pipe.Del(ctx, securityCodeKeyPrefix+userID)
 		pipe.Del(ctx, lastRequestKey(userID))

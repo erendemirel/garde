@@ -17,6 +17,7 @@
 
 	const STATUS_OK = 'ok';
 	const STATUS_PENDING = 'pending admin approval';
+	const STATUS_EMAIL_UNVERIFIED = 'email not verified';
 	const STATUS_REJECTED = 'admin approval rejected';
 	const STATUS_LOCKED_ADMIN = 'locked by admin';
 	const STATUS_LOCKED_SECURITY = 'locked by security';
@@ -70,6 +71,7 @@
 	let isLockedBySecurity = $derived(accountStatus === STATUS_LOCKED_SECURITY);
 	let isAccountLocked = $derived(isLockedByAdmin || isLockedBySecurity);
 	let isPendingApproval = $derived(accountStatus === STATUS_PENDING);
+	let isEmailUnverified = $derived(accountStatus === STATUS_EMAIL_UNVERIFIED);
 	let isApprovalRejected = $derived(accountStatus === STATUS_REJECTED);
 	let needsAccountApproval = $derived(isPendingApproval || isApprovalRejected);
 	let canAdminLock = $derived(accountStatus === STATUS_OK);
@@ -612,7 +614,18 @@
 				</div>
 			</div>
 
-			{#if needsAccountApproval}
+			{#if isEmailUnverified}
+				<div
+					class="card-muted space-y-3 my-6 border border-orange-200/80 bg-orange-50/50"
+					data-testid="user-detail-email-unverified"
+				>
+					<p class="text-sm font-semibold text-text">Email not verified</p>
+					<p class="text-xs text-muted mt-0.5">
+						This account cannot sign in until the user verifies their email. Approval is unavailable
+						until then.
+					</p>
+				</div>
+			{:else if needsAccountApproval}
 				<div
 					class="card-muted space-y-3 my-6 border {isApprovalRejected
 						? 'border-red-200/80 bg-red-50/40'

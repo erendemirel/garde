@@ -358,23 +358,18 @@ Success Response:
 ```json
 {
     "data": {
-        "user_id": "usr_xyz..."
+        "user_id": "usr_xyz...",
+        "next": "await_admin"
     }
 }
 ```
 
-Error Response:
-```json
-{
-    "error": {
-        "message": "email already exists"
-    }
-}
-```
-Status Code: `409 Conflict`
+`next` is config-derived (`verify_email` | `await_admin` | `ready`) and is the same for real creates and anti-enumeration fake successes.
 
 Important Notes:
-- User status starts as "pending admin approval" until approved by admin
+- Registration (and password OTP/reset / email verify / **login** / user self-service) is on the public listener only when `PUBLIC_SELF_SERVICE` is on (default). When off, the public listener keeps probes + `/public/config` only; those routes (and public `/validate`) remount on the **service listener** (`SERVICE_LISTENER=true`). Admin/superuser routes are always on the service listener when it is enabled. See `GET /public/config`.
+- Initial status depends on gates: email verification (`REQUIRE_EMAIL_VERIFICATION`, default **on**) and/or admin approval (`REQUIRE_ADMIN_APPROVAL`, default **off**). At least one gate stays on — if both are off, email verification is forced.
+- Both on: `email not verified` → verify → `pending admin approval` → admin approve → `ok`.
 - Admin status is determined by the `ADMIN_USERS_JSON` configuration and admins are automatically created. You cannot create admins via API.
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
 

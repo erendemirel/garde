@@ -690,6 +690,62 @@ func (h *AuthHandler) RequestOTP(c *gin.Context) {
 	c.JSON(http.StatusOK, models.NewSuccessResponse("If the email exists, an OTP has been sent"))
 }
 
+// @Summary Verify email address
+// @Description Consumes a one-time email verification token. Opaque success for unknown emails.
+// @Tags Public Routes
+// @Accept json
+// @Produce json
+// @Param request body models.VerifyEmailRequest true "Email and verification token"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Router /users/email/verify [post]
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	req, exists := middleware.GetValidatedRequest[models.VerifyEmailRequest](c)
+	if !exists {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	if err := h.authService.VerifyEmail(c.Request.Context(), req.Email, req.Token); err != nil {
+		if err.Error() == pkgerrors.ErrInvalidRequest {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse("If the email and token are valid, the address has been verified"))
+}
+
+// @Summary Resend email verification
+// @Description Sends a new verification token when the account is awaiting email verification. Opaque success.
+// @Tags Public Routes
+// @Accept json
+// @Produce json
+// @Param request body models.ResendVerifyEmailRequest true "Email"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Router /users/email/verify/resend [post]
+func (h *AuthHandler) ResendVerifyEmail(c *gin.Context) {
+	req, exists := middleware.GetValidatedRequest[models.ResendVerifyEmailRequest](c)
+	if !exists {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	if err := h.authService.ResendVerifyEmail(c.Request.Context(), req.Email); err != nil {
+		if err.Error() == pkgerrors.ErrInvalidRequest {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse("If the email exists and needs verification, a new code has been sent"))
+}
+
 // @Summary Get current user information
 // @Description Returns the authenticated user's information. Permissions are filtered by visibility - users (both regular users and admins) only see permissions visible to their groups. Superusers see all permissions. No mTLS required for this endpoint.
 // @Tags Protected Routes

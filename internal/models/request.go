@@ -64,6 +64,17 @@ type PasswordResetRequest struct {
 	CapToken    string `json:"cap_token,omitempty"`
 }
 
+type VerifyEmailRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Token    string `json:"token" binding:"required,min=16,max=128"`
+	CapToken string `json:"cap_token,omitempty"`
+}
+
+type ResendVerifyEmailRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	CapToken string `json:"cap_token,omitempty"`
+}
+
 // RequestUpdateFields is specifically for permission update requests
 type RequestUpdateFields struct {
 	PermissionsAdd    []string `json:"permissions_add,omitempty"`
