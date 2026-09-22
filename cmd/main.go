@@ -274,6 +274,10 @@ func newEngine(deps *routerDeps) *gin.Engine {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Deny powerful features this app does not use. clipboard-write is
+		// intentionally omitted so token/API-key copy still works.
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), midi=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()")
 		if config.GetBool("USE_TLS") {
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}

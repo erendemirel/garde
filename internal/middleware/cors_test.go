@@ -79,6 +79,8 @@ func TestCORSPreflightAndHeaders(t *testing.T) {
 		"X-Frame-Options":                  "DENY",
 		"X-Content-Type-Options":           "nosniff",
 		"Content-Security-Policy":          "default-src 'self'",
+		"Referrer-Policy":                  "strict-origin-when-cross-origin",
+		"Permissions-Policy":               "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), midi=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()",
 		"Access-Control-Allow-Credentials": "true",
 	} {
 		if got := rec.Header().Get(header); got != want {
