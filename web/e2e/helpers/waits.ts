@@ -187,14 +187,22 @@ export async function waitForSessionReady(page: Page, timeout = LOAD_TIMEOUT) {
 	await expect(nav.or(loading).or(redirecting).or(bootError)).toBeVisible({ timeout: remaining() });
 	await assertSessionBootHealthy(page);
 
+	// Do not waitForResponse(/me) here: the request may already have completed
+	// before this race starts, which would hang until timeout under load.
+	// Loading → nav (or redirect/error) is the durable UI signal.
 	if ((await loading.count().catch(() => 0)) > 0) {
 		await Promise.race([
-			page.waitForResponse(matchMeGet, { timeout: remaining() }),
 			expect(loading).toHaveCount(0, { timeout: remaining() }),
 			expect(redirecting)
 				.toBeVisible({ timeout: remaining() })
 				.then(() => {
 					throw new Error(`Session boot lost auth while loading on ${page.url()}`);
+				}),
+			expect(bootError)
+				.toBeVisible({ timeout: remaining() })
+				.then(async () => {
+					const msg = await bootError.innerText().catch(() => '');
+					throw new Error(`Session boot error while loading on ${page.url()}: ${msg}`);
 				})
 		]);
 	}
