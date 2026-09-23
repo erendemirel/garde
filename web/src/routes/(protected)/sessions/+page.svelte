@@ -178,12 +178,19 @@
 </svelte:head>
 
 <div class="container-wide" data-testid="sessions-page">
+	<div class="mb-4">
+		<a
+			href="/dashboard"
+			class="btn-secondary inline-flex items-center gap-2"
+			data-testid="sessions-back"
+		>
+			<ArrowLeft size={16} /> Dashboard
+		</a>
+	</div>
+
 	<div class="card space-y-4">
-		<div class="flex items-start justify-between gap-3 flex-wrap">
+		<div class="flex flex-wrap items-start justify-between gap-3">
 			<div>
-				<a href="/dashboard" class="btn-secondary mb-3 inline-flex" data-testid="sessions-back"
-					><ArrowLeft size={18} />Back to Dashboard</a
-				>
 				<h1 class="page-title">Active sessions</h1>
 				<p class="section-subtitle">
 					Devices signed into your account. Location is a coarse network hint (masked IP), not a city.
@@ -192,11 +199,11 @@
 			{#if othersCount > 0}
 				<button
 					type="button"
-					class="btn-secondary"
+					class="btn-primary"
 					data-testid="sessions-revoke-others"
 					onclick={askRevokeOthers}
 				>
-					<Trash2 size={18} />Sign out other sessions
+					<Trash2 size={16} class="inline mr-1" />Sign out other sessions
 				</button>
 			{/if}
 		</div>
@@ -293,7 +300,7 @@
 								<td>
 									<button
 										type="button"
-										class="btn-secondary border-transparent !px-0 hover:!translate-y-0 hover:!shadow-none hover:bg-accent/10"
+										class="inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-1 py-1 text-sm font-semibold text-accent shadow-none transition-colors duration-150 ease-out hover:bg-accent/10 hover:text-accent"
 										data-testid="sessions-row-revoke"
 										onclick={() => askRevokeOne(s)}
 									>

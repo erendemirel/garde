@@ -312,7 +312,7 @@
 <div class="space-y-4" data-testid="superuser-admin-management-panel">
 	<div>
 		<h2 class="section-title">Admin-User Management</h2>
-		<p class="text-sm text-muted mt-1">
+		<p class="section-subtitle">
 			Derived from shared groups: each admin can manage users who share at least one group with them.
 			Editing an admin’s groups changes that scope.
 		</p>
@@ -325,7 +325,7 @@
 	{:else if $usersCacheError}
 		<p class="error" data-testid="admin-mgmt-users-error">{$usersCacheError}</p>
 	{:else}
-		<label class="form-label max-w-md">
+		<label class="form-label w-[28rem] max-w-full">
 			<span>Search</span>
 			<input
 				class="input"
@@ -504,7 +504,7 @@
 	{/snippet}
 	{#if managingMembership}
 		<div class="space-y-4" data-testid="admin-mgmt-groups-modal">
-			<p class="text-xs text-muted">
+			<p class="section-subtitle">
 				An admin can manage users who share at least one of these groups. Changing membership
 				changes that admin’s management scope.
 			</p>

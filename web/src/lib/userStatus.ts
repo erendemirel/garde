@@ -10,7 +10,7 @@ export function getStatusClass(status: string | undefined | null): StatusKind {
 
 export function formatStatus(status: string | undefined | null): string {
 	const s = (status || '').toLowerCase();
-	if (s === 'ok') return 'OK';
+	if (s === 'ok') return 'Ok';
 	if (s === 'pending admin approval') return 'Pending approval by an admin';
 	if (s === 'email not verified') return 'Email not verified';
 	if (s === 'admin approval rejected') return 'Approval rejected by an admin';

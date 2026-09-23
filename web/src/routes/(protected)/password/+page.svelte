@@ -57,16 +57,23 @@
 	<title>Change Password | garde</title>
 </svelte:head>
 
-<div class="container-medium" data-testid="password-page">
+<div class="container-wide" data-testid="password-page">
+	<div class="mb-4">
+		<a
+			href="/dashboard"
+			class="btn-secondary inline-flex items-center gap-2"
+			data-testid="password-back"
+		>
+			<ArrowLeft size={16} /> Dashboard
+		</a>
+	</div>
+
 	<div class="card space-y-4">
-		<div class="flex items-start justify-between gap-3">
+		<div>
 			<h1 class="page-title">Change Password</h1>
-			<a
-				href="/dashboard"
-				class="btn-secondary w-full sm:w-auto sm:ml-auto"
-				data-testid="password-back"
-				><ArrowLeft size={18} />Back to Dashboard</a
-			>
+			<p class="section-subtitle">
+				Update your sign-in password. You will be signed out after a successful change.
+			</p>
 		</div>
 
 		{#if success}
@@ -137,7 +144,7 @@
 				{/if}
 				<div class="form-actions-center">
 					<button
-						class="btn-secondary w-full md:w-auto"
+						class="btn-primary"
 						type="submit"
 						data-testid="password-submit"
 						disabled={!formReady || loading}

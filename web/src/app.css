@@ -74,7 +74,7 @@ a {
 	}
 
 	.section-subtitle {
-		@apply text-muted text-sm;
+		@apply text-muted text-sm mt-1;
 	}
 
 	.badge {
@@ -131,6 +131,34 @@ a {
 
 	.actions {
 		@apply mt-6 flex flex-wrap items-center gap-3;
+	}
+
+	.settings-list {
+		@apply overflow-hidden rounded-lg border border-borderc bg-input divide-y divide-borderc;
+	}
+
+	.settings-row {
+		@apply flex items-center gap-3 px-3.5 py-3 text-inherit no-underline outline-none transition-colors duration-150 ease-out hover:bg-accent/5 focus-visible:bg-accent/5;
+	}
+
+	.settings-row-icon {
+		@apply inline-flex shrink-0 text-accent/80;
+	}
+
+	.settings-row-body {
+		@apply flex min-w-0 flex-1 flex-col gap-0.5;
+	}
+
+	.settings-row-title {
+		@apply text-sm font-semibold text-accent;
+	}
+
+	.settings-row-desc {
+		@apply text-xs text-muted;
+	}
+
+	.settings-row-chevron {
+		@apply shrink-0 text-muted;
 	}
 
 	.pill-card {
@@ -377,15 +405,15 @@ a {
 	}
 
 	.security-action-btn {
-		@apply inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-[#a39eb0] bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed;
+		@apply inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-[#a39eb0] bg-transparent px-3.5 py-2.5 text-sm font-semibold text-accent shadow-none w-[13.5rem] min-w-[13.5rem] transition-all duration-150 ease-out hover:bg-accent/5 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed;
 	}
 
 	.security-action-btn-danger {
-		@apply inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-red-700/70 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-red-700 shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed;
+		@apply inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-red-700/70 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-red-700 shadow-none w-[13.5rem] min-w-[13.5rem] transition-all duration-150 ease-out hover:bg-red-50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed;
 	}
 
 	.security-action-btn-danger-solid {
-		@apply inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-red-700/25 bg-red-700 px-3.5 py-2.5 text-sm font-semibold text-white shadow-none w-[14rem] min-w-[14rem] transition-all duration-150 ease-out hover:bg-red-800 hover:border-red-800/30 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed;
+		@apply inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-red-700/25 bg-red-700 px-3.5 py-2.5 text-sm font-semibold text-white shadow-none w-[13.5rem] min-w-[13.5rem] transition-all duration-150 ease-out hover:bg-red-800 hover:border-red-800/30 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed;
 	}
 
 	.form-label {

@@ -175,7 +175,7 @@
 			data-ready={catalogReady ? 'true' : 'false'}
 			aria-busy={!catalogReady}
 		>
-			<p class="text-xs text-muted">
+			<p class="section-subtitle">
 				Ask an admin to change your permissions or groups. You can only request permissions visible to your
 				groups. Changes take effect after an admin who shares a group with you approves the request.
 			</p>

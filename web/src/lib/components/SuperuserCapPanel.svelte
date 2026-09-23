@@ -35,7 +35,7 @@
 			<ShieldCheck size={20} class="inline mr-2" />
 			Cap Captcha
 		</h2>
-		<p class="text-sm text-muted mt-1">
+		<p class="section-subtitle">
 			Proof-of-work captcha: always on for register and password-reset; on login only after a
 			failed attempt. Managed by Cap Standalone; garde verifies tokens server-side.
 		</p>

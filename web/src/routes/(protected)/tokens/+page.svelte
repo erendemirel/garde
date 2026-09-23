@@ -138,7 +138,7 @@
 		<div class="flex flex-wrap items-start justify-between gap-3">
 			<div>
 				<h1 class="page-title">Access tokens</h1>
-				<p class="section-subtitle mt-1">
+				<p class="section-subtitle">
 					Personal tokens authenticate as you on garde APIs. They are not tenant
 					<code class="text-xs">/validate</code> keys.
 				</p>
@@ -158,27 +158,27 @@
 				No access tokens yet. Issue one for scripts or CI that need to call garde as you.
 			</p>
 		{:else}
-			<div class="overflow-x-auto" data-testid="tokens-list">
-				<table class="w-full text-sm">
+			<div class="table-scroll" data-testid="tokens-list">
+				<table class="table-base">
 					<thead>
-						<tr class="text-left text-muted border-b border-border">
-							<th class="px-3 py-2 font-medium">Name</th>
-							<th class="px-3 py-2 font-medium">Created</th>
-							<th class="px-3 py-2 font-medium">Expires</th>
-							<th class="px-3 py-2 font-medium">Last used</th>
-							<th class="px-3 py-2 font-medium"></th>
+						<tr>
+							<th>Name</th>
+							<th>Created</th>
+							<th>Expires</th>
+							<th>Last used</th>
+							<th></th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each tokens as token (token.id)}
-							<tr class="border-b border-border/60" data-testid="tokens-row" data-token-id={token.id}>
-								<td class="px-3 py-2 font-medium" data-testid="tokens-row-name">{token.name}</td>
-								<td class="px-3 py-2 text-muted">{formatWhen(token.created_at)}</td>
-								<td class="px-3 py-2 text-muted" data-testid="tokens-row-expires">
+							<tr data-testid="tokens-row" data-token-id={token.id}>
+								<td class="font-medium" data-testid="tokens-row-name">{token.name}</td>
+								<td class="text-muted">{formatWhen(token.created_at)}</td>
+								<td class="text-muted" data-testid="tokens-row-expires">
 									{token.expires_at ? formatWhen(token.expires_at) : 'Never'}
 								</td>
-								<td class="px-3 py-2 text-muted">{formatWhen(token.last_used_at)}</td>
-								<td class="px-3 py-2 text-right">
+								<td class="text-muted">{formatWhen(token.last_used_at)}</td>
+								<td class="text-right">
 									<button
 										type="button"
 										class="btn-icon-danger"
