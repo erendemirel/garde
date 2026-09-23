@@ -26,6 +26,13 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+// MFAEncryptionKey is a fixed base64(32-byte) AES key for unit tests and local
+// seed examples. Decode length must stay 32 — see crypto.ParseMFAEncryptionKey.
+const MFAEncryptionKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+
+// MFAEncryptionKeyAlt is a second valid key for cross-decrypt tests.
+const MFAEncryptionKeyAlt = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+
 // InitConfig seeds the file-backed config loader: each map entry becomes one
 // file named after the (lowercase) key. Mirrors how Vault Agent renders
 // /run/secrets (loader uppercases filenames on read).

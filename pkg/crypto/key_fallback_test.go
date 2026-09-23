@@ -9,7 +9,7 @@ import (
 
 func TestMFAEncryptionKeyRequiresDedicatedSecret(t *testing.T) {
 	testutil.InitConfig(t, map[string]string{
-		"mfa_encryption_key": "dedicated-key",
+		"mfa_encryption_key": testutil.MFAEncryptionKey,
 		"api_key":            "TestApiKey123!TestApiKey123!",
 	})
 	got, err := crypto.MFAEncryptionKey()
@@ -37,14 +37,28 @@ func TestMFAEncryptionKeyUnavailable(t *testing.T) {
 	}
 }
 
+func TestMFAEncryptionKeyRejectsPassphrase(t *testing.T) {
+	testutil.InitConfig(t, map[string]string{"mfa_encryption_key": "not-base64-32-bytes"})
+	if _, err := crypto.MFAEncryptionKey(); err == nil {
+		t.Fatal("expected error for passphrase-style key")
+	}
+}
+
 func TestMFAEncryptionKeysDoNotCrossDecrypt(t *testing.T) {
-	testutil.InitConfig(t, map[string]string{"mfa_encryption_key": "key-a"})
+	testutil.InitConfig(t, map[string]string{"mfa_encryption_key": testutil.MFAEncryptionKey})
 	enc, err := crypto.EncryptString("secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	testutil.InitConfig(t, map[string]string{"mfa_encryption_key": "key-b"})
+	testutil.InitConfig(t, map[string]string{"mfa_encryption_key": testutil.MFAEncryptionKeyAlt})
 	if _, err := crypto.DecryptString(enc); err == nil {
 		t.Fatal("ciphertext decrypts under a different key")
+	}
+}
+
+func TestParseMFAEncryptionKeyRoundTrip(t *testing.T) {
+	key, err := crypto.ParseMFAEncryptionKey(testutil.MFAEncryptionKey)
+	if err != nil || len(key) != 32 {
+		t.Fatalf("parse = %v len=%d", err, len(key))
 	}
 }

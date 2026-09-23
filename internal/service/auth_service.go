@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"garde/internal/models"
@@ -24,9 +25,28 @@ import (
 )
 
 const (
-	maxResetAttempts      = 5
-	securityCodeKeyPrefix = "security_code"
+	maxResetAttempts       = 5
+	maxEmailVerifyAttempts = 5
+	maxMFAAttempts         = 5
+	securityCodeKeyPrefix  = "security_code"
 )
+
+var (
+	dummyPasswordHashOnce sync.Once
+	dummyPasswordHash     string
+)
+
+func getDummyPasswordHash() string {
+	dummyPasswordHashOnce.Do(func() {
+		h, err := crypto.HashPassword("timing-dummy-not-a-real-password")
+		if err != nil {
+			slog.Error("Failed to initialise dummy password hash for login timing equalisation", "error", err)
+			return
+		}
+		dummyPasswordHash = h
+	})
+	return dummyPasswordHash
+}
 
 func isSuperuserEmail(email string) bool {
 	return strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(config.Get("SUPERUSER_EMAIL")))
@@ -188,10 +208,19 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 
 	req.Email = validation.NormalizeEmail(req.Email)
 
-	// Get user for security checks
-	user, err := s.repo.GetUserByEmail(ctx, req.Email)
-	if err != nil {
-		slog.Debug("User lookup failed during login", "email", req.Email, "error", err)
+	user, lookupErr := s.repo.GetUserByEmail(ctx, req.Email)
+	hash := getDummyPasswordHash()
+	if lookupErr == nil && user != nil && user.PasswordHash != "" {
+		hash = user.PasswordHash
+	}
+	// Always pay Argon2 once so unknown emails match known-bad latency.
+	valid, verifyErr := crypto.VerifyPassword(req.Password, hash)
+	if verifyErr != nil {
+		valid = false
+	}
+
+	if lookupErr != nil || user == nil {
+		slog.Debug("User lookup failed during login", "email", req.Email, "error", lookupErr)
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
@@ -236,10 +265,6 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		}
 	}
 
-	valid, err := crypto.VerifyPassword(req.Password, user.PasswordHash)
-	if err != nil {
-		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
-	}
 	if !valid {
 		if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
 			return nil, err
@@ -253,11 +278,13 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		if req.MFACode == "" {
 			return nil, fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
-				return nil, err
+		if err := s.checkUserMFA(ctx, user, req.MFACode); err != nil {
+			if err.Error() == errors.ErrInvalidMFACode || err.Error() == errors.ErrTooManyAttempts {
+				if recErr := s.recordFailedAuth(ctx, user, req.Email, ip); recErr != nil {
+					return nil, recErr
+				}
 			}
-			return nil, fmt.Errorf("%s", errors.ErrInvalidMFACode)
+			return nil, err
 		}
 	}
 
@@ -504,6 +531,46 @@ func (s *AuthService) recordFailedAuth(ctx context.Context, user *models.User, e
 	return nil
 }
 
+// checkUserMFA validates a TOTP against the user's enrolled secret and counts
+// failures toward lock-by-security (stolen-session brute force).
+func (s *AuthService) checkUserMFA(ctx context.Context, user *models.User, code string) error {
+	if mfa.ValidateCode(user.MFASecret, code) {
+		_ = s.repo.ClearMFAAttempts(ctx, user.ID)
+		return nil
+	}
+	return s.failMFAAttempt(ctx, user)
+}
+
+// checkTempMFA validates setup codes against the temporary secret with the same
+// attempt / lock policy as enrolled MFA.
+func (s *AuthService) checkTempMFA(ctx context.Context, user *models.User, tempSecret, code string) error {
+	if mfa.ValidateCode(tempSecret, code) {
+		_ = s.repo.ClearMFAAttempts(ctx, user.ID)
+		return nil
+	}
+	return s.failMFAAttempt(ctx, user)
+}
+
+func (s *AuthService) failMFAAttempt(ctx context.Context, user *models.User) error {
+	attempts, trackErr := s.repo.TrackMFAAttempt(ctx, user.ID)
+	if trackErr != nil {
+		slog.Error("Failed to track MFA attempt", "error", trackErr, "user_id", user.ID)
+		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+	}
+	if attempts > maxMFAAttempts {
+		user.Status = models.UserStatusLockedBySecurity
+		user.UpdatedAt = time.Now()
+		if err := s.repo.StoreUser(ctx, user); err != nil {
+			slog.Error("Failed to lock user after MFA attempts", "error", err, "user_id", user.ID)
+			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		}
+		_ = s.repo.ClearMFAAttempts(ctx, user.ID)
+		slog.Info("Locked user after too many MFA failures", "user_id", user.ID, "attempts", attempts)
+		return fmt.Errorf("%s", errors.ErrTooManyAttempts)
+	}
+	return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+}
+
 func (s *AuthService) NeedsMFASetup(ctx context.Context, userIDOrEmail string) (bool, error) {
 	var user *models.User
 	var err error
@@ -581,8 +648,8 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 	}
 
 	// Verify code using temporary secret
-	if !mfa.ValidateCode(tempSecret, code) {
-		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+	if err := s.checkTempMFA(ctx, user, tempSecret, code); err != nil {
+		return err
 	}
 
 	// If verification successful, save secret to user and enable MFA
@@ -1038,8 +1105,8 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 		if mfaCode == "" {
 			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(admin.MFASecret, mfaCode) {
-			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, admin, mfaCode); err != nil {
+			return err
 		}
 	}
 
@@ -1212,8 +1279,8 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		if req.MFACode == "" {
 			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, user, req.MFACode); err != nil {
+			return err
 		}
 	}
 
@@ -1273,8 +1340,8 @@ func (s *AuthService) DisableMFA(ctx context.Context, userID string, code string
 	}
 
 	// Verify MFA code
-	if !mfa.ValidateCode(user.MFASecret, code) {
-		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+	if err := s.checkUserMFA(ctx, user, code); err != nil {
+		return err
 	}
 
 	// Disable MFA. Empty MFASecret on StoreUser is preserved; ClearUserMFASecret
@@ -1321,8 +1388,8 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 		if req.MFACode == "" {
 			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, user, req.MFACode); err != nil {
+			return err
 		}
 	}
 
@@ -1451,8 +1518,8 @@ func (s *AuthService) RevokeOwnSession(ctx context.Context, userID, currentSessi
 		if mfaCode == "" {
 			return false, fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, mfaCode) {
-			return false, fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, user, mfaCode); err != nil {
+			return false, err
 		}
 	}
 
@@ -1476,8 +1543,8 @@ func (s *AuthService) RevokeOtherSessions(ctx context.Context, userID, currentSe
 		if mfaCode == "" {
 			return 0, fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, mfaCode) {
-			return 0, fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, user, mfaCode); err != nil {
+			return 0, err
 		}
 	}
 
@@ -1589,10 +1656,9 @@ func (s *AuthService) sendEmailVerification(ctx context.Context, user *models.Us
 	if err != nil {
 		return err
 	}
-	hashed, err := crypto.HashPassword(token)
-	if err != nil {
-		return err
-	}
+	// High-entropy token (≈165 bits): SHA-256, not Argon2 — same rationale as
+	// API key secrets. Slow hashing on a public verify endpoint is CPU DoS.
+	hashed := crypto.HashAPIKeySecret(token)
 	if err := s.repo.StoreEmailVerifyToken(ctx, user.ID, hashed); err != nil {
 		return err
 	}
@@ -1628,7 +1694,8 @@ func generateEmailVerifyToken() (string, error) {
 // VerifyEmail consumes a one-time token and advances status:
 // email not verified → pending admin approval (if approval required) or ok.
 // Always returns nil for unknown/wrong cases (anti-enumeration), except when
-// email verification is disabled entirely.
+// email verification is disabled entirely. Wrong tokens are attempt-counted;
+// after maxEmailVerifyAttempts the account is locked by security (still opaque).
 func (s *AuthService) VerifyEmail(ctx context.Context, email, token string) error {
 	if !config.RequireEmailVerification() {
 		return fmt.Errorf("%s", errors.ErrInvalidRequest)
@@ -1651,12 +1718,28 @@ func (s *AuthService) VerifyEmail(ctx context.Context, email, token string) erro
 	if err != nil || stored == "" {
 		return nil
 	}
-	ok, err := crypto.VerifyPassword(token, stored)
-	if err != nil || !ok {
+	if !crypto.APIKeySecretMatches(token, stored) {
+		attempts, trackErr := s.repo.TrackEmailVerifyAttempt(ctx, user.ID)
+		if trackErr != nil {
+			slog.Error("Failed to track email verify attempt", "error", trackErr, "user_id", user.ID)
+			return nil
+		}
+		if attempts > maxEmailVerifyAttempts {
+			user.Status = models.UserStatusLockedBySecurity
+			user.UpdatedAt = time.Now()
+			if err := s.repo.StoreUser(ctx, user); err != nil {
+				slog.Error("Failed to lock user after email verify attempts", "error", err, "user_id", user.ID)
+				return nil
+			}
+			_ = s.repo.DeleteEmailVerifyToken(ctx, user.ID)
+			_ = s.repo.ClearEmailVerifyAttempts(ctx, user.ID)
+			slog.Info("Locked user after too many email verify failures", "user_id", user.ID, "attempts", attempts)
+		}
 		return nil
 	}
 
 	_ = s.repo.DeleteEmailVerifyToken(ctx, user.ID)
+	_ = s.repo.ClearEmailVerifyAttempts(ctx, user.ID)
 
 	if config.RequireAdminApproval() {
 		user.Status = models.UserStatusPendingApproval
@@ -1715,6 +1798,16 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 
 	// Don't allow OTP for superuser
 	if isSuperuserEmail(user.Email) {
+		return nil
+	}
+
+	n, err := s.repo.TrackOTPSend(ctx, user.ID)
+	if err != nil {
+		slog.Error("Failed to track OTP send", "error", err, "user_id", user.ID)
+		return nil
+	}
+	if n > repository.OTPSendMax() {
+		slog.Info("Password-reset OTP send rate limited", "user_id", user.ID, "count", n)
 		return nil
 	}
 

@@ -75,6 +75,9 @@ func TestCORSPreflightAndHeaders(t *testing.T) {
 	}
 
 	rec = corsRequest(t, http.MethodGet, "http://localhost:5173")
+	if got := rec.Header().Get("Vary"); got != "Origin" {
+		t.Fatalf("Vary = %q, want Origin", got)
+	}
 	for header, want := range map[string]string{
 		"X-Frame-Options":                  "DENY",
 		"X-Content-Type-Options":           "nosniff",

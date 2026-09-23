@@ -194,6 +194,38 @@ func TestVerifyEmailAdvancesStatus(t *testing.T) {
 			t.Fatalf("status = %q, want email not verified", user.Status)
 		}
 	})
+
+	t.Run("too many wrong tokens locks by security", func(t *testing.T) {
+		secrets := baseSecrets()
+		secrets["require_admin_approval"] = "false"
+		secrets["require_email_verification"] = "true"
+		s := newFlowService(t, secrets)
+		ctx := context.Background()
+
+		prev := mail.SendMailFunc
+		t.Cleanup(func() { mail.SendMailFunc = prev })
+		mail.SendMailFunc = func(to, subject, b string) error { return nil }
+
+		email := "verify-lock@example.com"
+		if _, err := s.CreateUser(ctx, &models.CreateUserRequest{Email: email, Password: "DevAdminTest123!"}); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < maxEmailVerifyAttempts+1; i++ {
+			if err := s.VerifyEmail(ctx, email, "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"); err != nil {
+				t.Fatalf("attempt %d: %v", i+1, err)
+			}
+		}
+		user, err := s.repo.GetUserByEmail(ctx, email)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if user.Status != models.UserStatusLockedBySecurity {
+			t.Fatalf("status = %q, want locked by security", user.Status)
+		}
+		if tok, err := s.repo.GetEmailVerifyToken(ctx, user.ID); err == nil && tok != "" {
+			t.Fatal("expected verify token cleared after lock")
+		}
+	})
 }
 
 func TestUpdateUserCannotSkipEmailVerification(t *testing.T) {

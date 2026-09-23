@@ -152,7 +152,7 @@ docker compose -f docker-compose.prod.yml up -d
 | `secret/garde/domain_name` | Your domain (for cookies and TLS) |
 | `secret/garde/superuser_email` | Superuser account email (The user is auto-created) |
 | `secret/garde/superuser_password` | Superuser password (The user is auto-created) |
-| `secret/garde/mfa_encryption_key` | **Required.** Key used to encrypt MFA TOTP secrets at rest. Any string (SHA-256'd to 32 bytes) or base64-encoded 32-byte key. Changing it does not re-encrypt existing MFA secrets. |
+| `secret/garde/mfa_encryption_key` | **Required.** Base64-encoded **32 random bytes** used to encrypt MFA TOTP secrets at rest (`openssl rand -base64 32`). Passphrases are rejected at startup. Changing it does not re-encrypt existing MFA secrets — users must re-enroll. |
 
 ### TLS and mTLS configuration
 
@@ -305,7 +305,7 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/service_port` | Port for that listener. Default `8444`; must differ from `port`. |
 | `secret/garde/service_mtls` | `required` (default) or `off`. `off` leaves `/validate` on the API key and the network alone. |
 | `secret/garde/service_tls_cert_path`, `…_key_path`, `…_ca_path` | The listener's keypair and the CA that signs callers. Required when `service_listener` is `true`. |
-| `secret/garde/public_self_service` | Optional. Public kill switch. When `false`, public serves only probes + `/public/config`; login/user self-service/public `/validate` move to the service listener (`service_listener=true`). Admin/superuser mount only on the service listener when it is enabled (single-listener compat keeps them on public). Default `true`. |
+| `secret/garde/public_self_service` | Optional. Public kill switch. When `false`, public serves only probes + `/public/config`; login/user self-service/public `/validate` move to the service listener (`service_listener=true` **required** — startup fails if both are off). Admin/superuser mount only on the service listener when it is enabled (single-listener compat keeps them on public). Default `true`. Restart required to remount. |
 | `secret/garde/require_admin_approval` | Optional. New accounts wait for admin approval. Default `false`. |
 | `secret/garde/require_email_verification` | Optional. New accounts must verify email. Default `true`. If both this and admin approval are off, email verification is forced on. |
 | `secret/garde/public_validate` | Public `/validate` when the kill switch is off. Ignored (forced off) when `public_self_service=false`. Defaults to the opposite of `service_listener`. |
@@ -370,6 +370,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply). Reloads that fail `ValidateConfig` (weak password, missing required keys, …) are **rejected** and the previous secret map is kept |
 | `admin_scopes_json` | Resolved per request, so scope changes apply to the admin's next call. A reload that leaves it unparseable denies every scoped admin route until it is fixed, rather than restoring full admin access |
 | `gin_mode` | Reload (and startup) call `gin.SetMode` from the secret — Gin does not read `/run/secrets` on its own |
+| `require_admin_approval`, `require_email_verification` | Read on register / verify / `/public/config` (gates apply without remount). `public_self_service` does **not** — see restart table |
 
 #### Requires process restart
 
@@ -377,6 +378,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 |--------------|-----|
 | `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
 | `browser_mtls`, `service_mtls`, `public_validate` | The client-certificate policy is part of the handshake configuration, and which routes exist is decided when the listeners are built |
+| `public_self_service` | Which routes mount on the public vs service listener is decided at startup; flipping the kill switch does not remount live |
 | `service_listener`, `service_port`, `service_tls_*` | Same: a second listener is opened, or not, at startup |
 | `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
 | `rate_limit` | Numeric thresholds are parsed into the rate-limiter struct at startup |

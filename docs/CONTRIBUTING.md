@@ -82,7 +82,7 @@ PORT=8443
 TLS_CA_PATH=./certs/ca-cert.pem
 
 # Service Authentication
-MFA_ENCRYPTION_KEY=dev-mfa-encryption-key-change-me  # Required; encrypts MFA secrets at rest
+MFA_ENCRYPTION_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=  # Required; base64(32 random bytes). Generate with: openssl rand -base64 32
 # Issue /validate keys with POST /admin/api-keys (issued per-caller keys only)
 ```
 

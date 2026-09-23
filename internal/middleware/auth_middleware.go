@@ -262,6 +262,8 @@ func completeUserAuth(
 
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Writer.Header().Add("Vary", "Origin")
+
 		origin := c.Request.Header.Get("Origin")
 		for _, allowedOrigin := range strings.Split(config.Get("CORS_ALLOW_ORIGINS"), ",") {
 			if strings.TrimSpace(allowedOrigin) == origin {

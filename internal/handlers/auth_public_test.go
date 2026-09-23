@@ -25,7 +25,7 @@ func newAuthTestStack(t *testing.T) (*AuthHandler, *repository.RedisRepository) 
 	t.Helper()
 	testutil.InitConfig(t, map[string]string{
 		"superuser_email":    "root@example.com",
-		"mfa_encryption_key": "test-key-for-unit-tests",
+		"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 	})
 	repo := testutil.NewTestStore(t)
 	return NewAuthHandler(service.NewAuthService(repo)), repo

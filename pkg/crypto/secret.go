@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -13,22 +12,24 @@ import (
 	"garde/pkg/config"
 )
 
-// MFAEncryptionKey returns a 32-byte AES key for MFA secret encryption.
-//
-// MFA_ENCRYPTION_KEY is required: a raw string (SHA-256'd to 32 bytes) or a
-// base64-encoded 32-byte key. Other config secrets (including a leftover
-// api_key value) are not used — auth material and at-rest encryption keys
-// must stay separate.
-func MFAEncryptionKey() ([]byte, error) {
-	keyMaterial := strings.TrimSpace(config.Get("MFA_ENCRYPTION_KEY"))
-	if keyMaterial == "" {
+// ParseMFAEncryptionKey accepts only a base64-encoded 32-byte key. Passphrase
+// hashing was removed: weak material and silent rotation brokenness are worse
+// than forcing operators to mint a real key.
+func ParseMFAEncryptionKey(material string) ([]byte, error) {
+	material = strings.TrimSpace(material)
+	if material == "" {
 		return nil, fmt.Errorf("MFA encryption key unavailable: set MFA_ENCRYPTION_KEY")
 	}
-	if decoded, err := base64.StdEncoding.DecodeString(keyMaterial); err == nil && len(decoded) == 32 {
-		return decoded, nil
+	decoded, err := base64.StdEncoding.DecodeString(material)
+	if err != nil || len(decoded) != 32 {
+		return nil, fmt.Errorf("MFA_ENCRYPTION_KEY must be base64-encoded 32 random bytes")
 	}
-	sum := sha256.Sum256([]byte(keyMaterial))
-	return sum[:], nil
+	return decoded, nil
+}
+
+// MFAEncryptionKey returns the configured 32-byte AES key for MFA secret encryption.
+func MFAEncryptionKey() ([]byte, error) {
+	return ParseMFAEncryptionKey(config.Get("MFA_ENCRYPTION_KEY"))
 }
 
 // EncryptString encrypts plaintext with AES-256-GCM and returns a base64 payload.

@@ -46,7 +46,7 @@ func TestPublicKillSwitchOmitsAuthRoutes(t *testing.T) {
 	testutil.InitConfig(t, map[string]string{
 		"public_self_service": "false",
 		"service_listener":    "true",
-		"mfa_encryption_key":  "test-key-for-unit-tests",
+		"mfa_encryption_key":  "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		"superuser_email":     "root@example.com",
 	})
 	r, deps := testEngine(t)
@@ -67,7 +67,7 @@ func TestPublicOpenMountsExternalNotAdminWhenServiceListener(t *testing.T) {
 		"public_self_service": "true",
 		"service_listener":    "true",
 		"public_validate":     "false",
-		"mfa_encryption_key":  "test-key-for-unit-tests",
+		"mfa_encryption_key":  "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		"superuser_email":     "root@example.com",
 	})
 	r, deps := testEngine(t)
@@ -89,7 +89,7 @@ func TestServiceListenerHasAdminAndInternalValidate(t *testing.T) {
 		"public_self_service":    "true",
 		"service_listener":       "true",
 		"service_mtls":           "off",
-		"mfa_encryption_key":     "test-key-for-unit-tests",
+		"mfa_encryption_key":     "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		"superuser_email":        "root@example.com",
 	})
 	r, deps := testEngine(t)
@@ -112,7 +112,7 @@ func TestServiceListenerTakesUserSurfaceWhenKillSwitchOn(t *testing.T) {
 		"public_self_service": "false",
 		"service_listener":    "true",
 		"service_mtls":        "off",
-		"mfa_encryption_key":  "test-key-for-unit-tests",
+		"mfa_encryption_key":  "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		"superuser_email":     "root@example.com",
 	})
 	r, deps := testEngine(t)
@@ -133,7 +133,7 @@ func TestSingleListenerCompatMountsAdminOnPublic(t *testing.T) {
 	testutil.InitConfig(t, map[string]string{
 		"public_self_service": "true",
 		"service_listener":    "false",
-		"mfa_encryption_key":  "test-key-for-unit-tests",
+		"mfa_encryption_key":  "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		"superuser_email":     "root@example.com",
 	})
 	r, deps := testEngine(t)

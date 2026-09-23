@@ -53,7 +53,7 @@ vault kv put secret/garde/database_url value='postgres://garde:SECRET@db.xxxxx.r
 vault kv put secret/garde/domain_name value=your-domain.com
 vault kv put secret/garde/superuser_email value=admin@example.com
 vault kv put secret/garde/superuser_password value=YourSecurePassword
-vault kv put secret/garde/mfa_encryption_key value=your-dedicated-mfa-key
+vault kv put secret/garde/mfa_encryption_key value="$(openssl rand -base64 32)"
 # Issue /validate callers with POST /admin/api-keys (issued per-caller keys only).
 # ... and other keys (see dev.secrets or Required Mandatory Secrets in docs/INSTALLATION.md).
 

@@ -151,7 +151,7 @@ func TestLoginMFARequiredWithoutCode(t *testing.T) {
 	// before the store that writes it.
 	testutil.InitConfig(t, map[string]string{
 		"superuser_email":    "root@example.com",
-		"mfa_encryption_key": "test-key-for-unit-tests",
+		"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 	})
 	fresh, err := s.repo.GetUserByID(ctx, u.ID)
 	if err != nil {

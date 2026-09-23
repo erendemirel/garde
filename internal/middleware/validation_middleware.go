@@ -481,6 +481,10 @@ func validatePathParams(c *gin.Context) error {
 func validateHeaders(c *gin.Context) error {
 	headers := make(http.Header)
 	for key, values := range c.Request.Header {
+		if skipHeaderSanitize(key) {
+			headers[key] = values
+			continue
+		}
 		sanitizedValues := make([]string, len(values))
 		for i, value := range values {
 			sanitized, err := validation.Sanitize(value)
@@ -493,6 +497,17 @@ func validateHeaders(c *gin.Context) error {
 	}
 	c.Request.Header = headers
 	return nil
+}
+
+// Auth material must not be HTML-escaped or banned-char rejected: base64url and
+// cookie values are safe as opaque tokens and must round-trip unchanged.
+func skipHeaderSanitize(key string) bool {
+	switch http.CanonicalHeaderKey(key) {
+	case "Authorization", "Cookie", "Set-Cookie", "X-Api-Key", "X-Csrf-Token":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateQueryParams(c *gin.Context) error {

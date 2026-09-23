@@ -133,4 +133,21 @@ func TestValidationPutUserAndPassthrough(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("overlong query: status = %d, want 400", rec.Code)
 	}
+
+	// Authorization must not be HTML-escaped / mutated by header sanitize.
+	const bearer = "Bearer abc+def/ghi="
+	req = httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Header.Set("Authorization", bearer)
+	rec = httptest.NewRecorder()
+	var seenAuth string
+	router2 := gin.New()
+	router2.Use(ValidateRequestParameters())
+	router2.GET("/health", func(c *gin.Context) {
+		seenAuth = c.GetHeader("Authorization")
+		c.Status(http.StatusOK)
+	})
+	router2.ServeHTTP(rec, req)
+	if seenAuth != bearer {
+		t.Fatalf("Authorization mutated: got %q want %q", seenAuth, bearer)
+	}
 }

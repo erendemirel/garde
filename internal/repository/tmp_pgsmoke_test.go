@@ -15,7 +15,7 @@ func newSmokeStore(t *testing.T) *Store {
 }
 
 func TestSmokeUserLifecycle(t *testing.T) {
-	initTestConfig(t, map[string]string{"mfa_encryption_key": "test-key-for-unit-tests"})
+	initTestConfig(t, map[string]string{"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="})
 	ctx := context.Background()
 	s := newSmokeStore(t)
 

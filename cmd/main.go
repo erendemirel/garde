@@ -203,8 +203,6 @@ func main() {
 			os.Exit(1)
 		}
 		servers = append(servers, serviceSrv)
-	} else if !config.PublicSelfServiceEnabled() {
-		slog.Error("PUBLIC_SELF_SERVICE is off but SERVICE_LISTENER is off â€” no auth listener is available")
 	}
 
 	for _, srv := range servers {

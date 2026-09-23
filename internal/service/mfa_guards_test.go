@@ -137,3 +137,27 @@ func TestLogoutUnknownSession(t *testing.T) {
 		t.Fatal("logout of unknown session succeeds")
 	}
 }
+
+func TestDisableMFALocksAfterTooManyBadCodes(t *testing.T) {
+	s := newFlowService(t, baseSecrets())
+	ctx := context.Background()
+	_, user := seedMFAUser(t, s, "mfa-lock", "mfa-lock@example.com")
+
+	for i := 0; i < maxMFAAttempts; i++ {
+		err := s.DisableMFA(ctx, user.ID, "000000")
+		if err == nil || err.Error() != pkgerrors.ErrInvalidMFACode {
+			t.Fatalf("attempt %d: err = %v, want %q", i+1, err, pkgerrors.ErrInvalidMFACode)
+		}
+	}
+	err := s.DisableMFA(ctx, user.ID, "000000")
+	if err == nil || err.Error() != pkgerrors.ErrTooManyAttempts {
+		t.Fatalf("lock attempt: err = %v, want %q", err, pkgerrors.ErrTooManyAttempts)
+	}
+	stored, err := s.repo.GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != models.UserStatusLockedBySecurity {
+		t.Fatalf("status = %q, want locked by security", stored.Status)
+	}
+}

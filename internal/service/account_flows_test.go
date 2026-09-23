@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"garde/internal/models"
+	"garde/internal/repository"
 	"garde/internal/testutil"
 	"garde/pkg/crypto"
 	pkgerrors "garde/pkg/errors"
@@ -25,7 +26,7 @@ func newFlowService(t *testing.T, secrets map[string]string) *AuthService {
 func baseSecrets() map[string]string {
 	return map[string]string{
 		"superuser_email":    "root@example.com",
-		"mfa_encryption_key": "test-key-for-unit-tests",
+		"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 	}
 }
 
@@ -257,6 +258,34 @@ func TestSendOTPAndResetPasswordEndToEnd(t *testing.T) {
 		Email: "nobody@example.com", OTP: "ZZZZZZZZ", NewPassword: "NewPassword1!",
 	}); err == nil || err.Error() != pkgerrors.ErrInvalidOTP {
 		t.Fatalf("unknown email err = %v, want %q", err, pkgerrors.ErrInvalidOTP)
+	}
+}
+
+func TestSendOTPRateLimited(t *testing.T) {
+	s := newFlowService(t, baseSecrets())
+	ctx := context.Background()
+	hash, err := crypto.HashPassword("OldPassword1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := &models.User{ID: "otp-rl", Email: "otprl@example.com", PasswordHash: hash, Status: models.UserStatusOk}
+	if err := s.repo.StoreUser(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	sent := mockMail(t)
+	for i := 0; i < repository.OTPSendMax(); i++ {
+		if err := s.SendOTP(ctx, "otprl@example.com"); err != nil {
+			t.Fatalf("send %d: %v", i+1, err)
+		}
+	}
+	if len(*sent) != repository.OTPSendMax() {
+		t.Fatalf("mails = %d, want %d", len(*sent), repository.OTPSendMax())
+	}
+	if err := s.SendOTP(ctx, "otprl@example.com"); err != nil {
+		t.Fatalf("over-limit send: %v", err)
+	}
+	if len(*sent) != repository.OTPSendMax() {
+		t.Fatalf("over-limit still mailed: got %d", len(*sent))
 	}
 }
 

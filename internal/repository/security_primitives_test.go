@@ -181,7 +181,7 @@ func TestSecurityCodeRoundTrip(t *testing.T) {
 }
 
 func TestTempMFASecretRoundTrip(t *testing.T) {
-	initTestConfig(t, map[string]string{"mfa_encryption_key": "test-key-for-unit-tests"})
+	initTestConfig(t, map[string]string{"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="})
 	ctx := context.Background()
 	r := newSecRepo(t)
 	if err := r.StoreTempMFASecret(ctx, "u-1", "JBSWY3DPEHPK3PXP"); err != nil {

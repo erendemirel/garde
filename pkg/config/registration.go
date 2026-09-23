@@ -76,9 +76,6 @@ func LogRegistrationGates() {
 		"email_verification_coerced", EmailVerificationCoerced(),
 		"service_listener", ServiceListenerEnabled(),
 	)
-	if !PublicSelfServiceEnabled() && !ServiceListenerEnabled() {
-		slog.Warn("PUBLIC_SELF_SERVICE is off and SERVICE_LISTENER is off — auth is unavailable on every listener")
-	}
 }
 
 // RegistrationNextStep is the opaque post-register hint for clients.
