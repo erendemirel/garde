@@ -308,6 +308,8 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/public_self_service` | Optional. Public kill switch. When `false`, public serves only probes + `/public/config`; login/user self-service/public `/validate` move to the service listener (`service_listener=true` **required** — startup fails if both are off). Admin/superuser mount only on the service listener when it is enabled (single-listener compat keeps them on public). Default `true`. Restart required to remount. |
 | `secret/garde/require_admin_approval` | Optional. New accounts wait for admin approval. Default `false`. |
 | `secret/garde/require_email_verification` | Optional. New accounts must verify email. Default `true`. If both this and admin approval are off, email verification is forced on. |
+| `secret/garde/email_allowed_domains` | Optional. Comma-separated email domains permitted at registration. Exact match (`example.com`) or leading wildcard (`*.example.com` for any subdomain; apex not included). Empty = all domains allowed (subject to the blocklist). When set, `superuser_email` and every `admin_users_json` address must also match. |
+| `secret/garde/email_blocked_domains` | Optional. Comma-separated email domains rejected at registration (same wildcard rules). Blocklist wins over the allowlist. Empty = nothing blocked by domain. |
 | `secret/garde/public_validate` | Public `/validate` when the kill switch is off. Ignored (forced off) when `public_self_service=false`. Defaults to the opposite of `service_listener`. |
 | `secret/garde/cap_enabled` | Optional. Enables Cap on public auth routes. Register and password-reset always require a token when enabled; login requires Cap only after a failed attempt. Needs site key, secret, and API URL. |
 | `secret/garde/cap_site_key` | Cap site key from the Cap Standalone dashboard. |
@@ -371,6 +373,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `admin_scopes_json` | Resolved per request, so scope changes apply to the admin's next call. A reload that leaves it unparseable denies every scoped admin route until it is fixed, rather than restoring full admin access |
 | `gin_mode` | Reload (and startup) call `gin.SetMode` from the secret — Gin does not read `/run/secrets` on its own |
 | `require_admin_approval`, `require_email_verification` | Read on register / verify / `/public/config` (gates apply without remount). `public_self_service` does **not** — see restart table |
+| `email_allowed_domains`, `email_blocked_domains` | Read on each registration (and at secret reload validation). Pattern syntax errors or bootstrap emails outside the policy reject the reload |
 
 #### Requires process restart
 

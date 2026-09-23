@@ -101,6 +101,31 @@ func ValidateConfig() error {
 		return err
 	}
 
+	if err := config.ValidateEmailDomainLists(); err != nil {
+		return err
+	}
+	if err := validateBootstrapEmailsAgainstDomainPolicy(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Bootstrap accounts must satisfy the same registration domain policy when lists
+// are set — otherwise operators can lock themselves into an unreachable login
+// surface or an inconsistent allowlist.
+func validateBootstrapEmailsAgainstDomainPolicy() error {
+	if !config.EmailDomainPolicyConfigured() {
+		return nil
+	}
+	if err := ValidateEmailDomainPolicy(config.Get("SUPERUSER_EMAIL")); err != nil {
+		return fmt.Errorf("SUPERUSER_EMAIL is excluded by EMAIL_ALLOWED_DOMAINS / EMAIL_BLOCKED_DOMAINS")
+	}
+	for email := range config.GetAdminUsersMap() {
+		if err := ValidateEmailDomainPolicy(email); err != nil {
+			return fmt.Errorf("ADMIN_USERS_JSON email %q is excluded by EMAIL_ALLOWED_DOMAINS / EMAIL_BLOCKED_DOMAINS", email)
+		}
+	}
 	return nil
 }
 

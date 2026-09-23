@@ -52,6 +52,7 @@ func TestErrorMessagesNonEmptyAndUnique(t *testing.T) {
 	add("ErrAdminScopeNotPermitted", ErrAdminScopeNotPermitted)
 	add("ErrEmailLength", ErrEmailLength)
 	add("ErrEmailFormat", ErrEmailFormat)
+	add("ErrEmailDomainNotAllowed", ErrEmailDomainNotAllowed)
 	add("ErrPasswordLength", ErrPasswordLength)
 	add("ErrPasswordComplexity", ErrPasswordComplexity)
 	add("ErrPasswordSameAsCurrent", ErrPasswordSameAsCurrent)

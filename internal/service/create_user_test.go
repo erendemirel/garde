@@ -114,3 +114,31 @@ func TestCreateUserEmptyPassword(t *testing.T) {
 		t.Fatal("empty password accepted")
 	}
 }
+
+func TestCreateUserEmailDomainPolicy(t *testing.T) {
+	s := newCreateUserService(t, map[string]string{
+		"superuser_email":            "root@example.com",
+		"require_admin_approval":     "true",
+		"require_email_verification": "false",
+		"email_allowed_domains":      "example.com, *.example.com",
+		"email_blocked_domains":      "blocked.example.com",
+	})
+	ctx := context.Background()
+	if _, err := s.CreateUser(ctx, &models.CreateUserRequest{
+		Email: "ok@example.com", Password: "DevAdminTest123!",
+	}); err != nil {
+		t.Fatalf("allowed domain rejected: %v", err)
+	}
+	_, err := s.CreateUser(ctx, &models.CreateUserRequest{
+		Email: "no@other.com", Password: "DevAdminTest123!",
+	})
+	if err == nil || err.Error() != pkgerrors.ErrEmailDomainNotAllowed {
+		t.Fatalf("want domain policy error, got %v", err)
+	}
+	_, err = s.CreateUser(ctx, &models.CreateUserRequest{
+		Email: "x@blocked.example.com", Password: "DevAdminTest123!",
+	})
+	if err == nil || err.Error() != pkgerrors.ErrEmailDomainNotAllowed {
+		t.Fatalf("want blocklist error, got %v", err)
+	}
+}

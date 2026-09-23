@@ -87,6 +87,16 @@ func TestValidateConfigTable(t *testing.T) {
 			"service_tls_key_path":  "/certs/service.key",
 			"service_mtls":          "off",
 		}), false},
+		{"valid email domain lists", mk(map[string]string{
+			"email_allowed_domains": "example.com, *.corp.example",
+			"email_blocked_domains": "spam.example.com",
+		}), false},
+		{"bad email domain pattern", mk(map[string]string{"email_allowed_domains": "foo.*.com"}), true},
+		{"superuser outside allowlist", mk(map[string]string{"email_allowed_domains": "other.com"}), true},
+		{"admin outside allowlist", mk(map[string]string{
+			"email_allowed_domains": "example.com",
+			"admin_users_json":      `{"admin@other.com":"DevAdminTest123!"}`,
+		}), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

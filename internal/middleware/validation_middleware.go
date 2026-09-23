@@ -166,6 +166,10 @@ func validateCreateUserRequest(req *models.CreateUserRequest) error {
 		slog.Debug("Email validation failed", "error", err)
 		return err
 	}
+	if err := validation.ValidateEmailDomainPolicy(req.Email); err != nil {
+		slog.Debug("Email domain policy rejected registration", "error", err)
+		return err
+	}
 	if err := validation.ValidatePassword(req.Password); err != nil {
 		slog.Debug("Password validation failed", "error", err)
 		return err

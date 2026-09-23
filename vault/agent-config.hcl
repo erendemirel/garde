@@ -291,6 +291,18 @@ template {
 }
 
 template {
+  contents = "{{ with secret \"secret/data/garde/email_allowed_domains\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/email_allowed_domains"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/email_blocked_domains\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/email_blocked_domains"
+  error_on_missing_key = false
+}
+
+template {
   contents = "{{ with secret \"secret/data/garde/rate_limit\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/rate_limit"
 }

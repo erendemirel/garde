@@ -74,6 +74,8 @@ func LogRegistrationGates() {
 		"require_admin_approval", approval,
 		"require_email_verification", verify,
 		"email_verification_coerced", EmailVerificationCoerced(),
+		"email_allowed_domains", len(EmailAllowedDomains()),
+		"email_blocked_domains", len(EmailBlockedDomains()),
 		"service_listener", ServiceListenerEnabled(),
 	)
 }

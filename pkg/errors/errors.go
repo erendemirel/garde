@@ -27,13 +27,13 @@ const (
 
 // Request errors
 const (
-	ErrInvalidRequest     = "invalid request"
-	ErrUserCreationFailed = "user creation failed"
-	ErrRequestTooLarge    = "request body exceeds maximum allowed size"
-	ErrTooManyRequests    = "too many requests"
+	ErrInvalidRequest          = "invalid request"
+	ErrUserCreationFailed      = "user creation failed"
+	ErrRequestTooLarge         = "request body exceeds maximum allowed size"
+	ErrTooManyRequests         = "too many requests"
 	ErrHTTPRequestBodyTooLarge = "http: request body too large"
-	ErrCaptchaRequired    = "captcha verification required"
-	ErrCaptchaFailed      = "captcha verification failed"
+	ErrCaptchaRequired         = "captcha verification required"
+	ErrCaptchaFailed           = "captcha verification failed"
 )
 
 // Generic error message
@@ -85,10 +85,11 @@ const (
 const (
 	ErrEmailLength            = "email is max 254 characters"
 	ErrEmailFormat            = "invalid email format"
+	ErrEmailDomainNotAllowed  = "email domain is not allowed"
 	ErrPasswordLength         = "password must be between 8 and 64 characters"
 	ErrPasswordComplexity     = "password complexity requirements not met"
 	ErrPasswordSameAsCurrent  = "new password must be different from the current password"
-	ErrDisallowedCharacters  = "disallowed characters"
+	ErrDisallowedCharacters   = "disallowed characters"
 	ErrInvalidPermissionName  = "permission and group names must be 1-128 characters, alphanumeric and underscore only"
 	ErrInvalidAPIKeyName      = "API key name must be 1-64 characters, alphanumeric with underscore, hyphen or dot"
 	ErrInvalidAPIKeyTenantID  = "tenant_id must be 1-64 characters, alphanumeric with underscore, hyphen or dot"

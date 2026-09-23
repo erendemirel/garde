@@ -674,6 +674,10 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	req.Email = validation.NormalizeEmail(req.Email)
 	next := config.RegistrationNextStep()
 
+	if err := validation.ValidateEmailDomainPolicy(req.Email); err != nil {
+		return nil, fmt.Errorf("%s", errors.ErrEmailDomainNotAllowed)
+	}
+
 	// Block public creation of the configured superuser; it is bootstrapped at startup
 	if isSuperuserEmail(req.Email) {
 		return nil, fmt.Errorf("%s", errors.ErrUnauthorized)
