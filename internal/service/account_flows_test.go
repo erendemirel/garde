@@ -25,8 +25,10 @@ func newFlowService(t *testing.T, secrets map[string]string) *AuthService {
 
 func baseSecrets() map[string]string {
 	return map[string]string{
-		"superuser_email":    "root@example.com",
-		"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		"superuser_email":            "root@example.com",
+		"mfa_encryption_key":         "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		// Session self-service tests mint concurrent sessions from different IPs.
+		"disable_multiple_ip_check":  "true",
 	}
 }
 
