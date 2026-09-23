@@ -155,9 +155,10 @@ func TestRevokeOwnSessionRequiresMFAWhenEnabled(t *testing.T) {
 
 func TestLoginEnforcesSessionMaxActive(t *testing.T) {
 	s := newFlowService(t, map[string]string{
-		"superuser_email":       "root@example.com",
-		"mfa_encryption_key":    "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
-		"session_max_active":    "2",
+		"superuser_email":           "root@example.com",
+		"mfa_encryption_key":        "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		"session_max_active":        "2",
+		"disable_multiple_ip_check": "true",
 	})
 	ctx := context.Background()
 	hash, err := crypto.HashPassword("DevAdminTest123!")
