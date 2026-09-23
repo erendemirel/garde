@@ -41,6 +41,10 @@ func (e *ErrorResponse) WithCaptchaRequired(required bool) *ErrorResponse {
 
 type CreateUserResponse struct {
 	UserID string `json:"user_id"`
+	// Next is a config-derived hint (verify_email | await_admin | ready).
+	// Always the same for a given deployment — including anti-enumeration
+	// fake successes — so it does not leak whether the email already existed.
+	Next string `json:"next,omitempty"`
 }
 
 type SessionValidationResponse struct {
@@ -77,6 +81,23 @@ type ListUsersResponse struct {
 	Total int            `json:"total,omitempty"`
 	Page  int            `json:"page,omitempty"`
 	Limit int            `json:"limit,omitempty"`
+}
+
+// SessionInfo is a non-secret view of an active browser/API session.
+type SessionInfo struct {
+	ID           string    `json:"id"` // opaque PublicID — not the cookie/Bearer secret
+	Current      bool      `json:"current"`
+	CreatedAt    time.Time `json:"created_at"`
+	LastSeenAt   time.Time `json:"last_seen_at"`
+	IPDisplay    string    `json:"ip_display"`
+	UAFamily     string    `json:"ua_family"`
+	UASummary    string    `json:"ua_summary"`
+	DeviceKind   string    `json:"device_kind"` // desktop | mobile | tool | unknown
+	ApproxPlace  string    `json:"approx_place"` // coarse hint (masked IP); no geo DB
+}
+
+type ListSessionsResponse struct {
+	Sessions []SessionInfo `json:"sessions"`
 }
 
 type PermissionResponse struct {

@@ -7,7 +7,7 @@ import { invalidateUsersCache } from './usersCache';
 // Use environment variable in production, fallback to /api for development
 const API_BASE = import.meta.env.PUBLIC_API_URL || '/api';
 
-const PUBLIC_PATHS = new Set(['/', '/register', '/forgot-password']);
+const PUBLIC_PATHS = new Set(['/', '/register', '/forgot-password', '/verify-email']);
 const CREDENTIAL_401_ENDPOINTS = new Set(['/login']);
 
 type ApiResponse<T> =
@@ -99,9 +99,31 @@ export const login = (email: string, password: string, mfa_code?: string, cap_to
 export const logout = () => request('/logout', { method: 'POST' });
 
 export const register = (email: string, password: string, cap_token?: string) =>
-	request<{ user_id: string }>('/users', {
+	request<{ user_id: string; next?: string }>('/users', {
 		method: 'POST',
 		body: JSON.stringify({ email, password, cap_token })
+	});
+
+export type PublicConfig = {
+	public_self_service: boolean;
+	require_admin_approval: boolean;
+	require_email_verification: boolean;
+	email_verification_coerced?: boolean;
+	registration_next: string;
+};
+
+export const getPublicConfig = () => request<PublicConfig>('/public/config');
+
+export const verifyEmail = (email: string, token: string, cap_token?: string) =>
+	request('/users/email/verify', {
+		method: 'POST',
+		body: JSON.stringify({ email, token, cap_token })
+	});
+
+export const resendVerifyEmail = (email: string, cap_token?: string) =>
+	request('/users/email/verify/resend', {
+		method: 'POST',
+		body: JSON.stringify({ email, cap_token })
 	});
 
 // Password
@@ -179,6 +201,33 @@ export interface User {
 }
 
 export const getMe = () => request<User>('/users/me');
+
+export interface SessionInfo {
+	id: string;
+	current: boolean;
+	created_at: string;
+	last_seen_at: string;
+	ip_display: string;
+	ua_family: string;
+	ua_summary: string;
+	device_kind?: 'desktop' | 'mobile' | 'tool' | 'unknown' | string;
+	approx_place: string;
+}
+
+export const listSessions = () =>
+	request<{ sessions: SessionInfo[] }>('/users/me/sessions');
+
+export const revokeSession = (sessionId: string, mfa_code?: string) =>
+	request<{ revoked_current: boolean }>(`/users/me/sessions/${encodeURIComponent(sessionId)}/revoke`, {
+		method: 'POST',
+		body: JSON.stringify(mfa_code ? { mfa_code } : {})
+	});
+
+export const revokeOtherSessions = (mfa_code?: string) =>
+	request<{ revoked: number }>('/users/me/sessions/revoke-others', {
+		method: 'POST',
+		body: JSON.stringify(mfa_code ? { mfa_code } : {})
+	});
 
 export const requestUpdate = (updates: {
 	permissions_add?: string[];

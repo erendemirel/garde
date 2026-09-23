@@ -10,12 +10,11 @@ import {
 	selectIssueScope,
 	validateWithAPIKey
 } from '../helpers/apiKeys';
-import { assertToast, waitForApiKeysPanel, waitForPageShell } from '../helpers/waits';
+import { assertToast, gotoProtected, waitForApiKeysPanel } from '../helpers/waits';
 import { e2eAdmin, loginViaRequest } from '../helpers/auth';
 
 async function openApiKeys(page: import('@playwright/test').Page) {
-	await page.goto('/superuser?tab=api-keys');
-	await waitForPageShell(page, 'superuser-page');
+	await gotoProtected(page, '/superuser?tab=api-keys', { shellTestId: 'superuser-page' });
 	await expect(page.getByTestId('superuser-tab-api-keys')).toHaveAttribute('aria-selected', 'true');
 	await waitForApiKeysPanel(page);
 }
@@ -81,8 +80,7 @@ test.describe('Superuser API keys', describeTags(TAG.superuser, TAG.apiKeys, TAG
 		});
 
 		test('admin has no Superuser API Keys tab in the nav shell', async ({ adminPage: page }) => {
-			await page.goto('/superuser?tab=api-keys');
-			await waitForPageShell(page, 'superuser-page');
+			await gotoProtected(page, '/superuser?tab=api-keys', { shellTestId: 'superuser-page' });
 			await expect(page.getByTestId('superuser-access-denied')).toBeVisible();
 			await expect(page.getByTestId('superuser-tab-api-keys')).toHaveCount(0);
 		});

@@ -152,7 +152,7 @@ docker compose -f docker-compose.prod.yml up -d
 | `secret/garde/domain_name` | Your domain (for cookies and TLS) |
 | `secret/garde/superuser_email` | Superuser account email (The user is auto-created) |
 | `secret/garde/superuser_password` | Superuser password (The user is auto-created) |
-| `secret/garde/mfa_encryption_key` | **Required.** Key used to encrypt MFA TOTP secrets at rest. Any string (SHA-256'd to 32 bytes) or base64-encoded 32-byte key. Changing it does not re-encrypt existing MFA secrets. |
+| `secret/garde/mfa_encryption_key` | **Required.** Base64-encoded **32 random bytes** used to encrypt MFA TOTP secrets at rest (`openssl rand -base64 32`). Passphrases are rejected at startup. Changing it does not re-encrypt existing MFA secrets — users must re-enroll. |
 
 ### TLS and mTLS configuration
 
@@ -295,6 +295,9 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/disable_multiple_ip_check` | Disable concurrent session IP detection |
 | `secret/garde/cookie_same_site` | Session cookie SameSite: `lax` (default), `strict`, or `none`. Use `strict` when UI and API are same-site; `lax` when different origins (e.g. dev); `none` for cross-site cookies (needs HTTPS so the cookie can be Secure). See [TLS and mTLS](#tls-and-mtls-configuration). |
 | `secret/garde/cookie_secure` | Optional. `true`/`false` to force the cookie `Secure` flag. When unset: follows `use_tls`, or forced true if `cookie_same_site=none`. Set `true` behind HTTPS reverse proxies with `use_tls=false`. |
+| `secret/garde/session_idle_timeout` | Optional. Sliding inactivity window (Go duration, e.g. `12h`). Redis TTL and cookie `MaxAge` refresh on each authenticated request. Default `12h`. |
+| `secret/garde/session_absolute_timeout` | Optional. Hard max session lifetime from login (Go duration, e.g. `24h`). Default `24h`. Clamped to be at least the idle timeout. |
+| `secret/garde/session_max_active` | Optional. Max concurrent sessions per user (global integer). Default `10`. Set `0` for unlimited. On login past the cap, oldest other sessions are revoked. |
 | `secret/garde/trusted_proxies` | Optional. Comma-separated proxy CIDRs/IPs trusted for `X-Forwarded-For`. When unset, forwarded headers are ignored. |
 | `secret/garde/testing_mode` | Set to `true` to relax mTLS checks (e.g. for testing). Do not use in production. |
 | `secret/garde/browser_mtls` | Client certificates on the public listener: `off` (default), `optional`, `required`. Needs `use_tls` and `tls_ca_path`. Leave `off` for anything browsers reach. |
@@ -302,7 +305,12 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/service_port` | Port for that listener. Default `8444`; must differ from `port`. |
 | `secret/garde/service_mtls` | `required` (default) or `off`. `off` leaves `/validate` on the API key and the network alone. |
 | `secret/garde/service_tls_cert_path`, `…_key_path`, `…_ca_path` | The listener's keypair and the CA that signs callers. Required when `service_listener` is `true`. |
-| `secret/garde/public_validate` | Also serve `/validate` on the public listener, for external callers. Defaults to the opposite of `service_listener`. Callers present issued per-tenant keys (`POST /admin/api-keys`). |
+| `secret/garde/public_self_service` | Optional. Public kill switch. When `false`, public serves only probes + `/public/config`; login/user self-service/public `/validate` move to the service listener (`service_listener=true` **required** — startup fails if both are off). Admin/superuser mount only on the service listener when it is enabled (single-listener compat keeps them on public). Default `true`. Restart required to remount. |
+| `secret/garde/require_admin_approval` | Optional. New accounts wait for admin approval. Default `false`. |
+| `secret/garde/require_email_verification` | Optional. New accounts must verify email. Default `true`. If both this and admin approval are off, email verification is forced on. |
+| `secret/garde/email_allowed_domains` | Optional. Comma-separated email domains permitted at registration. Exact match (`example.com`) or leading wildcard (`*.example.com` for any subdomain; apex not included). Empty = all domains allowed (subject to the blocklist). When set, `superuser_email` and every `admin_users_json` address must also match. |
+| `secret/garde/email_blocked_domains` | Optional. Comma-separated email domains rejected at registration (same wildcard rules). Blocklist wins over the allowlist. Empty = nothing blocked by domain. |
+| `secret/garde/public_validate` | Public `/validate` when the kill switch is off. Ignored (forced off) when `public_self_service=false`. Defaults to the opposite of `service_listener`. |
 | `secret/garde/cap_enabled` | Optional. Enables Cap on public auth routes. Register and password-reset always require a token when enabled; login requires Cap only after a failed attempt. Needs site key, secret, and API URL. |
 | `secret/garde/cap_site_key` | Cap site key from the Cap Standalone dashboard. |
 | `secret/garde/cap_secret_key` | Cap key secret (not the dashboard `ADMIN_KEY`). Used only for server-side `/siteverify`. |
@@ -352,6 +360,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | Per-tenant API keys | Issued, revoked and rate-limited through the admin API, not through Vault; changes take effect on the caller's next request |
 | `cors_allow_origins` | Read on each request |
 | `cookie_same_site`, `cookie_secure` | Applied when setting/clearing session cookies |
+| `session_idle_timeout`, `session_absolute_timeout`, `session_max_active` | Read on login and each session validation (sliding TTL, absolute expiry, concurrent-session cap) |
 | `domain_name` | Cookie domain + mTLS CN/SAN checks |
 | `enforce_mfa`, `testing_mode` | Read on relevant auth/mTLS paths |
 | `disable_user_agent_check`, `disable_ip_blacklisting`, `disable_multiple_ip_check` | Read when those checks run |
@@ -363,6 +372,8 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `superuser_email`, `superuser_password`, `admin_users_json` | Reload hook re-runs bootstrap (password rotations apply). Reloads that fail `ValidateConfig` (weak password, missing required keys, …) are **rejected** and the previous secret map is kept |
 | `admin_scopes_json` | Resolved per request, so scope changes apply to the admin's next call. A reload that leaves it unparseable denies every scoped admin route until it is fixed, rather than restoring full admin access |
 | `gin_mode` | Reload (and startup) call `gin.SetMode` from the secret — Gin does not read `/run/secrets` on its own |
+| `require_admin_approval`, `require_email_verification` | Read on register / verify / `/public/config` (gates apply without remount). `public_self_service` does **not** — see restart table |
+| `email_allowed_domains`, `email_blocked_domains` | Read on each registration (and at secret reload validation). Pattern syntax errors or bootstrap emails outside the policy reject the reload |
 
 #### Requires process restart
 
@@ -370,6 +381,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 |--------------|-----|
 | `use_tls`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `port` | HTTP/TLS listener and cert material are bound at startup |
 | `browser_mtls`, `service_mtls`, `public_validate` | The client-certificate policy is part of the handshake configuration, and which routes exist is decided when the listeners are built |
+| `public_self_service` | Which routes mount on the public vs service listener is decided at startup; flipping the kill switch does not remount live |
 | `service_listener`, `service_port`, `service_tls_*` | Same: a second listener is opened, or not, at startup |
 | `trusted_proxies` | Gin trusted-proxy list is set once on the engine |
 | `rate_limit` | Numeric thresholds are parsed into the rate-limiter struct at startup |

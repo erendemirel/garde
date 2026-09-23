@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 
 # No CGO: durable state is PostgreSQL (lib/pq), ephemeral state is Redis.
-RUN CGO_ENABLED=0 GOOS=linux go build -o garde ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o garde ./cmd/
 
 FROM alpine:3.19 AS service
 WORKDIR /app

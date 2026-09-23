@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"garde/pkg/config"
 	"garde/pkg/errors"
 
 	"uuid"
@@ -97,6 +98,18 @@ func ValidateEmail(email string) error {
 	}
 	if !emailRegex.MatchString(sanitized) {
 		return fmt.Errorf(errors.ErrEmailFormat)
+	}
+	return nil
+}
+
+// ValidateEmailDomainPolicy checks registration allow/block domain lists.
+// Call after ValidateEmail. Empty lists are a no-op.
+func ValidateEmailDomainPolicy(email string) error {
+	if !config.EmailDomainPolicyConfigured() {
+		return nil
+	}
+	if !config.EmailDomainPermitted(email) {
+		return fmt.Errorf(errors.ErrEmailDomainNotAllowed)
 	}
 	return nil
 }

@@ -22,7 +22,7 @@ func validSecrets() map[string]string {
 		"domain_name":        "example.com",
 		"superuser_email":    "root@example.com",
 		"superuser_password": "DevAdminTest123!",
-		"mfa_encryption_key": "test-mfa-encryption-key",
+		"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 	}
 }
 
@@ -74,9 +74,29 @@ func TestValidateConfigTable(t *testing.T) {
 		{"bad superuser email", mk(map[string]string{"superuser_email": "nope"}), true},
 		{"weak superuser password", mk(map[string]string{"superuser_password": "password"}), true},
 		{"missing mfa encryption key", mk(nil, "mfa_encryption_key"), true},
+		{"passphrase mfa encryption key", mk(map[string]string{"mfa_encryption_key": "not-32-byte-base64"}), true},
 		{"bad admin json", mk(map[string]string{"admin_users_json": ";;"}), true},
 		{"weak admin password", mk(map[string]string{"admin_users_json": `{"a@example.com":"weak"}`}), true},
 		{"valid admin json", mk(map[string]string{"admin_users_json": `{"a@example.com":"DevAdminTest123!"}`}), false},
+		{"kill switch without service listener", mk(map[string]string{"public_self_service": "false"}), true},
+		{"kill switch with service listener", mk(map[string]string{
+			"public_self_service":   "false",
+			"service_listener":      "true",
+			"service_port":          "9443",
+			"service_tls_cert_path": "/certs/service.crt",
+			"service_tls_key_path":  "/certs/service.key",
+			"service_mtls":          "off",
+		}), false},
+		{"valid email domain lists", mk(map[string]string{
+			"email_allowed_domains": "example.com, *.corp.example",
+			"email_blocked_domains": "spam.example.com",
+		}), false},
+		{"bad email domain pattern", mk(map[string]string{"email_allowed_domains": "foo.*.com"}), true},
+		{"superuser outside allowlist", mk(map[string]string{"email_allowed_domains": "other.com"}), true},
+		{"admin outside allowlist", mk(map[string]string{
+			"email_allowed_domains": "example.com",
+			"admin_users_json":      `{"admin@other.com":"DevAdminTest123!"}`,
+		}), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

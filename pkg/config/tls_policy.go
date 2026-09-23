@@ -96,10 +96,14 @@ func ServiceTLSCertPath() string { return strings.TrimSpace(Get("SERVICE_TLS_CER
 func ServiceTLSKeyPath() string  { return strings.TrimSpace(Get("SERVICE_TLS_KEY_PATH")) }
 func ServiceTLSCAPath() string   { return strings.TrimSpace(Get("SERVICE_TLS_CA_PATH")) }
 
-// PublicValidateEnabled decides whether /validate is also mounted on the public
-// listener. Enabling the service listener moves the endpoint by default: having
-// it answer on both is the exposure the split exists to remove.
+// PublicValidateEnabled decides whether /validate is mounted on the public
+// listener. The public kill switch wins: when PUBLIC_SELF_SERVICE is off, public
+// /validate is always off. Otherwise, an explicit PUBLIC_VALIDATE value is
+// honored; when unset, enabling the service listener moves /validate off public.
 func PublicValidateEnabled() bool {
+	if !PublicSelfServiceEnabled() {
+		return false
+	}
 	if raw := strings.TrimSpace(Get("PUBLIC_VALIDATE")); raw != "" {
 		return GetBool("PUBLIC_VALIDATE")
 	}

@@ -91,9 +91,9 @@ func TestValidateSessionForServiceTable(t *testing.T) {
 		t.Fatalf("blacklisted = %+v, %v; want invalid", blacklisted, err)
 	}
 
-	// Expired sessions read invalid and are reaped.
-	old := &session.SessionData{UserID: "svc-1", IP: "h", UserAgent: "u", CreatedAt: time.Now().Add(-2 * time.Hour)}
-	if err := s.repo.StoreSessionData(ctx, strings.Repeat("C", 86), old, session.SessionDuration); err != nil {
+	// Expired sessions read invalid and are reaped (past absolute max).
+	old := &session.SessionData{UserID: "svc-1", IP: "h", UserAgent: "u", CreatedAt: time.Now().Add(-25 * time.Hour)}
+	if err := s.repo.StoreSessionData(ctx, strings.Repeat("C", 86), old, session.IdleTimeout()); err != nil {
 		t.Fatal(err)
 	}
 	expired, err := s.ValidateSessionForService(ctx, strings.Repeat("C", 86))

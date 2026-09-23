@@ -72,6 +72,10 @@ func ValidateRequestParameters() gin.HandlerFunc {
 				handleRequestValidation(c, &models.PasswordResetRequest{}, validatePasswordResetRequest)
 			case "/users/password/otp":
 				handleRequestValidation(c, &models.RequestOTPRequest{}, validateOTPRequest)
+			case "/users/email/verify":
+				handleRequestValidation(c, &models.VerifyEmailRequest{}, validateVerifyEmailRequest)
+			case "/users/email/verify/resend":
+				handleRequestValidation(c, &models.ResendVerifyEmailRequest{}, validateResendVerifyEmailRequest)
 			case "/users/mfa/setup":
 				handleRequestValidation(c, &models.MFASetupRequest{}, validateMFASetupRequest)
 			case "/users/mfa/disable":
@@ -162,6 +166,10 @@ func validateCreateUserRequest(req *models.CreateUserRequest) error {
 		slog.Debug("Email validation failed", "error", err)
 		return err
 	}
+	if err := validation.ValidateEmailDomainPolicy(req.Email); err != nil {
+		slog.Debug("Email domain policy rejected registration", "error", err)
+		return err
+	}
 	if err := validation.ValidatePassword(req.Password); err != nil {
 		slog.Debug("Password validation failed", "error", err)
 		return err
@@ -222,6 +230,25 @@ func validatePasswordResetRequest(req *models.PasswordResetRequest) error {
 }
 
 func validateOTPRequest(req *models.RequestOTPRequest) error {
+	return validation.ValidateEmail(req.Email)
+}
+
+func validateVerifyEmailRequest(req *models.VerifyEmailRequest) error {
+	if err := validation.ValidateEmail(req.Email); err != nil {
+		return err
+	}
+	sanitized, err := validation.Sanitize(req.Token)
+	if err != nil {
+		return err
+	}
+	req.Token = sanitized
+	if len(req.Token) < 16 || len(req.Token) > 128 {
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
+	}
+	return nil
+}
+
+func validateResendVerifyEmailRequest(req *models.ResendVerifyEmailRequest) error {
 	return validation.ValidateEmail(req.Email)
 }
 
@@ -458,6 +485,10 @@ func validatePathParams(c *gin.Context) error {
 func validateHeaders(c *gin.Context) error {
 	headers := make(http.Header)
 	for key, values := range c.Request.Header {
+		if skipHeaderSanitize(key) {
+			headers[key] = values
+			continue
+		}
 		sanitizedValues := make([]string, len(values))
 		for i, value := range values {
 			sanitized, err := validation.Sanitize(value)
@@ -470,6 +501,17 @@ func validateHeaders(c *gin.Context) error {
 	}
 	c.Request.Header = headers
 	return nil
+}
+
+// Auth material must not be HTML-escaped or banned-char rejected: base64url and
+// cookie values are safe as opaque tokens and must round-trip unchanged.
+func skipHeaderSanitize(key string) bool {
+	switch http.CanonicalHeaderKey(key) {
+	case "Authorization", "Cookie", "Set-Cookie", "X-Api-Key", "X-Csrf-Token":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateQueryParams(c *gin.Context) error {

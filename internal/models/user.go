@@ -23,11 +23,12 @@ type User struct {
 type UserStatus string
 
 const (
-	UserStatusOk               UserStatus = "ok"
-	UserStatusLockedByAdmin    UserStatus = "locked by admin"
-	UserStatusLockedBySecurity UserStatus = "locked by security"
-	UserStatusPendingApproval  UserStatus = "pending admin approval"
-	UserStatusApprovalRejected UserStatus = "admin approval rejected"
+	UserStatusOk                UserStatus = "ok"
+	UserStatusLockedByAdmin     UserStatus = "locked by admin"
+	UserStatusLockedBySecurity  UserStatus = "locked by security"
+	UserStatusPendingApproval   UserStatus = "pending admin approval"
+	UserStatusApprovalRejected  UserStatus = "admin approval rejected"
+	UserStatusEmailNotVerified  UserStatus = "email not verified"
 )
 
 // Permission represents a single permission
@@ -50,7 +51,7 @@ func (u *User) HasPermission(permission Permission) bool {
 func IsValidUserStatus(status UserStatus) bool {
 	switch status {
 	case UserStatusOk, UserStatusLockedByAdmin, UserStatusLockedBySecurity,
-		UserStatusPendingApproval, UserStatusApprovalRejected:
+		UserStatusPendingApproval, UserStatusApprovalRejected, UserStatusEmailNotVerified:
 		return true
 	}
 	return false

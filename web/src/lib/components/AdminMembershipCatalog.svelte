@@ -320,7 +320,7 @@
 <div class="space-y-4" data-testid="admin-catalog" data-mode={mode}>
 	<div>
 		<h2 class="section-title" data-testid="admin-catalog-title">{title}</h2>
-		<p class="text-sm text-muted mt-1">{subtitle}</p>
+		<p class="section-subtitle">{subtitle}</p>
 	</div>
 
 	{#if loading}
@@ -330,7 +330,7 @@
 	{:else if $usersCacheError}
 		<p class="error" data-testid="admin-catalog-users-error">{$usersCacheError}</p>
 	{:else}
-		<label class="form-label max-w-md">
+		<label class="form-label w-[28rem] max-w-full">
 			<span>Search</span>
 			<input
 				class="input"
@@ -429,7 +429,7 @@
 	{/snippet}
 	{#if managingMembership}
 		<div class="space-y-4" data-testid="admin-catalog-manage-modal">
-			<p class="text-xs text-muted">
+			<p class="section-subtitle">
 				{#if mode === 'permissions'}
 					Only users who already share a group with you appear here. Granting a permission applies only if it
 					is visible to your groups.

@@ -32,7 +32,12 @@ func requestWindowKey(id string) string          { return "req_window:" + id }
 func userSessionsKey(userID string) string       { return "user_sessions:" + userID }
 func auditLogKey(userID string) string           { return "audit_log:" + userID }
 func otpKey(userID string) string                { return "otp:" + userID }
-func resetAttemptsKey(userID string) string      { return "reset_attempts:" + userID }
+func emailVerifyKey(userID string) string         { return "email_verify:" + userID }
+func emailVerifyResendKey(userID string) string   { return "email_verify_resend:" + userID }
+func emailVerifyAttemptsKey(userID string) string { return "email_verify_attempts:" + userID }
+func mfaAttemptsKey(userID string) string         { return "mfa_attempts:" + userID }
+func otpSendKey(userID string) string             { return "otp_send:" + userID }
+func resetAttemptsKey(userID string) string       { return "reset_attempts:" + userID }
 func lastRequestKey(userID string) string        { return "last_request:" + userID }
 func suspiciousActivityKey(userID string) string { return "suspicious_activity:" + userID }
 
@@ -400,6 +405,8 @@ func (s *Store) ClearUserSecurityData(ctx context.Context, userID, email, ip str
 		userSessionsKey(userID),
 		resetAttemptsKey(userID),
 		otpKey(userID),
+		emailVerifyKey(userID),
+		emailVerifyResendKey(userID),
 	}
 
 	var validKeys []string
@@ -511,6 +518,135 @@ func (s *Store) DeleteOTP(ctx context.Context, userID string) error {
 
 	return client.Del(ctx, otpKey(userID)).Err()
 }
+
+// Email verification tokens (hashed) live in Redis with a 24h TTL. Separate
+// from password-reset OTPs so the two flows cannot interfere.
+
+const emailVerifyTTL = 24 * time.Hour
+const emailVerifyResendWindow = time.Hour
+const emailVerifyResendMax = 5
+const otpSendWindow = time.Hour
+const otpSendMax = 5
+const mfaAttemptTTL = 24 * time.Hour
+
+func (s *Store) StoreEmailVerifyToken(ctx context.Context, userID string, hashedToken string) error {
+	client := s.getClient()
+	if client == nil {
+		return errRedisClientUnavailable
+	}
+	return client.Set(ctx, emailVerifyKey(userID), hashedToken, emailVerifyTTL).Err()
+}
+
+func (s *Store) GetEmailVerifyToken(ctx context.Context, userID string) (string, error) {
+	client := s.getClient()
+	if client == nil {
+		return "", errRedisClientUnavailable
+	}
+	tok, err := client.Get(ctx, emailVerifyKey(userID)).Result()
+	if err == redis.Nil {
+		return "", fmt.Errorf("email verify token expired or not found")
+	}
+	return tok, err
+}
+
+func (s *Store) DeleteEmailVerifyToken(ctx context.Context, userID string) error {
+	client := s.getClient()
+	if client == nil {
+		return errRedisClientUnavailable
+	}
+	return client.Del(ctx, emailVerifyKey(userID)).Err()
+}
+
+// TrackEmailVerifyResend increments a per-user resend counter. Returns the new
+// count; callers should refuse when count > emailVerifyResendMax.
+func (s *Store) TrackEmailVerifyResend(ctx context.Context, userID string) (int, error) {
+	client := s.getClient()
+	if client == nil {
+		return 0, errRedisClientUnavailable
+	}
+	key := emailVerifyResendKey(userID)
+	n, err := client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if n == 1 {
+		_ = client.Expire(ctx, key, emailVerifyResendWindow).Err()
+	}
+	return int(n), nil
+}
+
+func EmailVerifyResendMax() int { return emailVerifyResendMax }
+
+// TrackEmailVerifyAttempt increments a per-user wrong-token counter for the
+// email-verify flow. TTL matches the token so the window cannot outlive it.
+func (s *Store) TrackEmailVerifyAttempt(ctx context.Context, userID string) (int, error) {
+	client := s.getClient()
+	if client == nil {
+		return 0, errRedisClientUnavailable
+	}
+	key := emailVerifyAttemptsKey(userID)
+	attempts, err := client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if attempts == 1 {
+		_ = client.Expire(ctx, key, emailVerifyTTL).Err()
+	}
+	return int(attempts), nil
+}
+
+func (s *Store) ClearEmailVerifyAttempts(ctx context.Context, userID string) error {
+	client := s.getClient()
+	if client == nil {
+		return errRedisClientUnavailable
+	}
+	return client.Del(ctx, emailVerifyAttemptsKey(userID)).Err()
+}
+
+// TrackMFAAttempt increments wrong-TOTP counters for authenticated MFA checks.
+func (s *Store) TrackMFAAttempt(ctx context.Context, userID string) (int, error) {
+	client := s.getClient()
+	if client == nil {
+		return 0, errRedisClientUnavailable
+	}
+	key := mfaAttemptsKey(userID)
+	attempts, err := client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if attempts == 1 {
+		_ = client.Expire(ctx, key, mfaAttemptTTL).Err()
+	}
+	return int(attempts), nil
+}
+
+func (s *Store) ClearMFAAttempts(ctx context.Context, userID string) error {
+	client := s.getClient()
+	if client == nil {
+		return errRedisClientUnavailable
+	}
+	return client.Del(ctx, mfaAttemptsKey(userID)).Err()
+}
+
+// TrackOTPSend increments password-reset OTP send counts. Callers should refuse
+// when count > OTPSendMax (opaque success for unknown emails still applies).
+func (s *Store) TrackOTPSend(ctx context.Context, userID string) (int, error) {
+	client := s.getClient()
+	if client == nil {
+		return 0, errRedisClientUnavailable
+	}
+	key := otpSendKey(userID)
+	n, err := client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if n == 1 {
+		_ = client.Expire(ctx, key, otpSendWindow).Err()
+	}
+	return int(n), nil
+}
+
+func OTPSendMax() int { return otpSendMax }
 
 func (s *Store) TrackResetAttempt(ctx context.Context, userID string) (int, error) {
 	client := s.getClient()

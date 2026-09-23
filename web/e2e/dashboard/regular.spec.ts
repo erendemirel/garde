@@ -36,7 +36,16 @@ test.describe('Regular user dashboard', describeTags(TAG.regular, TAG.dashboard,
 		await expect(page.getByTestId('dashboard-link-mfa')).toBeVisible();
 		await expect(page.getByTestId('dashboard-link-password')).toBeVisible();
 		await expect(page.getByTestId('dashboard-link-tokens')).toBeVisible();
+		await expect(page.getByTestId('dashboard-link-sessions')).toBeVisible();
 		await expect(page.getByTestId('dashboard-link-request-update')).toBeVisible();
+	});
+
+	test('opens sessions from the dashboard', async ({ regularUserPage: page }) => {
+		await page.goto('/dashboard');
+		await waitForPageShell(page, 'dashboard-page');
+		await page.getByTestId('dashboard-link-sessions').click();
+		await waitForPageShell(page, 'sessions-page');
+		await expect(page.getByTestId('sessions-back')).toHaveAttribute('href', '/dashboard');
 	});
 
 	test('opens request-update from the dashboard', async ({ regularUserPage: page }) => {

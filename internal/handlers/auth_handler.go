@@ -67,17 +67,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	cookieDomain := config.Get("DOMAIN_NAME")
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    resp.SessionID,
-		Path:     "/",
-		Domain:   cookieDomain,
-		MaxAge:   int(session.SessionDuration.Seconds()),
-		Secure:   config.GetCookieSecure(),
-		HttpOnly: true,
-		SameSite: config.GetCookieSameSite(),
-	})
+	middleware.SetSessionCookie(c, resp.SessionID, session.IdleTimeout())
 
 	// Browser clients use the HttpOnly cookie. API clients that need a Bearer
 	// session must opt in so the credential is not exposed to page JS by default.
@@ -135,6 +125,112 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	middleware.ClearSessionCookie(c)
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(nil))
+}
+
+// @Summary List my active sessions
+// @Description Returns opaque session ids and display metadata (masked IP, UA summary). Never returns the session secret.
+// @Tags User Routes
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Success 200 {object} models.SuccessResponse{data=models.ListSessionsResponse}
+// @Failure 401 {object} models.ErrorResponse
+// @Router /users/me/sessions [get]
+func (h *AuthHandler) ListSessions(c *gin.Context) {
+	userID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+	currentID, _ := c.Get("session_id")
+	current, _ := currentID.(string)
+	resp, err := h.authService.ListSessions(c.Request.Context(), userID, current)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(resp))
+}
+
+// @Summary Revoke one of my sessions
+// @Description Revokes a session by opaque id. MFA required when enabled and the target is not the current session.
+// @Tags User Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param session_id path string true "Opaque session public id"
+// @Param request body models.SelfServiceSessionRevokeRequest false "Optional MFA code"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /users/me/sessions/{session_id}/revoke [post]
+func (h *AuthHandler) RevokeOwnSession(c *gin.Context) {
+	userID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+	publicID := c.Param("session_id")
+	var req models.SelfServiceSessionRevokeRequest
+	_ = c.ShouldBindJSON(&req) // body optional
+
+	currentID, _ := c.Get("session_id")
+	current, _ := currentID.(string)
+	revokedCurrent, err := h.authService.RevokeOwnSession(c.Request.Context(), userID, current, publicID, req.MFACode)
+	if err != nil {
+		errStr := err.Error()
+		switch errStr {
+		case pkgerrors.ErrMFARequired, pkgerrors.ErrInvalidMFACode, pkgerrors.ErrSessionInvalid:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		default:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		}
+		return
+	}
+	if revokedCurrent {
+		middleware.ClearSessionCookie(c)
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(map[string]any{
+		"revoked_current": revokedCurrent,
+	}))
+}
+
+// @Summary Revoke my other sessions
+// @Description Keeps the current session; revokes all others. MFA required when enabled on the account.
+// @Tags User Routes
+// @Accept json
+// @Produce json
+// @Security SessionCookie
+// @Security Bearer
+// @Param request body models.SelfServiceSessionRevokeRequest false "Optional MFA code"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /users/me/sessions/revoke-others [post]
+func (h *AuthHandler) RevokeOtherSessions(c *gin.Context) {
+	userID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(pkgerrors.ErrUnauthorized))
+		return
+	}
+	var req models.SelfServiceSessionRevokeRequest
+	_ = c.ShouldBindJSON(&req)
+
+	currentID, _ := c.Get("session_id")
+	current, _ := currentID.(string)
+	n, err := h.authService.RevokeOtherSessions(c.Request.Context(), userID, current, req.MFACode)
+	if err != nil {
+		errStr := err.Error()
+		switch errStr {
+		case pkgerrors.ErrMFARequired, pkgerrors.ErrInvalidMFACode, pkgerrors.ErrNoActiveSession:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		default:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(errStr))
+		}
+		return
+	}
+	c.JSON(http.StatusOK, models.NewSuccessResponse(map[string]any{"revoked": n}))
 }
 
 type ValidateResponse struct {
@@ -592,6 +688,62 @@ func (h *AuthHandler) RequestOTP(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse("If the email exists, an OTP has been sent"))
+}
+
+// @Summary Verify email address
+// @Description Consumes a one-time email verification token. Opaque success for unknown emails.
+// @Tags Public Routes
+// @Accept json
+// @Produce json
+// @Param request body models.VerifyEmailRequest true "Email and verification token"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Router /users/email/verify [post]
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	req, exists := middleware.GetValidatedRequest[models.VerifyEmailRequest](c)
+	if !exists {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	if err := h.authService.VerifyEmail(c.Request.Context(), req.Email, req.Token); err != nil {
+		if err.Error() == pkgerrors.ErrInvalidRequest {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse("If the email and token are valid, the address has been verified"))
+}
+
+// @Summary Resend email verification
+// @Description Sends a new verification token when the account is awaiting email verification. Opaque success.
+// @Tags Public Routes
+// @Accept json
+// @Produce json
+// @Param request body models.ResendVerifyEmailRequest true "Email"
+// @Success 200 {object} models.SuccessResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Router /users/email/verify/resend [post]
+func (h *AuthHandler) ResendVerifyEmail(c *gin.Context) {
+	req, exists := middleware.GetValidatedRequest[models.ResendVerifyEmailRequest](c)
+	if !exists {
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(pkgerrors.ErrInvalidRequest))
+		return
+	}
+
+	if err := h.authService.ResendVerifyEmail(c.Request.Context(), req.Email); err != nil {
+		if err.Error() == pkgerrors.ErrInvalidRequest {
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err.Error()))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse("If the email exists and needs verification, a new code has been sent"))
 }
 
 // @Summary Get current user information

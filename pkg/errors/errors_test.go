@@ -52,8 +52,10 @@ func TestErrorMessagesNonEmptyAndUnique(t *testing.T) {
 	add("ErrAdminScopeNotPermitted", ErrAdminScopeNotPermitted)
 	add("ErrEmailLength", ErrEmailLength)
 	add("ErrEmailFormat", ErrEmailFormat)
+	add("ErrEmailDomainNotAllowed", ErrEmailDomainNotAllowed)
 	add("ErrPasswordLength", ErrPasswordLength)
 	add("ErrPasswordComplexity", ErrPasswordComplexity)
+	add("ErrPasswordSameAsCurrent", ErrPasswordSameAsCurrent)
 	add("ErrDisallowedCharacters", ErrDisallowedCharacters)
 	add("ErrInvalidPermissionName", ErrInvalidPermissionName)
 	add("ErrInvalidAPIKeyName", ErrInvalidAPIKeyName)
@@ -71,6 +73,7 @@ func TestErrorMessagesNonEmptyAndUnique(t *testing.T) {
 	add("ErrPATExpiryTooLong", ErrPATExpiryTooLong)
 	add("ErrPATExpiryConflict", ErrPATExpiryConflict)
 	add("ErrEmailSendFailed", ErrEmailSendFailed)
+	add("ErrEmailVerificationRequired", ErrEmailVerificationRequired)
 	add("ErrInvalidOTP", ErrInvalidOTP)
 	add("ErrTooManyAttempts", ErrTooManyAttempts)
 }

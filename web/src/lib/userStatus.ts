@@ -4,14 +4,15 @@ export function getStatusClass(status: string | undefined | null): StatusKind {
 	const s = (status || '').toLowerCase();
 	if (s === 'ok') return 'ok';
 	if (s.includes('locked') || s.includes('disabled') || s.includes('rejected')) return 'locked';
-	if (s.includes('pending')) return 'pending';
+	if (s.includes('pending') || s.includes('not verified')) return 'pending';
 	return 'pending';
 }
 
 export function formatStatus(status: string | undefined | null): string {
 	const s = (status || '').toLowerCase();
-	if (s === 'ok') return 'OK';
+	if (s === 'ok') return 'Ok';
 	if (s === 'pending admin approval') return 'Pending approval by an admin';
+	if (s === 'email not verified') return 'Email not verified';
 	if (s === 'admin approval rejected') return 'Approval rejected by an admin';
 	if (s === 'locked by admin') return 'Locked by an admin';
 	if (s === 'locked by security') return 'Locked by security';

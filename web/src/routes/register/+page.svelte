@@ -1,6 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	import { register } from '$lib/api';
+	import { register, getPublicConfig } from '$lib/api';
 	import { goto } from '$app/navigation';
 	import CapWidget from '$lib/components/CapWidget.svelte';
 
@@ -11,13 +11,25 @@
 	let success = $state('');
 	let loading = $state(false);
 	let formReady = $state(false);
+	let selfService = $state(true);
+	let emailVerify = $state(false);
+	let configLoaded = $state(false);
 	let capToken = $state('');
 	let capActive = $state(false);
 	let capReady = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | null} */
 	let redirectTimer = $state(null);
 
-	onMount(() => {
+	onMount(async () => {
+		try {
+			const cfg = await getPublicConfig();
+			selfService = cfg.public_self_service;
+			emailVerify = cfg.require_email_verification;
+		} catch {
+			selfService = true;
+			emailVerify = false;
+		}
+		configLoaded = true;
 		formReady = true;
 	});
 
@@ -25,8 +37,19 @@
 		if (redirectTimer) clearTimeout(redirectTimer);
 	});
 
+	/** @param {string | undefined} next */
+	function successMessage(next) {
+		if (next === 'verify_email') {
+			return 'Account created! Check your email for a verification code.';
+		}
+		if (next === 'ready') {
+			return 'Account created! You can sign in now.';
+		}
+		return 'Account created! Waiting for admin approval.';
+	}
+
 	async function handleRegister() {
-		if (!formReady || loading) return;
+		if (!formReady || loading || !selfService) return;
 		if (capActive && !capToken) {
 			error = 'Complete the captcha first';
 			return;
@@ -42,9 +65,10 @@
 		}
 		loading = true;
 		try {
-			await register(email, password, capToken || undefined);
-			success = 'Account created! Waiting for admin approval.';
-			redirectTimer = setTimeout(() => goto('/'), 3000);
+			const resp = await register(email, password, capToken || undefined);
+			success = successMessage(resp.next);
+			const dest = resp.next === 'verify_email' ? `/verify-email?email=${encodeURIComponent(email)}` : '/';
+			redirectTimer = setTimeout(() => goto(dest), 3000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Registration failed';
 			capToken = '';
@@ -60,7 +84,11 @@
 <div class="container-auth" data-testid="register-page">
 	<div class="card space-y-4 w-full">
 		<h1 class="text-xl font-bold text-accent">Create Account</h1>
-		{#if success}
+		{#if configLoaded && !selfService}
+			<p class="text-sm text-muted" data-testid="register-disabled">
+				Public registration is disabled. Contact an administrator for an account.
+			</p>
+		{:else if success}
 			<div data-testid="register-success-panel">
 				<p class="success" data-testid="register-success">{success}</p>
 			</div>
@@ -130,6 +158,10 @@
 		{/if}
 		<div class="links">
 			<a href="/" data-testid="register-login-link">Back to login</a>
+			{#if selfService && emailVerify}
+				<span class="text-muted">·</span>
+				<a href="/verify-email" data-testid="register-verify-link">Verify email</a>
+			{/if}
 		</div>
 	</div>
 </div>

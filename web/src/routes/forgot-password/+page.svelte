@@ -1,6 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	import { requestOtp, resetPassword } from '$lib/api';
+	import { requestOtp, resetPassword, getPublicConfig } from '$lib/api';
 	import { goto } from '$app/navigation';
 	import CapWidget from '$lib/components/CapWidget.svelte';
 
@@ -14,13 +14,20 @@
 	let success = $state('');
 	let loading = $state(false);
 	let formReady = $state(false);
+	let selfService = $state(true);
 	let capToken = $state('');
 	let capActive = $state(false);
 	let capReady = $state(false);
 	/** @type {ReturnType<typeof setTimeout> | null} */
 	let redirectTimer = $state(null);
 
-	onMount(() => {
+	onMount(async () => {
+		try {
+			const cfg = await getPublicConfig();
+			selfService = cfg.public_self_service;
+		} catch {
+			selfService = true;
+		}
 		formReady = true;
 	});
 
@@ -80,7 +87,11 @@
 	<div class="card space-y-4 w-full">
 		<h1 class="text-xl font-bold text-accent">Reset Password</h1>
 
-		{#if step === 'email'}
+		{#if formReady && !selfService}
+			<p class="text-sm text-muted" data-testid="forgot-disabled">
+				Password reset is disabled on this deployment. Contact an administrator.
+			</p>
+		{:else if step === 'email'}
 			<form
 				class="space-y-4"
 				data-testid="forgot-email-form"

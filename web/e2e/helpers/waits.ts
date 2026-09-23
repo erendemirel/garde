@@ -140,41 +140,93 @@ async function waitOutOfLoading(
 	await expect(ready).toBeVisible({ timeout });
 }
 
+function assertAuthenticatedPath(page: Page) {
+	const path = new URL(page.url()).pathname;
+	if (
+		path === '/' ||
+		path === '/login' ||
+		path.startsWith('/register') ||
+		path.startsWith('/forgot-password')
+	) {
+		throw new Error(`Expected authenticated shell, landed on ${path}`);
+	}
+}
+
+async function assertSessionBootHealthy(page: Page) {
+	if (await isFrameworkErrorPage(page)) {
+		throw new Error(`Framework error while waiting for session: ${page.url()}`);
+	}
+	assertAuthenticatedPath(page);
+	if (await page.getByTestId('session-redirect').isVisible().catch(() => false)) {
+		throw new Error(`Session boot lost auth (session-redirect) on ${page.url()}`);
+	}
+	if (await page.getByTestId('session-boot-error').isVisible().catch(() => false)) {
+		const msg = await page.getByTestId('session-boot-error').innerText().catch(() => '');
+		throw new Error(`Session boot error on ${page.url()}: ${msg}`);
+	}
+}
+
 /**
  * Protected layout boots via /api/users/me before any page shell mounts.
- * Dashboard also refetches on mount after mutations that affect the signed-in user.
+ * Uses a single deadline so stacked expects cannot multiply the timeout.
  */
 export async function waitForSessionReady(page: Page, timeout = LOAD_TIMEOUT) {
 	const nav = page.getByTestId('app-nav');
 	const loading = page.getByTestId('session-loading');
+	const redirecting = page.getByTestId('session-redirect');
+	const bootError = page.getByTestId('session-boot-error');
+	const deadline = Date.now() + timeout;
+	const remaining = () => Math.max(500, deadline - Date.now());
 
 	if (await nav.isVisible().catch(() => false)) {
 		return;
 	}
 
-	await expect(nav.or(loading)).toBeVisible({ timeout });
+	await assertSessionBootHealthy(page);
 
+	await expect(nav.or(loading).or(redirecting).or(bootError)).toBeVisible({ timeout: remaining() });
+	await assertSessionBootHealthy(page);
+
+	// Do not waitForResponse(/me) here: the request may already have completed
+	// before this race starts, which would hang until timeout under load.
+	// Loading → nav (or redirect/error) is the durable UI signal.
 	if ((await loading.count().catch(() => 0)) > 0) {
 		await Promise.race([
-			page.waitForResponse(matchMeGet, { timeout }),
-			expect(loading).toHaveCount(0, { timeout })
+			expect(loading).toHaveCount(0, { timeout: remaining() }),
+			expect(redirecting)
+				.toBeVisible({ timeout: remaining() })
+				.then(() => {
+					throw new Error(`Session boot lost auth while loading on ${page.url()}`);
+				}),
+			expect(bootError)
+				.toBeVisible({ timeout: remaining() })
+				.then(async () => {
+					const msg = await bootError.innerText().catch(() => '');
+					throw new Error(`Session boot error while loading on ${page.url()}: ${msg}`);
+				})
 		]);
 	}
 
-	await expect(loading).toHaveCount(0, { timeout });
-	await expect(nav).toBeVisible({ timeout });
+	await expect(loading).toHaveCount(0, { timeout: remaining() });
+	await assertSessionBootHealthy(page);
+	await expect(nav).toBeVisible({ timeout: remaining() });
 }
 
 /** After goto/nav into a protected route — session + page shell. */
 export async function waitForPageShell(page: Page, testId: string, timeout = LOAD_TIMEOUT) {
-	await waitForSessionReady(page, timeout);
-	await expect(page.getByTestId(testId)).toBeVisible({ timeout });
+	const deadline = Date.now() + timeout;
+	const remaining = () => Math.max(500, deadline - Date.now());
+	await waitForSessionReady(page, remaining());
+	await expect(page.getByTestId(testId)).toBeVisible({ timeout: remaining() });
 }
 
 /** True when Vite/SvelteKit served its framework error page instead of the app shell. */
 export async function isFrameworkErrorPage(page: Page): Promise<boolean> {
 	return page.getByRole('heading', { name: '500' }).isVisible().catch(() => false);
 }
+
+/** Per-attempt budget so gotoProtected can retry before the test timeout. */
+const GOTO_PROTECTED_ATTEMPT_MS = 12_000;
 
 /**
  * Navigate to a protected route with retries for transient Vite 500s / stuck session boots.
@@ -189,23 +241,23 @@ export async function gotoProtected(
 	let lastError: unknown;
 	for (let attempt = 0; attempt < attempts; attempt++) {
 		try {
-			await page.goto(path);
+			await page.goto(path, { waitUntil: 'domcontentloaded' });
 			if (await isFrameworkErrorPage(page)) {
 				throw new Error(`SvelteKit 500 loading ${path}`);
 			}
 			if (opts.expectUrl) {
-				await expect(page).toHaveURL(opts.expectUrl, { timeout: LOAD_TIMEOUT });
+				await expect(page).toHaveURL(opts.expectUrl, { timeout: GOTO_PROTECTED_ATTEMPT_MS });
 			}
 			if (opts.shellTestId) {
-				await waitForPageShell(page, opts.shellTestId);
+				await waitForPageShell(page, opts.shellTestId, GOTO_PROTECTED_ATTEMPT_MS);
 			} else {
-				await waitForSessionReady(page);
+				await waitForSessionReady(page, GOTO_PROTECTED_ATTEMPT_MS);
 			}
 			return;
 		} catch (err) {
 			lastError = err;
 			if (attempt + 1 >= attempts) break;
-			await page.waitForTimeout(300 * (attempt + 1));
+			await page.waitForTimeout(250 * (attempt + 1));
 		}
 	}
 	throw lastError;

@@ -170,7 +170,28 @@ Content-Type: application/json
 API session cannot be upgraded into a long-lived PAT.
 
 The plaintext (`garde_pat_<id>_<secret>`) is returned once in `data.token`.
-List with `GET /users/me/tokens`; revoke with `DELETE /users/me/tokens/{token_id}`.
+#### Sessions (self-service)
+
+List active sessions (opaque ids + display metadata; never the cookie secret):
+
+```http
+GET /users/me/sessions
+```
+
+Revoke one session by opaque id (MFA required when enabled and the target is not the current session):
+
+```http
+POST /users/me/sessions/{session_id}/revoke
+{"mfa_code":"123456"}
+```
+
+Revoke all other sessions (keep current; MFA required when enabled):
+
+```http
+POST /users/me/sessions/revoke-others
+{"mfa_code":"123456"}
+```
+
 Default lifetime is 90 days; pass `never_expires: true` to opt out (max 25
 tokens per user).
 
@@ -337,23 +358,22 @@ Success Response:
 ```json
 {
     "data": {
-        "user_id": "usr_xyz..."
+        "user_id": "usr_xyz...",
+        "next": "await_admin"
     }
 }
 ```
 
-Error Response:
-```json
-{
-    "error": {
-        "message": "email already exists"
-    }
-}
-```
-Status Code: `409 Conflict`
+`next` is config-derived (`verify_email` | `await_admin` | `ready`) and is the same for real creates and anti-enumeration fake successes.
 
 Important Notes:
-- User status starts as "pending admin approval" until approved by admin
+- Registration (and password OTP/reset / email verify / **login** / user self-service) is on the public listener only when `PUBLIC_SELF_SERVICE` is on (default). When off, the public listener keeps probes + `/public/config` only; those routes (and public `/validate`) remount on the **service listener** (`SERVICE_LISTENER=true` is required — process refuses to start if both are off). Admin/superuser routes are always on the service listener when it is enabled. See `GET /public/config`. Flipping `PUBLIC_SELF_SERVICE` needs a process restart (route mounts are boot-time); `REQUIRE_*` gates apply live.
+- Initial status depends on gates: email verification (`REQUIRE_EMAIL_VERIFICATION`, default **on**) and/or admin approval (`REQUIRE_ADMIN_APPROVAL`, default **off**). At least one gate stays on — if both are off, email verification is forced.
+- Optional domain policy: `EMAIL_ALLOWED_DOMAINS` / `EMAIL_BLOCKED_DOMAINS` (comma-separated). Exact domains or a leading `*.` wildcard (`*.corp.example` matches `a.corp.example`, not the apex). Empty allowlist = all domains (minus blocklist). Blocklist wins. Applies to public registration only (not login/OTP). Rejected with `email domain is not allowed`. When either list is set, bootstrap `SUPERUSER_EMAIL` / `ADMIN_USERS_JSON` addresses must also satisfy the policy or startup/reload fails.
+- Both on: `email not verified` → verify → `pending admin approval` → admin approve → `ok`.
+- Email verify tokens are high-entropy and compared with a fast hash; wrong tokens are attempt-limited (same ceiling as password-reset OTP) and lock the account by security when exceeded.
+- Authenticated MFA checks (enable/disable, password change, session revoke, login) share the same attempt ceiling and lock-by-security behaviour.
+- Password-reset OTP sends are throttled per account (5/hour, opaque when exceeded). OTP/reset remains available regardless of account status (including `email not verified`); login still fails until the account is verified/approved/`ok`.
 - Admin status is determined by the `ADMIN_USERS_JSON` configuration and admins are automatically created. You cannot create admins via API.
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
 
@@ -554,7 +574,7 @@ Authorization: Bearer bccf1b28-fd...
 
 Important Notes:
 - Setup must be completed within 5 minutes (temp secret TTL in Redis)
-- Temporary MFA secrets live in Redis (`temp_mfa:{id}`, short TTL). Confirmed MFA secrets are stored **encrypted at rest in PostgreSQL** using AES-256-GCM (`MFA_ENCRYPTION_KEY` is required)
+- Temporary MFA secrets live in Redis (`temp_mfa:{id}`, short TTL). Confirmed MFA secrets are stored **encrypted at rest in PostgreSQL** using AES-256-GCM (`MFA_ENCRYPTION_KEY` is required: base64-encoded 32 random bytes)
 - If MFA is enforced but not set up:
   - Login succeeds without MFA code
   - All endpoints except `/users/mfa/setup`, `/users/mfa/verify`, `/users/me`, and `/logout` return 403

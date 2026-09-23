@@ -359,26 +359,15 @@
 </script>
 
 <div class="space-y-4" data-testid="superuser-api-keys-panel">
-	<div class="flex flex-wrap items-start justify-between gap-3">
-		<div>
-			<h2 class="section-title">API Keys</h2>
-			<p class="text-sm text-muted mt-1">
-				Per-caller credentials. <code class="text-xs">validate</code> covers
-				<code class="text-xs">/validate</code>; <code class="text-xs">auth</code> skips Cap on public
-				login/register/password-reset when Cap is enabled. Audience binds each key to the internal
-				(mesh) or tenant (public) surface. Grouped by tenant so you can rotate one holder or revoke
-				everything they have.
-			</p>
-		</div>
-		<button
-			type="button"
-			class="btn-primary"
-			data-testid="api-keys-issue"
-			onclick={openIssueModal}
-		>
-			<Plus size={16} class="inline mr-1" />
-			Issue key
-		</button>
+	<div>
+		<h2 class="section-title">API Keys</h2>
+		<p class="section-subtitle">
+			Per-caller credentials. <code class="text-xs">validate</code> covers
+			<code class="text-xs">/validate</code>; <code class="text-xs">auth</code> skips Cap on public
+			login/register/password-reset when Cap is enabled. Audience binds each key to the internal
+			(mesh) or tenant (public) surface. Grouped by tenant so you can rotate one holder or revoke
+			everything they have.
+		</p>
 	</div>
 
 	{#if loading}
@@ -386,17 +375,31 @@
 	{:else if error}
 		<p class="text-error" data-testid="api-keys-error">{error}</p>
 	{:else}
-		<div class="flex flex-wrap gap-3 items-center">
-			<input
-				type="search"
-				class="input max-w-sm"
-				placeholder="Search tenant, name, id, or scope…"
-				data-testid="api-keys-search"
-				bind:value={search}
-			/>
-			<span class="text-sm text-muted" data-testid="api-keys-total">
-				{activeKeys.length} active key{activeKeys.length === 1 ? '' : 's'} · {tenantGroups.length} tenant{tenantGroups.length === 1 ? '' : 's'}
-			</span>
+		<div class="flex flex-wrap items-end justify-between gap-3">
+			<div class="flex min-w-0 flex-wrap items-end gap-3">
+				<label class="form-label w-[28rem] max-w-full">
+					<span>Search</span>
+					<input
+						type="search"
+						class="input"
+						placeholder="Search tenant, name, id, or scope…"
+						data-testid="api-keys-search"
+						bind:value={search}
+					/>
+				</label>
+				<span class="text-sm text-muted pb-2" data-testid="api-keys-total">
+					{activeKeys.length} active key{activeKeys.length === 1 ? '' : 's'} · {tenantGroups.length} tenant{tenantGroups.length === 1 ? '' : 's'}
+				</span>
+			</div>
+			<button
+				type="button"
+				class="btn-primary shrink-0"
+				data-testid="api-keys-issue"
+				onclick={openIssueModal}
+			>
+				<Plus size={16} class="-ml-0.5" />
+				Issue key
+			</button>
 		</div>
 
 		{#if tenantGroups.length === 0}
@@ -434,7 +437,7 @@
 							</button>
 							<button
 								type="button"
-								class="btn-small text-[#FF4E44] border-[#FF4E44]"
+								class="btn-small border-error text-error"
 								data-testid="api-keys-revoke-tenant"
 								title="Revoke every key for this tenant"
 								onclick={() => askRevokeTenant(group.tenantId, group.keys.length)}
@@ -444,11 +447,11 @@
 						</div>
 
 						{#if expandedTenants.has(group.tenantId)}
-							<div class="overflow-x-auto" data-testid="api-keys-tenant-keys">
-								<table class="w-full text-sm">
+							<div class="table-scroll" data-testid="api-keys-tenant-keys">
+								<table class="table-base">
 									<thead>
-										<tr class="text-left text-muted border-t border-borderc">
-											<th class="px-3 py-2 font-medium" aria-sort={sortAria('name')}>
+										<tr>
+											<th aria-sort={sortAria('name')}>
 												<button
 													type="button"
 													class="flex items-center gap-1 hover:text-accent transition-colors"
@@ -465,7 +468,7 @@
 													{/if}
 												</button>
 											</th>
-											<th class="px-3 py-2 font-medium" aria-sort={sortAria('tenant_id')}>
+											<th aria-sort={sortAria('tenant_id')}>
 												<button
 													type="button"
 													class="flex items-center gap-1 hover:text-accent transition-colors"
@@ -482,7 +485,7 @@
 													{/if}
 												</button>
 											</th>
-											<th class="px-3 py-2 font-medium" aria-sort={sortAria('audience')}>
+											<th aria-sort={sortAria('audience')}>
 												<button
 													type="button"
 													class="flex items-center gap-1 hover:text-accent transition-colors"
@@ -499,7 +502,7 @@
 													{/if}
 												</button>
 											</th>
-											<th class="px-3 py-2 font-medium" aria-sort={sortAria('scopes')}>
+											<th aria-sort={sortAria('scopes')}>
 												<button
 													type="button"
 													class="flex items-center gap-1 hover:text-accent transition-colors"
@@ -516,7 +519,7 @@
 													{/if}
 												</button>
 											</th>
-											<th class="px-3 py-2 font-medium" aria-sort={sortAria('rate_limit')}>
+											<th aria-sort={sortAria('rate_limit')}>
 												<button
 													type="button"
 													class="flex items-center gap-1 hover:text-accent transition-colors"
@@ -533,7 +536,7 @@
 													{/if}
 												</button>
 											</th>
-											<th class="px-3 py-2 font-medium" aria-sort={sortAria('expires_at')}>
+											<th aria-sort={sortAria('expires_at')}>
 												<button
 													type="button"
 													class="flex items-center gap-1 hover:text-accent transition-colors"
@@ -550,7 +553,7 @@
 													{/if}
 												</button>
 											</th>
-											<th class="px-3 py-2 font-medium" aria-sort={sortAria('last_used_at')}>
+											<th aria-sort={sortAria('last_used_at')}>
 												<button
 													type="button"
 													class="flex items-center gap-1 hover:text-accent transition-colors"
@@ -567,47 +570,46 @@
 													{/if}
 												</button>
 											</th>
-											<th class="px-3 py-2 font-medium sr-only">Actions</th>
+											<th class="sr-only">Actions</th>
 										</tr>
 									</thead>
 									<tbody>
 										{#each group.keys as key (key.id)}
 											<tr
-												class="border-t border-borderc"
 												data-testid="api-keys-row"
 												data-key-id={key.id}
 												data-key-name={key.name}
 												data-tenant-id={key.tenant_id}
 											>
-												<td class="px-3 py-2">
+												<td>
 													<div class="font-medium">{key.name}</div>
 													<div class="text-xs text-muted font-mono">{key.id}</div>
 												</td>
-												<td class="px-3 py-2 font-mono text-xs" data-testid="api-keys-row-tenant-id">
+												<td class="font-mono text-xs" data-testid="api-keys-row-tenant-id">
 													{key.tenant_id}
 												</td>
-												<td class="px-3 py-2" data-testid="api-keys-row-audience">
+												<td data-testid="api-keys-row-audience">
 													{#if key.audience}
 														<span class="ms-chip text-xs px-2 py-0.5">{key.audience}</span>
 													{:else}
 														<span class="text-muted text-xs" title="Pre-audience key; accepted on any surface until re-issued">any</span>
 													{/if}
 												</td>
-												<td class="px-3 py-2">
+												<td>
 													<div class="flex flex-wrap gap-1" data-testid="api-keys-row-scopes">
 														{#each key.scopes || [] as scope}
 															<span class="ms-chip badge-scope text-xs px-2 py-0.5">{scope}</span>
 														{/each}
 													</div>
 												</td>
-												<td class="px-3 py-2" data-testid="api-keys-row-rate-limit">
+												<td data-testid="api-keys-row-rate-limit">
 													{#if key.rate_limit && key.rate_limit > 0}
 														{key.rate_limit}/min
 													{:else}
 														<span class="text-muted">Default</span>
 													{/if}
 												</td>
-												<td class="px-3 py-2" data-testid="api-keys-row-expires">
+												<td data-testid="api-keys-row-expires">
 													{#if expiryState(key.expires_at) === 'none'}
 														<span class="text-muted" data-expiry="never">Never</span>
 													{:else}
@@ -641,10 +643,10 @@
 														</span>
 													{/if}
 												</td>
-												<td class="px-3 py-2 text-muted" data-testid="api-keys-row-last-used">
+												<td class="text-muted" data-testid="api-keys-row-last-used">
 													{key.last_used_at ? formatRelative(key.last_used_at) : 'never'}
 												</td>
-												<td class="px-3 py-2 text-right">
+												<td class="text-right">
 													<button
 														type="button"
 														class="btn-icon-danger"

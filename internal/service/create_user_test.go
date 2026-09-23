@@ -18,7 +18,11 @@ func newCreateUserService(t *testing.T, secrets map[string]string) *AuthService 
 }
 
 func TestCreateUserSuccessIsPending(t *testing.T) {
-	s := newCreateUserService(t, map[string]string{"superuser_email": "root@example.com"})
+	s := newCreateUserService(t, map[string]string{
+		"superuser_email":            "root@example.com",
+		"require_admin_approval":     "true",
+		"require_email_verification": "false",
+	})
 	resp, err := s.CreateUser(context.Background(), &models.CreateUserRequest{
 		Email:    "new@example.com",
 		Password: "DevAdminTest123!",
@@ -33,13 +37,20 @@ func TestCreateUserSuccessIsPending(t *testing.T) {
 	if got.Status != models.UserStatusPendingApproval {
 		t.Fatalf("status = %q, want pending approval", got.Status)
 	}
+	if resp.Next != "await_admin" {
+		t.Fatalf("next = %q, want await_admin", resp.Next)
+	}
 	if got.ID != resp.UserID {
 		t.Fatal("returned id does not match stored user")
 	}
 }
 
 func TestCreateUserDuplicateLooksLikeSuccess(t *testing.T) {
-	s := newCreateUserService(t, map[string]string{"superuser_email": "root@example.com"})
+	s := newCreateUserService(t, map[string]string{
+		"superuser_email":            "root@example.com",
+		"require_admin_approval":     "true",
+		"require_email_verification": "false",
+	})
 	ctx := context.Background()
 	first, err := s.CreateUser(ctx, &models.CreateUserRequest{Email: "dup@example.com", Password: "DevAdminTest123!"})
 	if err != nil {
@@ -60,7 +71,11 @@ func TestCreateUserDuplicateLooksLikeSuccess(t *testing.T) {
 }
 
 func TestCreateUserSuperuserBlocked(t *testing.T) {
-	s := newCreateUserService(t, map[string]string{"superuser_email": "root@example.com"})
+	s := newCreateUserService(t, map[string]string{
+		"superuser_email":            "root@example.com",
+		"require_admin_approval":     "true",
+		"require_email_verification": "false",
+	})
 	_, err := s.CreateUser(context.Background(), &models.CreateUserRequest{
 		Email:    "root@example.com",
 		Password: "DevAdminTest123!",
@@ -72,8 +87,10 @@ func TestCreateUserSuperuserBlocked(t *testing.T) {
 
 func TestCreateUserAdminEmailOpaque(t *testing.T) {
 	s := newCreateUserService(t, map[string]string{
-		"superuser_email":  "root@example.com",
-		"admin_users_json": `{"admin@example.com":"AdminTest123!"}`,
+		"superuser_email":            "root@example.com",
+		"admin_users_json":           `{"admin@example.com":"AdminTest123!"}`,
+		"require_admin_approval":     "true",
+		"require_email_verification": "false",
 	})
 	resp, err := s.CreateUser(context.Background(), &models.CreateUserRequest{
 		Email:    "admin@example.com",
@@ -88,8 +105,40 @@ func TestCreateUserAdminEmailOpaque(t *testing.T) {
 }
 
 func TestCreateUserEmptyPassword(t *testing.T) {
-	s := newCreateUserService(t, map[string]string{"superuser_email": "root@example.com"})
+	s := newCreateUserService(t, map[string]string{
+		"superuser_email":            "root@example.com",
+		"require_admin_approval":     "true",
+		"require_email_verification": "false",
+	})
 	if _, err := s.CreateUser(context.Background(), &models.CreateUserRequest{Email: "x@example.com"}); err == nil {
 		t.Fatal("empty password accepted")
+	}
+}
+
+func TestCreateUserEmailDomainPolicy(t *testing.T) {
+	s := newCreateUserService(t, map[string]string{
+		"superuser_email":            "root@example.com",
+		"require_admin_approval":     "true",
+		"require_email_verification": "false",
+		"email_allowed_domains":      "example.com, *.example.com",
+		"email_blocked_domains":      "blocked.example.com",
+	})
+	ctx := context.Background()
+	if _, err := s.CreateUser(ctx, &models.CreateUserRequest{
+		Email: "ok@example.com", Password: "DevAdminTest123!",
+	}); err != nil {
+		t.Fatalf("allowed domain rejected: %v", err)
+	}
+	_, err := s.CreateUser(ctx, &models.CreateUserRequest{
+		Email: "no@other.com", Password: "DevAdminTest123!",
+	})
+	if err == nil || err.Error() != pkgerrors.ErrEmailDomainNotAllowed {
+		t.Fatalf("want domain policy error, got %v", err)
+	}
+	_, err = s.CreateUser(ctx, &models.CreateUserRequest{
+		Email: "x@blocked.example.com", Password: "DevAdminTest123!",
+	})
+	if err == nil || err.Error() != pkgerrors.ErrEmailDomainNotAllowed {
+		t.Fatalf("want blocklist error, got %v", err)
 	}
 }

@@ -5,13 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"garde/internal/testutil"
 	"garde/pkg/config"
 	"garde/pkg/crypto"
 )
 
 func TestEncryptDecryptRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "mfa_encryption_key"), []byte("dev-mfa-encryption-key-change-me"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "mfa_encryption_key"), []byte(testutil.MFAEncryptionKey), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := config.Init(dir); err != nil {

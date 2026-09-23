@@ -17,6 +17,7 @@
 
 	const STATUS_OK = 'ok';
 	const STATUS_PENDING = 'pending admin approval';
+	const STATUS_EMAIL_UNVERIFIED = 'email not verified';
 	const STATUS_REJECTED = 'admin approval rejected';
 	const STATUS_LOCKED_ADMIN = 'locked by admin';
 	const STATUS_LOCKED_SECURITY = 'locked by security';
@@ -70,6 +71,7 @@
 	let isLockedBySecurity = $derived(accountStatus === STATUS_LOCKED_SECURITY);
 	let isAccountLocked = $derived(isLockedByAdmin || isLockedBySecurity);
 	let isPendingApproval = $derived(accountStatus === STATUS_PENDING);
+	let isEmailUnverified = $derived(accountStatus === STATUS_EMAIL_UNVERIFIED);
 	let isApprovalRejected = $derived(accountStatus === STATUS_REJECTED);
 	let needsAccountApproval = $derived(isPendingApproval || isApprovalRejected);
 	let canAdminLock = $derived(accountStatus === STATUS_OK);
@@ -135,8 +137,8 @@
 		pendingLock
 			? 'Lock this user as an admin? They will not be able to sign in until unlocked.'
 			: isLockedBySecurity
-				? 'Unlock this security-locked account? Status will be set to OK and they can sign in again.'
-				: 'Unlock this admin-locked account anyway? Status will be set to OK and they can sign in again.'
+				? 'Unlock this security-locked account? Status will be set to Ok and they can sign in again.'
+				: 'Unlock this admin-locked account anyway? Status will be set to Ok and they can sign in again.'
 	);
 	let lockConfirmText = $derived(
 		pendingLock
@@ -612,9 +614,20 @@
 				</div>
 			</div>
 
-			{#if needsAccountApproval}
+			{#if isEmailUnverified}
 				<div
-					class="card-muted space-y-3 my-6 border {isApprovalRejected
+					class="card-muted space-y-3 border border-orange-200/80 bg-orange-50/50"
+					data-testid="user-detail-email-unverified"
+				>
+					<p class="text-sm font-semibold text-text">Email not verified</p>
+					<p class="text-xs text-muted mt-0.5">
+						This account cannot sign in until the user verifies their email. Approval is unavailable
+						until then.
+					</p>
+				</div>
+			{:else if needsAccountApproval}
+				<div
+					class="card-muted space-y-3 border {isApprovalRejected
 						? 'border-red-200/80 bg-red-50/40'
 						: 'border-orange-200/80 bg-orange-50/50'}"
 					data-testid="user-detail-account-approval"
@@ -700,9 +713,9 @@
 					return changes;
 				})()}
 
-				<div class="card-muted space-y-4 my-6" data-testid="user-detail-pending-update">
+				<div class="card-muted space-y-4" data-testid="user-detail-pending-update">
 					<h2 class="section-title text-warning">Pending Update Request</h2>
-					<p class="text-xs text-muted">
+					<p class="section-subtitle">
 						Requested: {new Date(userData.pending_updates.requested_at).toLocaleString()}
 					</p>
 
@@ -763,9 +776,9 @@
 				</div>
 			{/if}
 
-			<div class="card-muted space-y-4 mt-6">
+			<div class="card-muted space-y-4">
 				<h2 class="section-title">Edit User</h2>
-				<p class="text-xs text-muted">
+				<p class="section-subtitle">
 					Permissions control what this user can do. Groups control which admins can manage them and which
 					permissions are visible. As an admin you can only grant permissions visible to your groups, and
 					only add groups you belong to.
@@ -880,12 +893,12 @@
 						</p>
 						<p class="text-xs text-muted mt-0.5">
 							{#if isLockedBySecurity}
-								Locked after failed logins or reset abuse. Unlock sets status to OK so they can sign in
+								Locked after failed logins or reset abuse. Unlock sets status to Ok so they can sign in
 								again.
 							{:else if isLockedByAdmin}
-								Admin lock is active. Unlock sets status to OK so they can sign in again.
+								Admin lock is active. Unlock sets status to Ok so they can sign in again.
 							{:else if needsAccountApproval}
-								Approve the account first. Admin lock is available once the account is active (OK).
+								Approve the account first. Admin lock is available once the account is active (Ok).
 							{:else}
 								Prevent this user from signing in (admin lock). Takes effect immediately.
 							{/if}
@@ -900,7 +913,7 @@
 							onclick={requestLockToggle}
 							disabled={saving}
 						>
-							<LockOpen size={16} />
+							<LockOpen size={17} />
 							{isLockedByAdmin ? 'Unlock account anyway' : 'Unlock account'}
 						</button>
 					{:else if canAdminLock}
@@ -912,7 +925,7 @@
 							onclick={requestLockToggle}
 							disabled={saving}
 						>
-							<Lock size={16} />
+							<Lock size={18} />
 							Lock account
 						</button>
 					{/if}
@@ -955,7 +968,7 @@
 						onclick={requestMfaEnforceToggle}
 						disabled={saving}
 					>
-						<ShieldLock size={16} />
+						<ShieldLock size={24} strokeWidth={1.5} />
 						{userData.mfa_enforced ? 'Stop enforcing' : 'Enforce MFA'}
 					</button>
 				</div>
@@ -976,7 +989,7 @@
 						onclick={requestRevokeSessions}
 						disabled={saving}
 					>
-						<LogOut size={16} />
+						<LogOut size={18} />
 						Revoke All Sessions
 					</button>
 				</div>
@@ -994,7 +1007,7 @@
 						onclick={requestDeleteConfirmation}
 						disabled={saving}
 					>
-						<Trash2 size={16} />
+						<Trash2 size={18} />
 						Delete User
 					</button>
 				</div>
@@ -1032,8 +1045,8 @@
 	bind:open={showApproveConfirm}
 	title={isApprovalRejected ? 'Approve account anyway' : 'Approve account'}
 	message={isApprovalRejected
-		? 'Approve this rejected account anyway? Status will be set to OK and the user can sign in.'
-		: 'Approve this account? Status will be set to OK and the user can sign in.'}
+		? 'Approve this rejected account anyway? Status will be set to Ok and the user can sign in.'
+		: 'Approve this account? Status will be set to Ok and the user can sign in.'}
 	confirmText={isApprovalRejected ? 'Approve account anyway' : 'Approve account'}
 	confirmClass="btn-primary"
 	onConfirm={handleApproveAccount}
@@ -1097,7 +1110,7 @@
 
 <style>
 	.edit-section {
-		margin: 1.5rem 0;
+		margin: 0;
 		padding: 1rem;
 		background: var(--bg-input);
 		border-radius: var(--radius);

@@ -103,6 +103,11 @@ func authenticateSession(
 		return
 	}
 
+	// Sliding idle: refresh cookie MaxAge for browser sessions (Bearer has no cookie).
+	if authMethod == AuthMethodCookie && validationResult.CookieMaxAge > 0 {
+		SetSessionCookie(c, sessionID, validationResult.CookieMaxAge)
+	}
+
 	c.Set("session_id", sessionID)
 	c.Set(ContextAuthMethod, authMethod)
 	c.Next()
@@ -148,6 +153,24 @@ func authenticatePAT(
 // SameSite attributes used when the cookie was issued, so browsers actually drop it.
 func ClearSessionCookie(c *gin.Context) {
 	clearSessionCookie(c)
+}
+
+// SetSessionCookie issues or refreshes the HttpOnly session cookie.
+func SetSessionCookie(c *gin.Context, sessionID string, maxAge time.Duration) {
+	secs := int(maxAge.Seconds())
+	if secs < 1 {
+		secs = 1
+	}
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    sessionID,
+		Path:     "/",
+		Domain:   config.Get("DOMAIN_NAME"),
+		MaxAge:   secs,
+		Secure:   config.GetCookieSecure(),
+		HttpOnly: true,
+		SameSite: config.GetCookieSameSite(),
+	})
 }
 
 func clearSessionCookie(c *gin.Context) {
@@ -239,6 +262,8 @@ func completeUserAuth(
 
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Writer.Header().Add("Vary", "Origin")
+
 		origin := c.Request.Header.Get("Origin")
 		for _, allowedOrigin := range strings.Split(config.Get("CORS_ALLOW_ORIGINS"), ",") {
 			if strings.TrimSpace(allowedOrigin) == origin {
@@ -254,6 +279,10 @@ func CORSMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("X-Frame-Options", "DENY")
 		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
 		c.Writer.Header().Set("X-XSS-Protection", "1; mode=block")
+		c.Writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Deny powerful features this app does not use. clipboard-write is
+		// intentionally omitted so token/API-key copy still works.
+		c.Writer.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), midi=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()")
 		if config.GetBool("USE_TLS") {
 			c.Writer.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}

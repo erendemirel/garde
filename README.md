@@ -101,7 +101,7 @@ garde uses HashiCorp Vault for secrets management:
 
 ##### What hot-reloads without restart
 
-Secret files under `/run/secrets` refresh the in-memory map automatically, but **TLS, trusted proxies, rate-limit thresholds, rapid-request config, and log level need a process restart**. API key, CORS, cookies, feature flags, SMTP, Redis reconnect, and superuser/admin bootstrap apply live. PostgreSQL connection settings are read at startup (pool recovery is automatic; changing `DATABASE_URL` / `POSTGRES_*` needs a restart).
+Secret files under `/run/secrets` refresh the in-memory map automatically, but **TLS, trusted proxies, rate-limit thresholds, rapid-request config, public kill switch / listener topology, and log level need a process restart**. API key, CORS, cookies, feature flags (including registration `REQUIRE_*` gates and `EMAIL_*_DOMAINS`), SMTP, Redis reconnect, and superuser/admin bootstrap apply live. PostgreSQL connection settings are read at startup (pool recovery is automatic; changing `DATABASE_URL` / `POSTGRES_*` needs a restart).
 
 See the full table: [Configuration hot reload](docs/INSTALLATION.md#configuration-hot-reload).
 

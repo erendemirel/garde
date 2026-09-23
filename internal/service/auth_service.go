@@ -6,7 +6,9 @@ import (
 	stderrors "errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"garde/internal/models"
@@ -23,9 +25,28 @@ import (
 )
 
 const (
-	maxResetAttempts      = 5
-	securityCodeKeyPrefix = "security_code"
+	maxResetAttempts       = 5
+	maxEmailVerifyAttempts = 5
+	maxMFAAttempts         = 5
+	securityCodeKeyPrefix  = "security_code"
 )
+
+var (
+	dummyPasswordHashOnce sync.Once
+	dummyPasswordHash     string
+)
+
+func getDummyPasswordHash() string {
+	dummyPasswordHashOnce.Do(func() {
+		h, err := crypto.HashPassword("timing-dummy-not-a-real-password")
+		if err != nil {
+			slog.Error("Failed to initialise dummy password hash for login timing equalisation", "error", err)
+			return
+		}
+		dummyPasswordHash = h
+	})
+	return dummyPasswordHash
+}
 
 func isSuperuserEmail(email string) bool {
 	return strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(config.Get("SUPERUSER_EMAIL")))
@@ -39,6 +60,8 @@ type AuthService struct {
 type ValidationResult struct {
 	Response *models.SessionValidationResponse
 	UserID   string
+	// CookieMaxAge is the sliding TTL after a successful validation (for cookie refresh).
+	CookieMaxAge time.Duration
 }
 
 func NewAuthService(repo *repository.RedisRepository) *AuthService {
@@ -185,10 +208,19 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 
 	req.Email = validation.NormalizeEmail(req.Email)
 
-	// Get user for security checks
-	user, err := s.repo.GetUserByEmail(ctx, req.Email)
-	if err != nil {
-		slog.Debug("User lookup failed during login", "email", req.Email, "error", err)
+	user, lookupErr := s.repo.GetUserByEmail(ctx, req.Email)
+	hash := getDummyPasswordHash()
+	if lookupErr == nil && user != nil && user.PasswordHash != "" {
+		hash = user.PasswordHash
+	}
+	// Always pay Argon2 once so unknown emails match known-bad latency.
+	valid, verifyErr := crypto.VerifyPassword(req.Password, hash)
+	if verifyErr != nil {
+		valid = false
+	}
+
+	if lookupErr != nil || user == nil {
+		slog.Debug("User lookup failed during login", "email", req.Email, "error", lookupErr)
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
@@ -199,6 +231,10 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 	}
 	if user.Status == models.UserStatusPendingApproval || user.Status == models.UserStatusApprovalRejected {
 		slog.Info("Login attempt by unapproved user", "email", req.Email, "status", user.Status)
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
+	}
+	if user.Status == models.UserStatusEmailNotVerified {
+		slog.Info("Login attempt by unverified email", "email", req.Email, "status", user.Status)
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 	if user.Status != models.UserStatusOk {
@@ -229,10 +265,6 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		}
 	}
 
-	valid, err := crypto.VerifyPassword(req.Password, user.PasswordHash)
-	if err != nil {
-		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
-	}
 	if !valid {
 		if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
 			return nil, err
@@ -246,11 +278,13 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		if req.MFACode == "" {
 			return nil, fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			if err := s.recordFailedAuth(ctx, user, req.Email, ip); err != nil {
-				return nil, err
+		if err := s.checkUserMFA(ctx, user, req.MFACode); err != nil {
+			if err.Error() == errors.ErrInvalidMFACode || err.Error() == errors.ErrTooManyAttempts {
+				if recErr := s.recordFailedAuth(ctx, user, req.Email, ip); recErr != nil {
+					return nil, recErr
+				}
 			}
-			return nil, fmt.Errorf("%s", errors.ErrInvalidMFACode)
+			return nil, err
 		}
 	}
 
@@ -260,15 +294,17 @@ func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest, ip, u
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
-	sessionData := &session.SessionData{
-		UserID:    user.ID,
-		IP:        session.HashString(ip),
-		UserAgent: session.HashString(userAgent),
-		CreatedAt: time.Now(),
+	sessionData, err := session.NewSessionData(user.ID, ip, userAgent)
+	if err != nil {
+		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
 	}
 
-	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, session.SessionDuration); err != nil {
+	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, session.IdleTimeout()); err != nil {
 		return nil, fmt.Errorf("%s", errors.ErrAuthFailed)
+	}
+
+	if err := s.enforceSessionMaxActive(ctx, user.ID, sessionID); err != nil {
+		slog.Warn("Failed to enforce session max-active cap", "error", err, "user_id", user.ID)
 	}
 
 	// Successful auth resets lockout counters for this email/IP.
@@ -381,8 +417,11 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
-	// Verify IP and user agent match
-	if session.HashString(ip) != sessionData.IP || session.HashString(userAgent) != sessionData.UserAgent {
+	// Verify IP (always) and user-agent binding (unless DISABLE_USER_AGENT_CHECK).
+	ipMismatch := session.HashString(ip) != sessionData.IP
+	uaMismatch := !config.GetBool("DISABLE_USER_AGENT_CHECK") &&
+		session.HashString(userAgent) != sessionData.UserAgent
+	if ipMismatch || uaMismatch {
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
 				Valid: false,
@@ -390,9 +429,9 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
-	// Check session age
-	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
-		slog.Debug("Session has expired", "session_id_prefix", session.IDPrefix(sessionID))
+	// Absolute lifetime from CreatedAt — activity cannot extend past this.
+	if session.IsAbsolutelyExpired(sessionData.CreatedAt) {
+		slog.Debug("Session has expired (absolute)", "session_id_prefix", session.IDPrefix(sessionID))
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{
 			Response: &models.SessionValidationResponse{
@@ -401,13 +440,29 @@ func (s *AuthService) ValidateSession(ctx context.Context, sessionID, ip, userAg
 		}, nil
 	}
 
+	ttl := session.RemainingTTL(sessionData.CreatedAt)
+	if ttl <= 0 {
+		s.repo.DeleteSession(ctx, sessionID)
+		return &ValidationResult{
+			Response: &models.SessionValidationResponse{Valid: false},
+		}, nil
+	}
+	if err := sessionData.TouchDisplay(); err != nil {
+		slog.Warn("Failed to touch session display metadata", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
+	}
+	// Sliding idle: extend Redis TTL on each successful use.
+	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, ttl); err != nil {
+		slog.Warn("Failed to slide session TTL", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
+	}
+
 	slog.Debug("Session validation successful", "user_id", sessionData.UserID)
 
 	return &ValidationResult{
 		Response: &models.SessionValidationResponse{
 			Valid: true,
 		},
-		UserID: sessionData.UserID,
+		UserID:       sessionData.UserID,
+		CookieMaxAge: ttl,
 	}, nil
 }
 
@@ -428,9 +483,21 @@ func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID s
 		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
 	}
 
-	if time.Since(sessionData.CreatedAt) > session.SessionDuration {
+	if session.IsAbsolutelyExpired(sessionData.CreatedAt) {
 		s.repo.DeleteSession(ctx, sessionID)
 		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+
+	ttl := session.RemainingTTL(sessionData.CreatedAt)
+	if ttl <= 0 {
+		s.repo.DeleteSession(ctx, sessionID)
+		return &ValidationResult{Response: &models.SessionValidationResponse{Valid: false}}, nil
+	}
+	if err := sessionData.TouchDisplay(); err != nil {
+		slog.Warn("Failed to touch session display metadata", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
+	}
+	if err := s.repo.StoreSessionData(ctx, sessionID, sessionData, ttl); err != nil {
+		slog.Warn("Failed to slide session TTL", "error", err, "session_id_prefix", session.IDPrefix(sessionID))
 	}
 
 	user, err := s.repo.GetUserByID(ctx, sessionData.UserID)
@@ -439,8 +506,9 @@ func (s *AuthService) ValidateSessionForService(ctx context.Context, sessionID s
 	}
 
 	return &ValidationResult{
-		Response: &models.SessionValidationResponse{Valid: true},
-		UserID:   sessionData.UserID,
+		Response:     &models.SessionValidationResponse{Valid: true},
+		UserID:       sessionData.UserID,
+		CookieMaxAge: ttl,
 	}, nil
 }
 
@@ -461,6 +529,46 @@ func (s *AuthService) recordFailedAuth(ctx context.Context, user *models.User, e
 		return fmt.Errorf("%s", errors.ErrAccessRestricted)
 	}
 	return nil
+}
+
+// checkUserMFA validates a TOTP against the user's enrolled secret and counts
+// failures toward lock-by-security (stolen-session brute force).
+func (s *AuthService) checkUserMFA(ctx context.Context, user *models.User, code string) error {
+	if mfa.ValidateCode(user.MFASecret, code) {
+		_ = s.repo.ClearMFAAttempts(ctx, user.ID)
+		return nil
+	}
+	return s.failMFAAttempt(ctx, user)
+}
+
+// checkTempMFA validates setup codes against the temporary secret with the same
+// attempt / lock policy as enrolled MFA.
+func (s *AuthService) checkTempMFA(ctx context.Context, user *models.User, tempSecret, code string) error {
+	if mfa.ValidateCode(tempSecret, code) {
+		_ = s.repo.ClearMFAAttempts(ctx, user.ID)
+		return nil
+	}
+	return s.failMFAAttempt(ctx, user)
+}
+
+func (s *AuthService) failMFAAttempt(ctx context.Context, user *models.User) error {
+	attempts, trackErr := s.repo.TrackMFAAttempt(ctx, user.ID)
+	if trackErr != nil {
+		slog.Error("Failed to track MFA attempt", "error", trackErr, "user_id", user.ID)
+		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+	}
+	if attempts > maxMFAAttempts {
+		user.Status = models.UserStatusLockedBySecurity
+		user.UpdatedAt = time.Now()
+		if err := s.repo.StoreUser(ctx, user); err != nil {
+			slog.Error("Failed to lock user after MFA attempts", "error", err, "user_id", user.ID)
+			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		}
+		_ = s.repo.ClearMFAAttempts(ctx, user.ID)
+		slog.Info("Locked user after too many MFA failures", "user_id", user.ID, "attempts", attempts)
+		return fmt.Errorf("%s", errors.ErrTooManyAttempts)
+	}
+	return fmt.Errorf("%s", errors.ErrInvalidMFACode)
 }
 
 func (s *AuthService) NeedsMFASetup(ctx context.Context, userIDOrEmail string) (bool, error) {
@@ -540,8 +648,8 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 	}
 
 	// Verify code using temporary secret
-	if !mfa.ValidateCode(tempSecret, code) {
-		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+	if err := s.checkTempMFA(ctx, user, tempSecret, code); err != nil {
+		return err
 	}
 
 	// If verification successful, save secret to user and enable MFA
@@ -564,6 +672,11 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, userID string, cod
 
 func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.CreateUserResponse, error) {
 	req.Email = validation.NormalizeEmail(req.Email)
+	next := config.RegistrationNextStep()
+
+	if err := validation.ValidateEmailDomainPolicy(req.Email); err != nil {
+		return nil, fmt.Errorf("%s", errors.ErrEmailDomainNotAllowed)
+	}
 
 	// Block public creation of the configured superuser; it is bootstrapped at startup
 	if isSuperuserEmail(req.Email) {
@@ -573,13 +686,13 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	// Block public creation of configured admin users; they are initialized from secrets.
 	// Same opaque success as duplicate emails to avoid account enumeration.
 	if isAdminEmail(req.Email) {
-		return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
+		return &models.CreateUserResponse{UserID: uuid.New().String(), Next: next}, nil
 	}
 
 	// Check if email already exists — do not reveal this to the client.
 	existingUser, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err == nil && existingUser != nil {
-		return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
+		return &models.CreateUserResponse{UserID: uuid.New().String(), Next: next}, nil
 	}
 
 	// Password is required for new users
@@ -595,11 +708,21 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	// Check if MFA is enforced globally
 	mfaEnforced := config.GetBool("ENFORCE_MFA")
 
+	status := models.UserStatusPendingApproval
+	if config.RequireEmailVerification() {
+		status = models.UserStatusEmailNotVerified
+	} else if config.RequireAdminApproval() {
+		status = models.UserStatusPendingApproval
+	} else {
+		// Coercion should prevent this; treat as ready.
+		status = models.UserStatusOk
+	}
+
 	user := &models.User{
 		ID:           uuid.New().String(),
 		Email:        req.Email,
 		PasswordHash: hashedPassword,
-		Status:       models.UserStatusPendingApproval,
+		Status:       status,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		MFAEnforced:  mfaEnforced,
@@ -611,13 +734,21 @@ func (s *AuthService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	if err := s.repo.StoreUser(ctx, user); err != nil {
 		// Concurrent create of the same email — still look like success.
 		if stderrors.Is(err, repository.ErrEmailAlreadyExists) {
-			return &models.CreateUserResponse{UserID: uuid.New().String()}, nil
+			return &models.CreateUserResponse{UserID: uuid.New().String(), Next: next}, nil
 		}
 		return nil, fmt.Errorf("%s", errors.ErrUserCreationFailed)
 	}
 
+	if status == models.UserStatusEmailNotVerified {
+		if err := s.sendEmailVerification(ctx, user); err != nil {
+			slog.Error("Failed to send email verification after register", "error", err, "user_id", user.ID)
+			// Account exists; client can resend. Still return success.
+		}
+	}
+
 	return &models.CreateUserResponse{
 		UserID: user.ID,
+		Next:   next,
 	}, nil
 }
 
@@ -829,7 +960,8 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 				}
 			}
 
-			// Update status to active if currently pending
+			// Promote pending → ok only. Never skip email verification: an
+			// email-not-verified account cannot reach pending until verified.
 			if targetUser.Status == models.UserStatusPendingApproval {
 				targetUser.Status = models.UserStatusOk
 			}
@@ -840,6 +972,19 @@ func (s *AuthService) UpdateUser(ctx context.Context, adminID string, targetUser
 
 	// Update fields if provided
 	if req.Status != nil {
+		// Leaving "email not verified" requires the verify-email flow (or
+		// lock/reject). Admins must not activate or advance unverified accounts.
+		if targetUser.Status == models.UserStatusEmailNotVerified {
+			switch *req.Status {
+			case models.UserStatusEmailNotVerified,
+				models.UserStatusLockedByAdmin,
+				models.UserStatusLockedBySecurity,
+				models.UserStatusApprovalRejected:
+				// allowed
+			default:
+				return fmt.Errorf("%s", errors.ErrEmailVerificationRequired)
+			}
+		}
 		targetUser.Status = *req.Status
 
 		// If status is changed to locked, blacklist and revoke all sessions
@@ -964,8 +1109,8 @@ func (s *AuthService) RevokeUserSession(ctx context.Context, adminID string, tar
 		if mfaCode == "" {
 			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(admin.MFASecret, mfaCode) {
-			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, admin, mfaCode); err != nil {
+			return err
 		}
 	}
 
@@ -1138,14 +1283,19 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *models.PasswordRes
 		if req.MFACode == "" {
 			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, user, req.MFACode); err != nil {
+			return err
 		}
 	}
 
 	// Validate new password
 	if err := validation.ValidatePassword(req.NewPassword); err != nil {
 		return err
+	}
+
+	// Reject reuse of the current password (single previous only — no history store).
+	if same, err := crypto.VerifyPassword(req.NewPassword, user.PasswordHash); err == nil && same {
+		return fmt.Errorf("%s", errors.ErrPasswordSameAsCurrent)
 	}
 
 	// All verifications passed, update password
@@ -1194,8 +1344,8 @@ func (s *AuthService) DisableMFA(ctx context.Context, userID string, code string
 	}
 
 	// Verify MFA code
-	if !mfa.ValidateCode(user.MFASecret, code) {
-		return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+	if err := s.checkUserMFA(ctx, user, code); err != nil {
+		return err
 	}
 
 	// Disable MFA. Empty MFASecret on StoreUser is preserved; ClearUserMFASecret
@@ -1232,13 +1382,18 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 		return fmt.Errorf("%s", errors.ErrInvalidCredentials)
 	}
 
+	// Reject reuse of the current password (single previous only — no history store).
+	if same, err := crypto.VerifyPassword(req.NewPassword, user.PasswordHash); err == nil && same {
+		return fmt.Errorf("%s", errors.ErrPasswordSameAsCurrent)
+	}
+
 	// If user has MFA enabled, verify MFA code
 	if user.MFAEnabled {
 		if req.MFACode == "" {
 			return fmt.Errorf("%s", errors.ErrMFARequired)
 		}
-		if !mfa.ValidateCode(user.MFASecret, req.MFACode) {
-			return fmt.Errorf("%s", errors.ErrInvalidMFACode)
+		if err := s.checkUserMFA(ctx, user, req.MFACode); err != nil {
+			return err
 		}
 	}
 
@@ -1278,6 +1433,213 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req *mo
 	return nil
 }
 
+// ListSessions returns non-secret views of the caller's active sessions.
+// currentSessionID is the raw session secret from the request (never returned).
+func (s *AuthService) ListSessions(ctx context.Context, userID, currentSessionID string) (*models.ListSessionsResponse, error) {
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+
+	out := make([]models.SessionInfo, 0, len(sessionIDs))
+	for _, sid := range sessionIDs {
+		data, err := s.repo.GetSessionData(ctx, sid)
+		if err != nil || data == nil {
+			continue
+		}
+		if data.PublicID == "" {
+			if err := data.TouchDisplay(); err != nil {
+				slog.Warn("Failed to assign session public id", "error", err)
+				continue
+			}
+			ttl := session.RemainingTTL(data.CreatedAt)
+			if ttl <= 0 {
+				continue
+			}
+			_ = s.repo.StoreSessionData(ctx, sid, data, ttl)
+		}
+		lastSeen := data.LastSeenAt
+		if lastSeen.IsZero() {
+			lastSeen = data.CreatedAt
+		}
+		ipDisplay := data.IPDisplay
+		if ipDisplay == "" {
+			ipDisplay = "unknown"
+		}
+		uaFamily := data.UAFamily
+		if uaFamily == "" {
+			uaFamily = "Unknown"
+		}
+		uaSummary := data.UASummary
+		if uaSummary == "" {
+			uaSummary = "Unknown client"
+		}
+		deviceKind := data.DeviceKind
+		if deviceKind == "" {
+			deviceKind = session.InferDeviceKind(uaFamily, uaSummary)
+		}
+		out = append(out, models.SessionInfo{
+			ID:          data.PublicID,
+			Current:     sid == currentSessionID,
+			CreatedAt:   data.CreatedAt,
+			LastSeenAt:  lastSeen,
+			IPDisplay:   ipDisplay,
+			UAFamily:    uaFamily,
+			UASummary:   uaSummary,
+			DeviceKind:  deviceKind,
+			ApproxPlace: ipDisplay, // masked IP only — no geo database
+		})
+	}
+
+	// Current session first, then most recently seen.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Current != out[j].Current {
+			return out[i].Current
+		}
+		return out[i].LastSeenAt.After(out[j].LastSeenAt)
+	})
+
+	return &models.ListSessionsResponse{Sessions: out}, nil
+}
+
+// RevokeOwnSession revokes one of the caller's sessions by opaque PublicID.
+// When MFA is enabled and the target is not the current session, mfaCode is required.
+// Returns (revokedCurrent, error).
+func (s *AuthService) RevokeOwnSession(ctx context.Context, userID, currentSessionID, publicID, mfaCode string) (bool, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("%s", errors.ErrUserNotFound)
+	}
+
+	sid, data, err := s.findSessionByPublicID(ctx, userID, publicID)
+	if err != nil {
+		return false, err
+	}
+	_ = data
+
+	isCurrent := sid == currentSessionID
+	if user.MFAEnabled && !isCurrent {
+		if mfaCode == "" {
+			return false, fmt.Errorf("%s", errors.ErrMFARequired)
+		}
+		if err := s.checkUserMFA(ctx, user, mfaCode); err != nil {
+			return false, err
+		}
+	}
+
+	if err := s.revokeAllUserSessions(ctx, userID, []string{sid}); err != nil {
+		return false, err
+	}
+	return isCurrent, nil
+}
+
+// RevokeOtherSessions revokes every session except the current one.
+// MFA is required when the account has MFA enabled.
+func (s *AuthService) RevokeOtherSessions(ctx context.Context, userID, currentSessionID, mfaCode string) (int, error) {
+	if currentSessionID == "" {
+		return 0, fmt.Errorf("%s", errors.ErrNoActiveSession)
+	}
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("%s", errors.ErrUserNotFound)
+	}
+	if user.MFAEnabled {
+		if mfaCode == "" {
+			return 0, fmt.Errorf("%s", errors.ErrMFARequired)
+		}
+		if err := s.checkUserMFA(ctx, user, mfaCode); err != nil {
+			return 0, err
+		}
+	}
+
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	others := make([]string, 0, len(sessionIDs))
+	for _, sid := range sessionIDs {
+		if sid != currentSessionID {
+			others = append(others, sid)
+		}
+	}
+	if err := s.revokeAllUserSessions(ctx, userID, others); err != nil {
+		return 0, err
+	}
+	return len(others), nil
+}
+
+func (s *AuthService) findSessionByPublicID(ctx context.Context, userID, publicID string) (string, *session.SessionData, error) {
+	publicID = strings.TrimSpace(strings.ToLower(publicID))
+	if publicID == "" || len(publicID) != session.PublicIDBytes*2 {
+		return "", nil, fmt.Errorf("%s", errors.ErrSessionInvalid)
+	}
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	for _, sid := range sessionIDs {
+		data, err := s.repo.GetSessionData(ctx, sid)
+		if err != nil || data == nil {
+			continue
+		}
+		if strings.EqualFold(data.PublicID, publicID) {
+			return sid, data, nil
+		}
+	}
+	return "", nil, fmt.Errorf("%s", errors.ErrSessionInvalid)
+}
+
+// enforceSessionMaxActive drops the oldest sessions when the user exceeds the
+// global SESSION_MAX_ACTIVE cap, keeping keepSessionID (the new login).
+func (s *AuthService) enforceSessionMaxActive(ctx context.Context, userID, keepSessionID string) error {
+	max := session.MaxActive()
+	if max <= 0 {
+		return nil
+	}
+	sessionIDs, err := s.repo.GetUserActiveSessions(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(sessionIDs) <= max {
+		return nil
+	}
+
+	type ranked struct {
+		id      string
+		created time.Time
+	}
+	rankedList := make([]ranked, 0, len(sessionIDs))
+	for _, sid := range sessionIDs {
+		if sid == keepSessionID {
+			continue
+		}
+		data, err := s.repo.GetSessionData(ctx, sid)
+		if err != nil || data == nil {
+			continue
+		}
+		rankedList = append(rankedList, ranked{id: sid, created: data.CreatedAt})
+	}
+	sort.Slice(rankedList, func(i, j int) bool {
+		return rankedList[i].created.Before(rankedList[j].created)
+	})
+
+	// After keeping the new session, we may keep (max-1) older ones.
+	keepOlder := max - 1
+	if keepOlder < 0 {
+		keepOlder = 0
+	}
+	if len(rankedList) <= keepOlder {
+		return nil
+	}
+	drop := rankedList[:len(rankedList)-keepOlder]
+	ids := make([]string, len(drop))
+	for i, r := range drop {
+		ids[i] = r.id
+	}
+	slog.Info("Enforcing session max-active", "user_id", userID, "max", max, "revoking", len(ids))
+	return s.revokeAllUserSessions(ctx, userID, ids)
+}
+
 // revokeAllUserSessions blacklists then deletes each session so the 24h ban
 // survives DeleteSession (which no longer clears blacklist entries).
 func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, sessions []string) error {
@@ -1289,6 +1651,141 @@ func (s *AuthService) revokeAllUserSessions(ctx context.Context, userID string, 
 			slog.Error("Failed to delete session during credential revoke", "error", err, "session_id_prefix", session.IDPrefix(sessionID), "user_id", userID)
 			return fmt.Errorf("%s", errors.ErrOperationFailed)
 		}
+	}
+	return nil
+}
+
+func (s *AuthService) sendEmailVerification(ctx context.Context, user *models.User) error {
+	token, err := generateEmailVerifyToken()
+	if err != nil {
+		return err
+	}
+	// High-entropy token (≈165 bits): SHA-256, not Argon2 — same rationale as
+	// API key secrets. Slow hashing on a public verify endpoint is CPU DoS.
+	hashed := crypto.HashAPIKeySecret(token)
+	if err := s.repo.StoreEmailVerifyToken(ctx, user.ID, hashed); err != nil {
+		return err
+	}
+	msg := fmt.Sprintf(
+		"Verify your email for garde.\n\nYour verification code is: %s\nThis code expires in 24 hours.\n\nIf you did not create an account, ignore this message.",
+		token,
+	)
+	if err := mail.SendMail(user.Email, "Verify your email", msg); err != nil {
+		_ = s.repo.DeleteEmailVerifyToken(ctx, user.ID)
+		return err
+	}
+	return nil
+}
+
+func generateEmailVerifyToken() (string, error) {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const n = 32
+	out := make([]byte, n)
+	for i := 0; i < n; {
+		var b [1]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", err
+		}
+		if int(b[0]) >= 256-(256%len(alphabet)) {
+			continue
+		}
+		out[i] = alphabet[int(b[0])%len(alphabet)]
+		i++
+	}
+	return string(out), nil
+}
+
+// VerifyEmail consumes a one-time token and advances status:
+// email not verified → pending admin approval (if approval required) or ok.
+// Always returns nil for unknown/wrong cases (anti-enumeration), except when
+// email verification is disabled entirely. Wrong tokens are attempt-counted;
+// after maxEmailVerifyAttempts the account is locked by security (still opaque).
+func (s *AuthService) VerifyEmail(ctx context.Context, email, token string) error {
+	if !config.RequireEmailVerification() {
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
+	}
+	email = validation.NormalizeEmail(email)
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil
+	}
+
+	user, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return nil
+	}
+	if user.Status != models.UserStatusEmailNotVerified {
+		return nil
+	}
+
+	stored, err := s.repo.GetEmailVerifyToken(ctx, user.ID)
+	if err != nil || stored == "" {
+		return nil
+	}
+	if !crypto.APIKeySecretMatches(token, stored) {
+		attempts, trackErr := s.repo.TrackEmailVerifyAttempt(ctx, user.ID)
+		if trackErr != nil {
+			slog.Error("Failed to track email verify attempt", "error", trackErr, "user_id", user.ID)
+			return nil
+		}
+		if attempts > maxEmailVerifyAttempts {
+			user.Status = models.UserStatusLockedBySecurity
+			user.UpdatedAt = time.Now()
+			if err := s.repo.StoreUser(ctx, user); err != nil {
+				slog.Error("Failed to lock user after email verify attempts", "error", err, "user_id", user.ID)
+				return nil
+			}
+			_ = s.repo.DeleteEmailVerifyToken(ctx, user.ID)
+			_ = s.repo.ClearEmailVerifyAttempts(ctx, user.ID)
+			slog.Info("Locked user after too many email verify failures", "user_id", user.ID, "attempts", attempts)
+		}
+		return nil
+	}
+
+	_ = s.repo.DeleteEmailVerifyToken(ctx, user.ID)
+	_ = s.repo.ClearEmailVerifyAttempts(ctx, user.ID)
+
+	if config.RequireAdminApproval() {
+		user.Status = models.UserStatusPendingApproval
+	} else {
+		user.Status = models.UserStatusOk
+	}
+	user.UpdatedAt = time.Now()
+	if err := s.repo.StoreUser(ctx, user); err != nil {
+		slog.Error("Failed to store user after email verify", "error", err, "user_id", user.ID)
+		return fmt.Errorf("%s", errors.ErrOperationFailed)
+	}
+	return nil
+}
+
+// ResendVerifyEmail regenerates and sends a verification token. Opaque success
+// for unknown emails / wrong status. Rate-limited per user.
+func (s *AuthService) ResendVerifyEmail(ctx context.Context, email string) error {
+	if !config.RequireEmailVerification() {
+		return fmt.Errorf("%s", errors.ErrInvalidRequest)
+	}
+	email = validation.NormalizeEmail(email)
+
+	user, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return nil
+	}
+	if isSuperuserEmail(user.Email) || user.Status != models.UserStatusEmailNotVerified {
+		return nil
+	}
+
+	n, err := s.repo.TrackEmailVerifyResend(ctx, user.ID)
+	if err != nil {
+		slog.Error("Failed to track email verify resend", "error", err, "user_id", user.ID)
+		return nil
+	}
+	if n > repository.EmailVerifyResendMax() {
+		slog.Info("Email verify resend rate limited", "user_id", user.ID, "count", n)
+		return nil
+	}
+
+	if err := s.sendEmailVerification(ctx, user); err != nil {
+		slog.Error("Failed to resend email verification", "error", err, "user_id", user.ID)
 	}
 	return nil
 }
@@ -1305,6 +1802,16 @@ func (s *AuthService) SendOTP(ctx context.Context, email string) error {
 
 	// Don't allow OTP for superuser
 	if isSuperuserEmail(user.Email) {
+		return nil
+	}
+
+	n, err := s.repo.TrackOTPSend(ctx, user.ID)
+	if err != nil {
+		slog.Error("Failed to track OTP send", "error", err, "user_id", user.ID)
+		return nil
+	}
+	if n > repository.OTPSendMax() {
+		slog.Info("Password-reset OTP send rate limited", "user_id", user.ID, "count", n)
 		return nil
 	}
 

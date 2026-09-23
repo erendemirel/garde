@@ -53,7 +53,7 @@
 
 {#if total > 0}
 	<div
-		class="flex flex-wrap items-center justify-between gap-3 mt-4"
+		class="flex flex-wrap items-center justify-between gap-3"
 		data-testid="{testIdPrefix}-pagination"
 	>
 		<div class="flex items-center gap-2 flex-wrap min-w-0">

@@ -373,38 +373,12 @@
 </script>
 
 <div class="space-y-4" data-testid="superuser-visibility-panel">
-	<div class="flex justify-between items-center gap-3 flex-wrap">
-		<div>
-			<h2 class="section-title">Permission Visibility</h2>
-			<p class="text-sm text-muted mt-1">
-				A permission is usable only by groups linked here. Without a visibility link, regular users
-				and admins cannot see or grant that permission.
-			</p>
-		</div>
-		<div class="flex gap-2">
-			<button
-				class="btn-small {visibilityViewMode === 'list' ? 'bg-accent/20' : ''}"
-				type="button"
-				data-testid="superuser-visibility-view-list"
-				aria-pressed={visibilityViewMode === 'list'}
-				onclick={() => (visibilityViewMode = 'list')}
-				title="List view"
-			>
-				<List size={16} />
-				List
-			</button>
-			<button
-				class="btn-small {visibilityViewMode === 'matrix' ? 'bg-accent/20' : ''}"
-				type="button"
-				data-testid="superuser-visibility-view-matrix"
-				aria-pressed={visibilityViewMode === 'matrix'}
-				onclick={() => (visibilityViewMode = 'matrix')}
-				title="Matrix view"
-			>
-				<Grid3x3 size={16} />
-				Matrix
-			</button>
-		</div>
+	<div>
+		<h2 class="section-title">Permission Visibility</h2>
+		<p class="section-subtitle">
+			A permission is usable only by groups linked here. Without a visibility link, regular users
+			and admins cannot see or grant that permission.
+		</p>
 	</div>
 
 	{#if loading}
@@ -416,16 +390,42 @@
 			You need at least one permission and one group to manage visibility.
 		</p>
 	{:else}
-		<label class="form-label max-w-md">
-			<span>Search</span>
-			<input
-				class="input"
-				type="search"
-				data-testid="superuser-visibility-search"
-				placeholder="Search by permission or group..."
-				bind:value={visibilitySearch}
-			/>
-		</label>
+		<div class="flex flex-wrap items-end justify-between gap-3">
+			<label class="form-label w-[28rem] max-w-full">
+				<span>Search</span>
+				<input
+					class="input"
+					type="search"
+					data-testid="superuser-visibility-search"
+					placeholder="Search by permission or group..."
+					bind:value={visibilitySearch}
+				/>
+			</label>
+			<div class="flex gap-2 shrink-0 pb-0.5">
+				<button
+					class="btn-small {visibilityViewMode === 'list' ? 'bg-accent/20' : ''}"
+					type="button"
+					data-testid="superuser-visibility-view-list"
+					aria-pressed={visibilityViewMode === 'list'}
+					onclick={() => (visibilityViewMode = 'list')}
+					title="List view"
+				>
+					<List size={16} />
+					List
+				</button>
+				<button
+					class="btn-small {visibilityViewMode === 'matrix' ? 'bg-accent/20' : ''}"
+					type="button"
+					data-testid="superuser-visibility-view-matrix"
+					aria-pressed={visibilityViewMode === 'matrix'}
+					onclick={() => (visibilityViewMode = 'matrix')}
+					title="Matrix view"
+				>
+					<Grid3x3 size={16} />
+					Matrix
+				</button>
+			</div>
+		</div>
 
 		{#if visibilityViewMode === 'list'}
 			<div class="table-scroll">
@@ -584,7 +584,7 @@
 	{/snippet}
 	{#if managingMembership}
 		<div class="space-y-4" data-testid="superuser-visibility-manage-modal">
-			<p class="text-xs text-muted">
+			<p class="section-subtitle">
 				Only groups listed here can see this permission and grant it to users. Groups without
 				visibility cannot use it.
 			</p>

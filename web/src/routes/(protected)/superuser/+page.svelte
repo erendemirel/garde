@@ -191,7 +191,7 @@
 				>
 					<div>
 						<h2 class="section-title">Users</h2>
-						<p class="text-sm text-muted mt-1">
+						<p class="section-subtitle">
 							All accounts in the system. Superuser can change status, access, and membership for any
 							user.
 						</p>

@@ -12,10 +12,15 @@ import (
 
 func TestSessionDataJSONRoundTrip(t *testing.T) {
 	in := SessionData{
-		UserID:    "user-äβγ-001",
-		IP:        "2001:db8::1",
-		UserAgent: "Mozilla/5.0 (compatible; garde-test/1.0)",
-		CreatedAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
+		UserID:     "user-äβγ-001",
+		IP:         "2001:db8::1",
+		UserAgent:  "Mozilla/5.0 (compatible; garde-test/1.0)",
+		CreatedAt:  time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
+		LastSeenAt: time.Date(2026, 9, 20, 13, 0, 0, 0, time.UTC),
+		PublicID:   "aabbccddeeff00112233445566778899",
+		IPDisplay:  "2001:db8:…",
+		UAFamily:   "Browser",
+		UASummary:  "Browser on Linux",
 	}
 	raw, err := json.Marshal(in)
 	if err != nil {
@@ -30,6 +35,9 @@ func TestSessionDataJSONRoundTrip(t *testing.T) {
 	}
 	if !out.CreatedAt.Equal(in.CreatedAt) {
 		t.Fatalf("CreatedAt = %v, want %v", out.CreatedAt, in.CreatedAt)
+	}
+	if out.PublicID != in.PublicID || out.IPDisplay != in.IPDisplay || out.UASummary != in.UASummary {
+		t.Fatalf("display fields: %+v", out)
 	}
 }
 

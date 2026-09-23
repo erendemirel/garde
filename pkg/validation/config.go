@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"garde/pkg/config"
+	"garde/pkg/crypto"
 	"strings"
 )
 
@@ -76,8 +77,8 @@ func ValidateConfig() error {
 		return fmt.Errorf("SUPERUSER_PASSWORD validation failed")
 	}
 
-	if strings.TrimSpace(config.Get("MFA_ENCRYPTION_KEY")) == "" {
-		return fmt.Errorf("MFA_ENCRYPTION_KEY is required")
+	if err := validateMFAEncryptionKey(); err != nil {
+		return err
 	}
 
 	// Validate admin users JSON if provided
@@ -100,6 +101,38 @@ func ValidateConfig() error {
 		return err
 	}
 
+	if err := config.ValidateEmailDomainLists(); err != nil {
+		return err
+	}
+	if err := validateBootstrapEmailsAgainstDomainPolicy(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Bootstrap accounts must satisfy the same registration domain policy when lists
+// are set — otherwise operators can lock themselves into an unreachable login
+// surface or an inconsistent allowlist.
+func validateBootstrapEmailsAgainstDomainPolicy() error {
+	if !config.EmailDomainPolicyConfigured() {
+		return nil
+	}
+	if err := ValidateEmailDomainPolicy(config.Get("SUPERUSER_EMAIL")); err != nil {
+		return fmt.Errorf("SUPERUSER_EMAIL is excluded by EMAIL_ALLOWED_DOMAINS / EMAIL_BLOCKED_DOMAINS")
+	}
+	for email := range config.GetAdminUsersMap() {
+		if err := ValidateEmailDomainPolicy(email); err != nil {
+			return fmt.Errorf("ADMIN_USERS_JSON email %q is excluded by EMAIL_ALLOWED_DOMAINS / EMAIL_BLOCKED_DOMAINS", email)
+		}
+	}
+	return nil
+}
+
+func validateMFAEncryptionKey() error {
+	if _, err := crypto.ParseMFAEncryptionKey(config.Get("MFA_ENCRYPTION_KEY")); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -173,6 +206,12 @@ func validateListenerPolicy() error {
 		if config.Get("TLS_CA_PATH") == "" {
 			return fmt.Errorf("TLS_CA_PATH is required when BROWSER_MTLS is %s", config.BrowserMTLS())
 		}
+	}
+
+	// Kill switch with no service listener leaves auth mounted nowhere while
+	// /ready stays green — fail closed rather than serving a hollow process.
+	if !config.PublicSelfServiceEnabled() && !config.ServiceListenerEnabled() {
+		return fmt.Errorf("PUBLIC_SELF_SERVICE=false requires SERVICE_LISTENER=true — otherwise no auth listener is available")
 	}
 
 	if !config.ServiceListenerEnabled() {

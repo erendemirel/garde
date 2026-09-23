@@ -51,7 +51,7 @@ func AllAPIKeyScopes() []APIKeyScopeInfo {
 		},
 		{
 			Name:        ScopeAuth,
-			Description: "Call public auth routes (login, register, password reset) without Cap when Cap is enabled",
+			Description: "Call enabled public auth routes (login, and register/password/email-verify when public self-service is on) without Cap when Cap is enabled",
 		},
 	}
 }

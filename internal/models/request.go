@@ -21,6 +21,11 @@ type RevokeSessionRequest struct {
 	MFACode string `json:"mfa_code,omitempty"`
 }
 
+// SelfServiceSessionRevokeRequest is used when a user revokes their own session(s).
+type SelfServiceSessionRevokeRequest struct {
+	MFACode string `json:"mfa_code,omitempty"`
+}
+
 type CreateUserRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
@@ -57,6 +62,17 @@ type PasswordResetRequest struct {
 	OTP         string `json:"otp" binding:"required,len=8"`
 	MFACode     string `json:"mfa_code,omitempty"`
 	CapToken    string `json:"cap_token,omitempty"`
+}
+
+type VerifyEmailRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Token    string `json:"token" binding:"required,min=16,max=128"`
+	CapToken string `json:"cap_token,omitempty"`
+}
+
+type ResendVerifyEmailRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	CapToken string `json:"cap_token,omitempty"`
 }
 
 // RequestUpdateFields is specifically for permission update requests

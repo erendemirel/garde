@@ -81,7 +81,7 @@ func TestStoreUserDuplicateEmail(t *testing.T) {
 }
 
 func TestUserMFASecretRoundTrip(t *testing.T) {
-	initTestConfig(t, map[string]string{"mfa_encryption_key": "test-key-for-unit-tests"})
+	initTestConfig(t, map[string]string{"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="})
 	ctx := context.Background()
 	r := newUserRepo(t)
 	u := &models.User{ID: "u-mfa", Email: "mfa@example.com", Status: models.UserStatusOk, MFASecret: "JBSWY3DPEHPK3PXP"}
@@ -201,6 +201,51 @@ func TestOTPStoreGetDeleteAndAttempts(t *testing.T) {
 	}
 	if _, err := r.GetOTP(ctx, "u-1"); err == nil {
 		t.Fatal("deleted OTP still readable")
+	}
+}
+
+func TestEmailVerifyAttemptTracking(t *testing.T) {
+	ctx := context.Background()
+	r := newEphemeralRepo(t)
+	for want := 1; want <= 3; want++ {
+		n, err := r.TrackEmailVerifyAttempt(ctx, "u-verify")
+		if err != nil || n != want {
+			t.Fatalf("attempt %d: n=%d err=%v", want, n, err)
+		}
+	}
+	if err := r.ClearEmailVerifyAttempts(ctx, "u-verify"); err != nil {
+		t.Fatal(err)
+	}
+	n, err := r.TrackEmailVerifyAttempt(ctx, "u-verify")
+	if err != nil || n != 1 {
+		t.Fatalf("after clear: n=%d err=%v, want 1", n, err)
+	}
+}
+
+func TestMFAAttemptAndOTPSendTracking(t *testing.T) {
+	ctx := context.Background()
+	r := newEphemeralRepo(t)
+	for want := 1; want <= 2; want++ {
+		n, err := r.TrackMFAAttempt(ctx, "u-mfa")
+		if err != nil || n != want {
+			t.Fatalf("mfa attempt %d: n=%d err=%v", want, n, err)
+		}
+	}
+	if err := r.ClearMFAAttempts(ctx, "u-mfa"); err != nil {
+		t.Fatal(err)
+	}
+	n, err := r.TrackMFAAttempt(ctx, "u-mfa")
+	if err != nil || n != 1 {
+		t.Fatalf("mfa after clear: n=%d err=%v", n, err)
+	}
+	for want := 1; want <= 2; want++ {
+		n, err := r.TrackOTPSend(ctx, "u-otp")
+		if err != nil || n != want {
+			t.Fatalf("otp send %d: n=%d err=%v", want, n, err)
+		}
+	}
+	if OTPSendMax() < 1 {
+		t.Fatal("OTPSendMax must be positive")
 	}
 }
 

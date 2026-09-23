@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"garde/internal/models"
+	"garde/internal/repository"
 	"garde/internal/testutil"
 	"garde/pkg/crypto"
 	pkgerrors "garde/pkg/errors"
@@ -25,7 +26,7 @@ func newFlowService(t *testing.T, secrets map[string]string) *AuthService {
 func baseSecrets() map[string]string {
 	return map[string]string{
 		"superuser_email":    "root@example.com",
-		"mfa_encryption_key": "test-key-for-unit-tests",
+		"mfa_encryption_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 	}
 }
 
@@ -231,6 +232,16 @@ func TestSendOTPAndResetPasswordEndToEnd(t *testing.T) {
 	}
 	otp = extractOTP(t, (*sent)[1])
 	if err := s.ResetPassword(ctx, &models.PasswordResetRequest{
+		Email: "otp@example.com", OTP: otp, NewPassword: "OldPassword1!",
+	}); err == nil || err.Error() != pkgerrors.ErrPasswordSameAsCurrent {
+		t.Fatalf("same password err = %v, want %q", err, pkgerrors.ErrPasswordSameAsCurrent)
+	}
+
+	if err := s.SendOTP(ctx, "otp@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	otp = extractOTP(t, (*sent)[2])
+	if err := s.ResetPassword(ctx, &models.PasswordResetRequest{
 		Email: "otp@example.com", OTP: otp, NewPassword: "NewPassword1!",
 	}); err != nil {
 		t.Fatalf("reset: %v", err)
@@ -250,6 +261,34 @@ func TestSendOTPAndResetPasswordEndToEnd(t *testing.T) {
 	}
 }
 
+func TestSendOTPRateLimited(t *testing.T) {
+	s := newFlowService(t, baseSecrets())
+	ctx := context.Background()
+	hash, err := crypto.HashPassword("OldPassword1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := &models.User{ID: "otp-rl", Email: "otprl@example.com", PasswordHash: hash, Status: models.UserStatusOk}
+	if err := s.repo.StoreUser(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	sent := mockMail(t)
+	for i := 0; i < repository.OTPSendMax(); i++ {
+		if err := s.SendOTP(ctx, "otprl@example.com"); err != nil {
+			t.Fatalf("send %d: %v", i+1, err)
+		}
+	}
+	if len(*sent) != repository.OTPSendMax() {
+		t.Fatalf("mails = %d, want %d", len(*sent), repository.OTPSendMax())
+	}
+	if err := s.SendOTP(ctx, "otprl@example.com"); err != nil {
+		t.Fatalf("over-limit send: %v", err)
+	}
+	if len(*sent) != repository.OTPSendMax() {
+		t.Fatalf("over-limit still mailed: got %d", len(*sent))
+	}
+}
+
 func TestChangePasswordRotates(t *testing.T) {
 	s := newFlowService(t, baseSecrets())
 	ctx := context.Background()
@@ -266,6 +305,11 @@ func TestChangePasswordRotates(t *testing.T) {
 		OldPassword: "WrongOld1!", NewPassword: "NewPassword1!",
 	}); err == nil || err.Error() != pkgerrors.ErrInvalidCredentials {
 		t.Fatalf("wrong old err = %v, want %q", err, pkgerrors.ErrInvalidCredentials)
+	}
+	if err := s.ChangePassword(ctx, "cp-1", &models.ChangePasswordRequest{
+		OldPassword: "OldPassword1!", NewPassword: "OldPassword1!",
+	}); err == nil || err.Error() != pkgerrors.ErrPasswordSameAsCurrent {
+		t.Fatalf("same password err = %v, want %q", err, pkgerrors.ErrPasswordSameAsCurrent)
 	}
 	if err := s.ChangePassword(ctx, "cp-1", &models.ChangePasswordRequest{
 		OldPassword: "OldPassword1!", NewPassword: "NewPassword1!",

@@ -433,20 +433,9 @@
 </script>
 
 <div class="space-y-4" data-testid="superuser-catalog" data-mode={mode}>
-	<div class="flex justify-between items-center gap-3 flex-wrap">
-		<div>
-			<h2 class="section-title">{title}</h2>
-			<p class="text-sm text-muted mt-1">{subtitle}</p>
-		</div>
-		<button
-			class="btn-light py-1.5 text-xs"
-			type="button"
-			data-testid="superuser-catalog-create"
-			onclick={() => openItemModal()}
-		>
-			<Plus size={16} class="-ml-0.5" />
-			{createLabel}
-		</button>
+	<div>
+		<h2 class="section-title">{title}</h2>
+		<p class="section-subtitle">{subtitle}</p>
 	</div>
 
 	{#if loading}
@@ -456,16 +445,27 @@
 	{:else if $usersCacheError}
 		<p class="error" data-testid="superuser-catalog-users-error">{$usersCacheError}</p>
 	{:else}
-		<label class="form-label max-w-md">
-			<span>Search</span>
-			<input
-				class="input"
-				type="search"
-				data-testid="superuser-catalog-search"
-				placeholder="Search by name or description..."
-				bind:value={search}
-			/>
-		</label>
+		<div class="flex flex-wrap items-end justify-between gap-3">
+			<label class="form-label w-[28rem] max-w-full">
+				<span>Search</span>
+				<input
+					class="input"
+					type="search"
+					data-testid="superuser-catalog-search"
+					placeholder="Search by name or description..."
+					bind:value={search}
+				/>
+			</label>
+			<button
+				class="btn-primary shrink-0"
+				type="button"
+				data-testid="superuser-catalog-create"
+				onclick={() => openItemModal()}
+			>
+				<Plus size={16} class="-ml-0.5" />
+				{createLabel}
+			</button>
+		</div>
 
 		<div class="table-scroll">
 			<table class="table-base" data-testid="superuser-catalog-table">
@@ -594,7 +594,7 @@
 				placeholder={mode === 'permissions' ? 'permission_name' : 'group_name'}
 			/>
 			{#if editingItem}
-				<p class="text-xs text-muted">
+				<p class="text-sm text-muted">
 					{mode === 'permissions' ? 'Permission' : 'Group'} name cannot be changed
 				</p>
 			{/if}
@@ -609,8 +609,13 @@
 				rows="4"
 			></textarea>
 		</label>
-		{#if editingItem && itemDirty}
-			<p class="text-sm text-muted">Definition has unsaved changes.</p>
+		{#if editingItem}
+			<p
+				class="text-sm text-muted {itemDirty ? '' : 'invisible'}"
+				aria-hidden={!itemDirty}
+			>
+				Definition has unsaved changes.
+			</p>
 		{/if}
 		<div class="form-actions">
 			<button
@@ -668,7 +673,7 @@
 	{/snippet}
 	{#if managingMembership}
 		<div class="space-y-4" data-testid="superuser-catalog-manage-modal">
-			<p class="text-xs text-muted">{assignmentHelp}</p>
+			<p class="section-subtitle">{assignmentHelp}</p>
 			<MultiSelectChips
 				options={pickerOptions}
 				bind:selected={selectedMembers}

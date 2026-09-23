@@ -75,10 +75,15 @@ func TestCORSPreflightAndHeaders(t *testing.T) {
 	}
 
 	rec = corsRequest(t, http.MethodGet, "http://localhost:5173")
+	if got := rec.Header().Get("Vary"); got != "Origin" {
+		t.Fatalf("Vary = %q, want Origin", got)
+	}
 	for header, want := range map[string]string{
 		"X-Frame-Options":                  "DENY",
 		"X-Content-Type-Options":           "nosniff",
 		"Content-Security-Policy":          "default-src 'self'",
+		"Referrer-Policy":                  "strict-origin-when-cross-origin",
+		"Permissions-Policy":               "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), midi=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=()",
 		"Access-Control-Allow-Credentials": "true",
 	} {
 		if got := rec.Header().Get(header); got != want {

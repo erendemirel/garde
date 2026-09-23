@@ -76,6 +76,16 @@ func TestPublicValidateFollowsTheServiceListener(t *testing.T) {
 	if !PublicValidateEnabled() {
 		t.Fatal("PUBLIC_VALIDATE=true must override the default")
 	}
+
+	// Kill switch wins over PUBLIC_VALIDATE.
+	withSecrets(t, map[string]string{
+		"public_self_service": "false",
+		"public_validate":     "true",
+		"service_listener":    "false",
+	})
+	if PublicValidateEnabled() {
+		t.Fatal("public kill switch must disable public /validate")
+	}
 }
 
 func TestPublicValidateMTLSRequiresBuiltInTLSAndCA(t *testing.T) {

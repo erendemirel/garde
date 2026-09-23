@@ -163,6 +163,38 @@ template {
   destination = "/run/secrets/enforce_mfa"
 }
 
+# Registration / public surface. Absent → code defaults (self-service on,
+# admin approval off, email verification on).
+template {
+  contents = "{{ with secret \"secret/data/garde/public_self_service\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/public_self_service"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/require_admin_approval\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/require_admin_approval"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/require_email_verification\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/require_email_verification"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/email_allowed_domains\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/email_allowed_domains"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/email_blocked_domains\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/email_blocked_domains"
+  error_on_missing_key = false
+}
+
 template {
   contents = "{{ with secret \"secret/data/garde/rate_limit\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/rate_limit"
@@ -203,6 +235,24 @@ template {
 template {
   contents = "{{ with secret \"secret/data/garde/cookie_secure\" }}{{ .Data.data.value }}{{ end }}"
   destination = "/run/secrets/cookie_secure"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/session_idle_timeout\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/session_idle_timeout"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/session_absolute_timeout\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/session_absolute_timeout"
+  error_on_missing_key = false
+}
+
+template {
+  contents = "{{ with secret \"secret/data/garde/session_max_active\" }}{{ .Data.data.value }}{{ end }}"
+  destination = "/run/secrets/session_max_active"
   error_on_missing_key = false
 }
 

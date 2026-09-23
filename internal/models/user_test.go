@@ -25,7 +25,7 @@ func TestHasPermission(t *testing.T) {
 func TestIsValidUserStatus(t *testing.T) {
 	for _, s := range []UserStatus{
 		UserStatusOk, UserStatusLockedByAdmin, UserStatusLockedBySecurity,
-		UserStatusPendingApproval, UserStatusApprovalRejected,
+		UserStatusPendingApproval, UserStatusApprovalRejected, UserStatusEmailNotVerified,
 	} {
 		if !IsValidUserStatus(s) {
 			t.Fatalf("status %q reports invalid", s)
