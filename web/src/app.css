@@ -139,17 +139,7 @@ a {
 	}
 
 	.settings-row {
-		@apply relative flex items-center gap-3 px-3.5 py-3 text-inherit no-underline outline-none transition-all duration-150 ease-out hover:bg-[#a39eb0]/10 focus-visible:bg-[#a39eb0]/10 motion-reduce:transition-none;
-	}
-
-	.settings-row::before {
-		content: '';
-		@apply pointer-events-none absolute inset-y-2 left-0 w-0.5 rounded-full bg-[#a39eb0] opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none;
-	}
-
-	.settings-row:hover::before,
-	.settings-row:focus-visible::before {
-		@apply opacity-100;
+		@apply flex items-center gap-3 px-3.5 py-3 text-inherit no-underline outline-none transition-all duration-150 ease-out hover:bg-[#a39eb0]/10 focus-visible:bg-[#a39eb0]/10 motion-reduce:transition-none;
 	}
 
 	.settings-row-icon {
