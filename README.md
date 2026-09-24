@@ -32,10 +32,7 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 Admins are not global operators. They can only touch users who share a group, and they can only grant permissions their own groups can see (`permission_visibility`). Superuser is exempt and is the only principal that can assign a user’s first group.
 
 > [!TIP]
-> garde avoids OAuth-style "scopes" that often lead to insecure permission paradoxes. Application 
-access is expressed as named permissions visible to groups. Users can request permission changes 
-from admins. A fixed Superuser / Admin / User privilege tier still exists for bootstrap 
-administration.
+> garde avoids OAuth-style "scopes" that often lead to insecure permission paradoxes
 
 Capability matrix and a request → approve walkthrough: [Permission and Group Management](docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management).
 
@@ -65,13 +62,13 @@ An optional SvelteKit app in `web/` talks to the same API as any other client (c
 - **Admin** — list and edit users in shared groups (approve/reject pending updates, lock/unlock, MFA enforce, revoke sessions)
 - **Superuser** — permissions and groups catalogue, tenant API keys for `/validate`, and full user management
 
-Production can serve the built UI from its own container or static host; locally you run it with Bun against the API on port 8443 (see Quick Start).
+Production can serve the built UI from its own container or static host; locally you run it with Bun against the API on port 8443 (see [Quick Start](#quick-start)).
 
 ---
 
 ## Requirements
 
-- **Go**: 1.27 or later (see `go.mod`)
+- **Go**: 1.27 or later
 - **PostgreSQL**: 16 or later
 - **Redis**: 6.0 or later
 - **Docker and Docker Compose**: 17.06+ and v2.0+
@@ -81,7 +78,7 @@ Production can serve the built UI from its own container or static host; locally
 
 ## Quick Start
 
-You can start the dev stack in seconds without configuring anything:
+You can start the dev stack on your local computer in seconds without configuring anything:
 
 ```bash
 # Clone the repository
@@ -96,7 +93,7 @@ This starts Vault (dev mode), PostgreSQL, Redis, and garde. Secrets are seeded f
 
 Access the API at `http://localhost:8443`. Login: `test.superuser@test.com` or `test.admin@test.com`, password `DevAdminTest123!` for both.
 
-Swagger: `http://localhost:8443/swagger/index.html`. Probes: `GET /live`, `GET /ready`, `GET /health`.
+**Swagger:** `http://localhost:8443/swagger/index.html`. Probes: `GET /live`, `GET /ready`, `GET /health`.
 
 **Web UI:** from `web/`, run `bun install` then `bun run dev` (Vite proxies `/api` to `http://localhost:8443`). Sign in with the same accounts to explore account, admin, and superuser screens.
 
