@@ -6,7 +6,7 @@
 //     hand-rolling os.WriteFile + config.Init in every test.
 //   - Redis: use NewMiniRedis (alicebob/miniredis) instead of a live server.
 //     Callers wrap the client, e.g.
-//     repository.NewRedisRepositoryFromClient(client).
+//     repository.NewStoreFromRedisClient(client).
 //   - HTTP: gin.TestMode + httptest, assert status AND error message.
 //   - No network dials, no sleeps for timing, restore any globals with
 //     t.Cleanup.

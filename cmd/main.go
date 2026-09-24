@@ -229,8 +229,8 @@ func main() {
 	slog.Info("Server stopped")
 }
 
-// newEngine builds the middleware stack both listeners share. /health is
-// registered before the rate limiter so probes are never throttled.
+// newEngine builds the middleware stack both listeners share. Probes are
+// registered before the rate limiter so they are never throttled.
 func newEngine(deps *routerDeps) *gin.Engine {
 	router := gin.New()
 	// Do not trust X-Forwarded-For unless TRUSTED_PROXIES is set (comma-separated CIDRs/IPs).
@@ -285,9 +285,8 @@ func newEngine(deps *routerDeps) *gin.Engine {
 	router.Use(middleware.ValidateRequestParameters())
 
 	// Probes run before the rate limiter so load balancers are never throttled.
-	// /live  â€” process is up (do not check backends; used for restart loops)
-	// /ready â€” node can serve traffic (Postgres + Redis)
-	// /health â€” alias of /ready for older LB configs
+	// /live  — process is up (do not check backends; used for restart loops)
+	// /ready — node can serve traffic (Postgres + Redis)
 	router.GET("/live", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -306,7 +305,6 @@ func newEngine(deps *routerDeps) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
 	router.GET("/ready", ready)
-	router.GET("/health", ready)
 
 	router.Use(deps.rateLimiter.Limit())
 

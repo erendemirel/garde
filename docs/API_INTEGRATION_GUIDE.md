@@ -330,9 +330,10 @@ Store the `key` value at the caller's end immediately; `id` is what you use to
 revoke that one key, and `tenant_id` is what you use to revoke all of them.
 
 `audience` binds the key to one surface: `internal` (private service listener)
-or `tenant` (public `/validate` when published). On a dual-listener deploy, a
-key issued for the wrong surface is refused with `403`. Pre-audience keys
-(empty `audience`) remain usable on either surface until re-issued.
+or `tenant` (public `/validate` when published). Required on every new key. On a
+dual-listener deploy, a key issued for the wrong surface — or with no audience —
+is refused with `403`. On a single-listener mount (no audience requirement), any
+keyed audience is accepted.
 
 `scopes` is an explicit grant list. Known scopes:
 
@@ -887,7 +888,7 @@ By default "admin" is one bundle: an admin who may update a user may also delete
 {"helpdesk@example.com":["garde:users:read","garde:users:write"]}
 ```
 
-- Restricting is **opt-in per admin**: an admin with no entry keeps all four scopes, exactly as before. An explicit `[]` denies all four.
+- When `ADMIN_SCOPES_JSON` is set, every admin must be listed; a missing entry or `[]` denies all four scopes. Unset = feature off (all admins unrestricted).
 - Superusers hold every scope and must not be listed; startup fails if they are.
 - Every listed address must also appear in `ADMIN_USERS_JSON`, and every scope name must be known — startup fails otherwise, because an entry naming nobody would silently restrict nobody.
 - A request missing the route's scope gets `403` with `"admin account is not permitted for this endpoint"`.

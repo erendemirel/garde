@@ -36,7 +36,7 @@ func validationRouter() *gin.Engine {
 	router.POST("/sessions/revoke", ok)
 	router.POST("/users/request-update-from-admin", ok)
 	router.PUT("/users/:user_id", ok)
-	router.GET("/health", ok)
+	router.GET("/probe", ok)
 	return router
 }
 
@@ -111,7 +111,7 @@ func TestValidationPutUserAndPassthrough(t *testing.T) {
 	}
 
 	// Unknown routes pass through untouched.
-	req = httptest.NewRequest(http.MethodGet, "/health", nil)
+	req = httptest.NewRequest(http.MethodGet, "/probe", nil)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -119,7 +119,7 @@ func TestValidationPutUserAndPassthrough(t *testing.T) {
 	}
 
 	// Bracket characters are rejected by Sanitize (validate-then-escape).
-	req = httptest.NewRequest(http.MethodGet, "/health?q=hello<script>", nil)
+	req = httptest.NewRequest(http.MethodGet, "/probe?q=hello<script>", nil)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -127,7 +127,7 @@ func TestValidationPutUserAndPassthrough(t *testing.T) {
 	}
 
 	// Overlong values exceed ValidateGenericInput's 1024 cap and are refused.
-	req = httptest.NewRequest(http.MethodGet, "/health?q="+strings.Repeat("a", 2000), nil)
+	req = httptest.NewRequest(http.MethodGet, "/probe?q="+strings.Repeat("a", 2000), nil)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -136,13 +136,13 @@ func TestValidationPutUserAndPassthrough(t *testing.T) {
 
 	// Authorization must not be HTML-escaped / mutated by header sanitize.
 	const bearer = "Bearer abc+def/ghi="
-	req = httptest.NewRequest(http.MethodGet, "/health", nil)
+	req = httptest.NewRequest(http.MethodGet, "/probe", nil)
 	req.Header.Set("Authorization", bearer)
 	rec = httptest.NewRecorder()
 	var seenAuth string
 	router2 := gin.New()
 	router2.Use(ValidateRequestParameters())
-	router2.GET("/health", func(c *gin.Context) {
+	router2.GET("/probe", func(c *gin.Context) {
 		seenAuth = c.GetHeader("Authorization")
 		c.Status(http.StatusOK)
 	})

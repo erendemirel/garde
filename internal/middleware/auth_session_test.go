@@ -18,7 +18,7 @@ import (
 
 // AuthMiddleware with a real service on miniredis: cookie and Bearer session
 // paths, plus every missing/malformed credential shape.
-func authStack(t *testing.T) (*service.AuthService, *service.SecurityAnalyzer, *repository.RedisRepository) {
+func authStack(t *testing.T) (*service.AuthService, *service.SecurityAnalyzer, *repository.Store) {
 	t.Helper()
 	testutil.InitConfig(t, map[string]string{"superuser_email": "root@example.com"})
 	repo := testutil.NewTestStore(t)
@@ -26,7 +26,7 @@ func authStack(t *testing.T) (*service.AuthService, *service.SecurityAnalyzer, *
 	return svc, service.NewSecurityAnalyzer(repo), repo
 }
 
-func seedMiddlewareUser(t *testing.T, repo *repository.RedisRepository) {
+func seedMiddlewareUser(t *testing.T, repo *repository.Store) {
 	t.Helper()
 	hash, err := crypto.HashPassword("DevAdminTest123!")
 	if err != nil {

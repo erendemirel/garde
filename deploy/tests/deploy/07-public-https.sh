@@ -12,7 +12,7 @@ if printf '%s' "${API_DOMAIN:-}${APP_DOMAIN:-}" | grep -qiE 'example\.(com|org|n
 fi
 
 need_cmd curl
-for url in "https://${API_DOMAIN}/health" "https://${APP_DOMAIN}/"; do
+for url in "https://${API_DOMAIN}/ready" "https://${APP_DOMAIN}/"; do
   code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo 000)"
   [ "$code" = "200" ] || die "$url -> $code"
   ok "$url -> $code"

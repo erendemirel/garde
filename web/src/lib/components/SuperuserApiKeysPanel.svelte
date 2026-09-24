@@ -593,7 +593,7 @@
 													{#if key.audience}
 														<span class="ms-chip text-xs px-2 py-0.5">{key.audience}</span>
 													{:else}
-														<span class="text-muted text-xs" title="Pre-audience key; accepted on any surface until re-issued">any</span>
+														<span class="text-error text-xs" title="Missing audience — revoke and re-issue with internal or tenant">invalid</span>
 													{/if}
 												</td>
 												<td>

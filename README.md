@@ -93,7 +93,7 @@ This starts Vault (dev mode), PostgreSQL, Redis, and garde. Secrets are seeded f
 
 Access the API at `http://localhost:8443`. Login: `test.superuser@test.com` or `test.admin@test.com`, password `DevAdminTest123!` for both.
 
-**Swagger:** `http://localhost:8443/swagger/index.html`. Probes: `GET /live`, `GET /ready`, `GET /health`.
+**Swagger:** `http://localhost:8443/swagger/index.html`. Probes: `GET /live`, `GET /ready`.
 
 **Web UI:** from `web/`, run `bun install` then `bun run dev` (Vite proxies `/api` to `http://localhost:8443`). Sign in with the same accounts to explore account, admin, and superuser screens.
 

@@ -19,10 +19,10 @@ import (
 
 // PATHandler manages personal access tokens a user issues to act as themselves.
 type PATHandler struct {
-	repo *repository.RedisRepository
+	repo *repository.Store
 }
 
-func NewPATHandler(repo *repository.RedisRepository) *PATHandler {
+func NewPATHandler(repo *repository.Store) *PATHandler {
 	return &PATHandler{repo: repo}
 }
 

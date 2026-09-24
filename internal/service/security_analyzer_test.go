@@ -44,7 +44,7 @@ func newAnalyzerWithMiniRedis(t *testing.T) (*SecurityAnalyzer, *miniredis.Minir
 	t.Cleanup(mr.Close)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	return NewSecurityAnalyzer(repository.NewRedisRepositoryFromClient(client)), mr
+	return NewSecurityAnalyzer(repository.NewStoreFromRedisClient(client)), mr
 }
 
 func TestIsUnusualUserAgent(t *testing.T) {

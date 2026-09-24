@@ -20,10 +20,10 @@ import (
 // /validate (internal services and external tenants). Every route it serves
 // is superuser-only.
 type APIKeyHandler struct {
-	repo *repository.RedisRepository
+	repo *repository.Store
 }
 
-func NewAPIKeyHandler(repo *repository.RedisRepository) *APIKeyHandler {
+func NewAPIKeyHandler(repo *repository.Store) *APIKeyHandler {
 	return &APIKeyHandler{repo: repo}
 }
 

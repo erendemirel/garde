@@ -25,8 +25,11 @@ func TestServiceAPIKeyMatchesAudience(t *testing.T) {
 		t.Fatal("tenant key audience matching wrong")
 	}
 	empty := &ServiceAPIKey{}
-	if !empty.MatchesAudience(AudienceInternal) || !empty.MatchesAudience(AudienceTenant) {
-		t.Fatal("empty audience must match any required surface")
+	if empty.MatchesAudience(AudienceInternal) || empty.MatchesAudience(AudienceTenant) {
+		t.Fatal("empty audience must be refused when the mount requires one")
+	}
+	if !empty.MatchesAudience("") {
+		t.Fatal("empty required (single-listener) still accepts any key")
 	}
 }
 
@@ -83,7 +86,7 @@ func TestServiceAPIKeyLifecycle(t *testing.T) {
 	if k.Usable(now) || !k.Revoked() {
 		t.Fatal("revoked key still usable")
 	}
-	// No expiry at all (legacy/unspecified) means usable unless revoked.
+	// No expiry means usable unless revoked (never_expires / open-ended keys).
 	k.RevokedAt = nil
 	if !k.Usable(now) {
 		t.Fatal("key without expiry should be usable")

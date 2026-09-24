@@ -9,12 +9,12 @@ import (
 	"garde/internal/models"
 )
 
-func newAPIKeyRepo(t *testing.T) *RedisRepository {
+func newAPIKeyRepo(t *testing.T) *Store {
 	t.Helper()
 	return newDurableStore(t)
 }
 
-func storeKey(t *testing.T, repo *RedisRepository, id, name string) *models.ServiceAPIKey {
+func storeKey(t *testing.T, repo *Store, id, name string) *models.ServiceAPIKey {
 	t.Helper()
 	key := &models.ServiceAPIKey{
 		ID:         id,
@@ -29,7 +29,7 @@ func storeKey(t *testing.T, repo *RedisRepository, id, name string) *models.Serv
 	return key
 }
 
-func storeTenantKey(t *testing.T, repo *RedisRepository, id, tenantID, name string) *models.ServiceAPIKey {
+func storeTenantKey(t *testing.T, repo *Store, id, tenantID, name string) *models.ServiceAPIKey {
 	t.Helper()
 	key := &models.ServiceAPIKey{
 		ID:         id,

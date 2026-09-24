@@ -12,14 +12,14 @@ import (
 )
 
 // Durable user tests need Postgres; session/OTP/lock paths stay Redis-only.
-func newUserRepo(t *testing.T) *RedisRepository {
+func newUserRepo(t *testing.T) *Store {
 	t.Helper()
 	return newDurableStore(t)
 }
 
-func newEphemeralRepo(t *testing.T) *RedisRepository {
+func newEphemeralRepo(t *testing.T) *Store {
 	t.Helper()
-	return NewRedisRepositoryFromClient(newMiniRedisClient(t))
+	return NewStoreFromRedisClient(newMiniRedisClient(t))
 }
 
 func TestStoreAndGetUserRoundTrip(t *testing.T) {

@@ -53,7 +53,7 @@ func isSuperuserEmail(email string) bool {
 }
 
 type AuthService struct {
-	repo             *repository.RedisRepository
+	repo             *repository.Store
 	securityAnalyzer *SecurityAnalyzer
 }
 
@@ -64,14 +64,14 @@ type ValidationResult struct {
 	CookieMaxAge time.Duration
 }
 
-func NewAuthService(repo *repository.RedisRepository) *AuthService {
+func NewAuthService(repo *repository.Store) *AuthService {
 	return &AuthService{
 		repo:             repo,
 		securityAnalyzer: NewSecurityAnalyzer(repo),
 	}
 }
 
-func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) error {
+func InitializeSuperUser(ctx context.Context, repo *repository.Store) error {
 	email := config.Get("SUPERUSER_EMAIL")
 	password := config.Get("SUPERUSER_PASSWORD")
 	mfaEnforced := config.GetBool("ENFORCE_MFA")
@@ -128,7 +128,7 @@ func InitializeSuperUser(ctx context.Context, repo *repository.RedisRepository) 
 }
 
 // ADMIN_USERS_JSON should be a JSON object: {"admin1@example.com":"Password1!","admin2@example.com":"Password2!"}
-func InitializeAdminUsers(ctx context.Context, repo *repository.RedisRepository) error {
+func InitializeAdminUsers(ctx context.Context, repo *repository.Store) error {
 	adminMap := config.GetAdminUsersMap()
 	if len(adminMap) == 0 {
 		return nil
@@ -1448,15 +1448,8 @@ func (s *AuthService) ListSessions(ctx context.Context, userID, currentSessionID
 			continue
 		}
 		if data.PublicID == "" {
-			if err := data.TouchDisplay(); err != nil {
-				slog.Warn("Failed to assign session public id", "error", err)
-				continue
-			}
-			ttl := session.RemainingTTL(data.CreatedAt)
-			if ttl <= 0 {
-				continue
-			}
-			_ = s.repo.StoreSessionData(ctx, sid, data, ttl)
+			// Sessions without a public id cannot be listed or revoked safely.
+			continue
 		}
 		lastSeen := data.LastSeenAt
 		if lastSeen.IsZero() {

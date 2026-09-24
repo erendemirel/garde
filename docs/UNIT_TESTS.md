@@ -43,7 +43,7 @@ pkg/*/                 # pure units: validators, crypto, session, mail shape,
   Do not use `t.Parallel()` in tests that touch config or globals.
 - **Durable store via `testutil.NewTestStore`** (Postgres + miniredis). Skips when
   `GARDE_TEST_DATABASE_URL` is unset. Ephemeral-only tests may use
-  `repository.NewRedisRepositoryFromClient` / miniredis alone.
+  `repository.NewStoreFromRedisClient` / miniredis alone.
 - **Never initialise the permission singleton** (`InitPermissionRepository` /
   `GetPermissionRepository`) in unit tests: it flips `IsPermissionsLoaded` /
   `IsGroupsLoaded` process-wide and breaks guard assertions elsewhere.

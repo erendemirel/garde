@@ -20,18 +20,18 @@ func initRapid(t *testing.T, value string) {
 	}
 }
 
-func TestRapidConfigSingleThreshold(t *testing.T) {
+func TestRapidConfigSingleValueIgnored(t *testing.T) {
 	prevThresh, prevTimeout, prevDisabled := RapidRequestThreshold, AutomatedRequestTimeout, rapidRequestCheckDisabled
 	t.Cleanup(func() {
 		RapidRequestThreshold, AutomatedRequestTimeout, rapidRequestCheckDisabled = prevThresh, prevTimeout, prevDisabled
 	})
 	initRapid(t, "50")
 	InitRapidRequestConfig()
-	if RapidRequestThreshold != 50 {
-		t.Fatalf("threshold = %d, want 50", RapidRequestThreshold)
+	if RapidRequestThreshold != prevThresh || AutomatedRequestTimeout != prevTimeout {
+		t.Fatal("single-value RAPID_REQUEST_CONFIG must be ignored")
 	}
-	if IsRapidRequestCheckDisabled() {
-		t.Fatal("should not be disabled")
+	if IsRapidRequestCheckDisabled() != prevDisabled {
+		t.Fatal("single-value must not change disabled flag")
 	}
 }
 

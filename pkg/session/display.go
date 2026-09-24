@@ -132,34 +132,17 @@ func SummarizeUserAgent(ua string) (family, summary, kind string) {
 	return family, family + " on " + osName, kind
 }
 
-// TouchDisplay updates last-seen and ensures a PublicID exists for older sessions.
+// TouchDisplay updates last-seen on an active session. Display fields are set
+// at login via NewSessionData.
 func (d *SessionData) TouchDisplay() error {
 	if d == nil {
 		return nil
 	}
 	d.LastSeenAt = time.Now().UTC()
-	if d.PublicID == "" {
-		id, err := GeneratePublicID()
-		if err != nil {
-			return err
-		}
-		d.PublicID = id
-	}
-	if d.UAFamily == "" && d.UASummary == "" {
-		d.UAFamily = "Unknown"
-		d.UASummary = "Unknown client"
-	}
-	if d.DeviceKind == "" {
-		d.DeviceKind = InferDeviceKind(d.UAFamily, d.UASummary)
-	}
-	if d.IPDisplay == "" {
-		d.IPDisplay = "unknown"
-	}
 	return nil
 }
 
-// InferDeviceKind maps stored family/summary to a UI device kind when DeviceKind
-// was not persisted (older sessions).
+// InferDeviceKind maps stored family/summary to a UI device kind.
 func InferDeviceKind(family, summary string) string {
 	f := strings.ToLower(strings.TrimSpace(family))
 	s := strings.ToLower(strings.TrimSpace(summary))
