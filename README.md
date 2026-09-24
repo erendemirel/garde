@@ -1,12 +1,11 @@
 # garde
 
-A lightweight yet secure authentication API. App nodes are stateless and active-active.
+A lightweight yet secure authentication API. App nodes are stateless and active-active. Run it as a public login surface, keep privileged and machine traffic on a private network, or turn the public auth surface off so almost nothing is exposed.
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
 - [Key Concepts](#key-concepts)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
@@ -17,40 +16,22 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 
 ---
 
-## Features
-
-- **Security**: Rate limiting (IP-based for public endpoints, user-based with role-aware thresholds for authenticated endpoints), behavior detection, session security, input sanitization, request size limiting, Vault-managed secret rotation, mTLS for internal `/validate`, MFA<br>
-- **Authentication**: Browser sessions, API sessions, personal access tokens, internal service mTLS + per-caller API keys, and per-tenant API keys for external `/validate` callers<br>
-- **Permissions**: Named permissions + groups with visibility controls (not OAuth scopes), plus a request/approval workflow. Superuser/Admin/User are bootstrap privilege tiers, separate from app permissions<br>
-- **Implementation**: Vault secrets, Argon2 password hashing, MFA secrets encrypted at rest, secure error handling, privacy protection<br>
-- **Hot Reload**: Selected secrets and credentials reload without restart (see below)<br>
-- **Web UI**: Optional built-in SvelteKit based web interface for user and admin management<br>
-
-> [!TIP]
-> garde avoids OAuth-style "scopes" that often lead to insecure permission paradoxes. Application access is expressed as named permissions visible to groups. Users can request permission changes from admins. A fixed Superuser / Admin / User privilege tier still exists for bootstrap administration.
-
----
-
 ### Key Concepts
 
 #### Authentication modes:
-- **Browser**: Traditional web login with secure HTTP-only cookies
-- **API session**: Same session model with `Authorization: Bearer <session_id>`
-- **Personal access token (PAT)**: Long-lived `garde_pat_…` credential a user issues for scripts/CI; acts as that user with live permissions and groups. Managed under **Access tokens** in the UI (`POST /users/me/tokens`). Creating or revoking PATs requires a browser **cookie** session — Bearer sessions and other PATs cannot mint PATs. PATs are refused on `/validate`.
-- **Internal `/validate`**: Private service listener with **client certificate + issued API key** (mesh / not on the public hostname)
-- **External `/validate`**: Per-tenant API key (`garde_…`) over ordinary HTTPS; keyed by `tenant_id`, issued by superuser; non-issued credentials are refused
+- **Browser / API session**: Cookie or `Authorization: Bearer <session_id>`
+- **PAT** (`garde_pat_…`): User-issued script/CI credential; managed under **Access tokens**; not valid on `/validate`
+- **Internal `/validate`**: Private network — client certificate + issued API key
+- **External `/validate`**: Per-tenant API key over ordinary HTTPS when you publish it
 
 #### Hierarchical Admin System:
-- **Superuser**: Single privileged user with unlimited access (defined by email)
-- **Admins**: Multiple users with administrative privileges (defined by email list)
-- **Users**: Regular users who can request permission changes from admins
-
-These tiers are **not** application permissions. App-level access uses named permissions and groups (see below).
+- **Superuser** / **Admins** / **Users** — bootstrap privilege tiers (email config), not application permissions. App access uses named permissions and groups.
 
 #### Security Without Scope Paradoxes:
-garde separates bootstrap privilege (Superuser/Admin) from application permissions:
-- **Permission Requests**: Users request changes, admins approve or modify
-- **Permission Visibility**: Permissions are visible to specific groups - users only see and can request permissions visible to their groups. Similarly, admins can only approve/reject permissions visible to their groups.
+Named permissions (not OAuth scopes) with a request/approval workflow. Visibility is group-scoped: users and admins only see or act on permissions visible to their groups.
+
+> [!TIP]
+> garde avoids OAuth-style "scopes" that often lead to insecure permission paradoxes. Application access is expressed as named permissions visible to groups. Users can request permission changes from admins. A fixed Superuser / Admin / User privilege tier still exists for bootstrap administration.
 
 #### Group-Based Access Control and Permission Visibility:
 Admins can manage a user only if they share at least one group with that user. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met. In addition to this, permissions have visibility to groups. A permission is visible to a group if there's a mapping in the `permission_visibility` table that controls what users see and perform. Admins and users can see only the permissions visible to their groups:
@@ -71,20 +52,18 @@ Initial group assignments can only be done by Superuser.
 
 For a worked example of request → approve, see [Permission and Group Management](docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management).
 
-#### TLS and mTLS, per audience:
-garde separates the two audiences it serves, because one TLS switch cannot make
-both of them secure and usable:
+#### Listeners, TLS, and public surface:
+garde splits **who** can reach **what**, because browsers and backend services need different trust models:
 
-- **Browsers** get server TLS only — from a reverse proxy, a cloud load balancer, or garde's own `USE_TLS`. They are never asked for a client certificate, which would lock out every normal user.
-- **Your services** calling `/validate` get a private listener that requires a **client certificate plus an issued API key**. It is published on a private network, not on the hostname browsers use.
-- **External tenants**, who cannot join that network or maintain a certificate, get a **per-tenant API key** (`tenant_id` holder) over ordinary HTTPS: issued and revoked one caller at a time, rate-limited per key, stored as a hash.
-- **Human automation** against garde's own REST API uses a **PAT**, not a tenant key — different prefix, different audience, no `/validate` access.
-- **The switches are independent** (`browser_mtls`, `service_mtls`, `public_validate`), so enabling certificates for services does not affect browsers, and publishing `/validate` for tenants does not change the mesh listener.
+- **Public side** — what the internet (or your users) hit. By default that includes login, registration, and self-service. You can turn that surface off so the public side only answers health checks and a tiny config endpoint; people then sign in only on the private network.
+- **Private side** — for your own services and operators. Session validation for machines lives here (certificate + API key). Admin tools live here too when the private listener is on. If the public auth surface is off, login moves here as well.
+- **Browsers** use ordinary HTTPS (proxy, load balancer, or garde itself) — not client certificates in the usual setup.
+- **Partner systems** that cannot join your private network can still call session validation with a per-tenant API key over HTTPS, when you choose to expose that path.
 
-For the production layouts and how to issue the certificates, see [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration). For PAT and tenant-key request shapes, see the [Integration Guide](docs/API_INTEGRATION_GUIDE.md).
+Email verification and optional admin approval for new accounts are configurable. How to wire listeners and certificates is in the install guide: [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration), [Integration Guide](docs/API_INTEGRATION_GUIDE.md).
 
-#### Secrets Architecture:
-garde uses HashiCorp Vault for secrets management:
+#### Secrets and storage:
+Vault Agent writes secrets to a tmpfs; garde reloads many of them without a restart. PostgreSQL is the durable store (users, permissions, tokens, encrypted MFA secrets); Redis holds ephemeral state (sessions, OTPs, rate limits). Same image for single-VPS and multi-node HA.
 
 ```
 ┌─────────────┐    injects       ┌─────────────┐    writes to     ┌─────────────┐    watches    ┌─────────────┐
@@ -94,25 +73,6 @@ garde uses HashiCorp Vault for secrets management:
 │             │                  │   secrets)   │   on rotation)  │             │               │   rotation) │
 └─────────────┘                  └─────────────┘                  └─────────────┘               └─────────────┘
 ```
-
-- **Vault Agent Sidecar**: Automatically fetches and rotates secret files under `/run/secrets`
-- **tmpfs Storage**: Secrets never touch persistent disk
-- **File Watching**: garde reloads the in-memory secret map when `/run/secrets` changes; **not every secret applies live** (see below)
-
-##### What hot-reloads without restart
-
-Secret files under `/run/secrets` refresh the in-memory map automatically, but **TLS, trusted proxies, rate-limit thresholds, rapid-request config, public kill switch / listener topology, and log level need a process restart**. API key, CORS, cookies, feature flags (including registration `REQUIRE_*` gates and `EMAIL_*_DOMAINS`), SMTP, Redis reconnect, and superuser/admin bootstrap apply live. PostgreSQL connection settings are read at startup (pool recovery is automatic; changing `DATABASE_URL` / `POSTGRES_*` needs a restart).
-
-See the full table: [Configuration hot reload](docs/INSTALLATION.md#configuration-hot-reload).
-
-#### Configurable Security Features:
-Offers configurable rate limiter, switchable behavior detection and MFA.
-
-#### Data storage:
-- **PostgreSQL** (durable authority): users, email uniqueness, password hashes, encrypted MFA secrets and flags, groups, permissions, `permission_visibility`, membership and permission requests, personal access tokens, and tenant API keys
-- **Redis** (shared ephemeral): sessions, session blacklist, rate-limit windows, OTPs, temporary MFA setup, short-lived security counters/lists, and distributed locks
-
-Single-VPS and multi-node use the same application image and secret names. Multi-node HA points every app node at shared PostgreSQL and Redis endpoints; a single VPS runs one of each locally (parity, not HA).
 
 ---
 
@@ -151,7 +111,7 @@ This automatically sets up:
 Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com` (Superuser) or `test.admin@test.com` (Admin) using the password `DevAdminTest123!` for both.
 
 > [!NOTE]
-> The `dev` profile auto-creates the Vault Agent token during `init-vault.sh` (no host `vault/dev-token` file needed). Secrets are seeded from `dev.secrets` (including `POSTGRES_*` and `REDIS_*`).
+> The Vault Agent token is created automatically; secrets are seeded from `dev.secrets`.
 
 > [!TIP]
 > A web UI is included in the `web/` directory. To run it, navigate to the `web/` folder and use `bun start`. The UI connects to the API at `http://localhost:8443`.
@@ -161,7 +121,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 ## Endpoint Documentation
 
 > [!TIP]
-> Swagger documentation is available at http://localhost:8443/swagger/index.html when `ENABLE_SWAGGER=true` (enabled in `dev.secrets` for local setups; use `https://` only when built-in TLS is enabled). Probes: `GET /live` (process up), `GET /ready` (Postgres + Redis), `GET /health` (alias of `/ready`).
+> Swagger is available at http://localhost:8443/swagger/index.html in the default local setup. Health checks: `GET /live`, `GET /ready`, and `GET /health`.
 
 ---
 
@@ -174,11 +134,8 @@ For a multi-node active-active layout (Vault Raft, shared PostgreSQL + Redis, AL
 
 ## Integration Guide
 
-For how garde works and how to integrate (sessions, PATs, internal mTLS, per-tenant keys), see the [API Integration Guide](docs/API_INTEGRATION_GUIDE.md).
+For how garde works and how to integrate (sessions, tokens, private vs public validation, turning the public auth surface off), see the [API Integration Guide](docs/API_INTEGRATION_GUIDE.md).
 
 ## Contributing
 
 See [contribution guide](https://github.com/erendemirel/garde/blob/master/docs/CONTRIBUTING.md)
-
-
-
