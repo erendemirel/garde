@@ -31,6 +31,12 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 
 Admins are not global operators. They can only touch users who share a group, and they can only grant permissions their own groups can see (`permission_visibility`). Superuser is exempt and is the only principal that can assign a user’s first group.
 
+> [!TIP]
+> garde avoids OAuth-style "scopes" that often lead to insecure permission paradoxes. Application 
+access is expressed as named permissions visible to groups. Users can request permission changes 
+from admins. A fixed Superuser / Admin / User privilege tier still exists for bootstrap 
+administration.
+
 Capability matrix and a request → approve walkthrough: [Permission and Group Management](docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management).
 
 ### Listeners, TLS, and public surface
