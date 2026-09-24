@@ -436,7 +436,7 @@
 							<th>Permission</th>
 							<th>Description</th>
 							<th>Visible to groups</th>
-							<th>Actions</th>
+							<th class="table-actions">Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -461,7 +461,7 @@
 									<td class="tabular-nums" data-testid="superuser-visibility-count"
 										>{visibleGroups.length}</td
 									>
-									<td>
+									<td class="table-actions">
 										<button
 											class="btn-icon"
 											type="button"

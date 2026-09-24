@@ -343,7 +343,7 @@
 					<tr>
 						<th>Admin</th>
 						<th class="w-36">Manageable users</th>
-						<th>Actions</th>
+						<th class="table-actions">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -373,8 +373,8 @@
 								<td class="tabular-nums" data-testid="admin-mgmt-row-count"
 									>{row.userEmails.length}</td
 								>
-								<td>
-									<div class="flex flex-nowrap gap-0.5">
+								<td class="table-actions">
+									<div class="table-actions-inner">
 										<button
 											class="btn-icon"
 											type="button"

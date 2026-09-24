@@ -183,7 +183,7 @@
 								{/if}
 							</button>
 						</th>
-						<th>Actions</th>
+						<th class="table-actions">Actions</th>
 					</tr>
 				</thead>
 				<tbody data-testid="users-list-tbody">
@@ -210,7 +210,7 @@
 										—
 									{/if}
 								</td>
-								<td>
+								<td class="table-actions">
 									<a
 										href="{detailBase}/{u.id}"
 										class="btn-icon"

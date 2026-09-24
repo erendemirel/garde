@@ -571,7 +571,7 @@
 													{/if}
 												</button>
 											</th>
-											<th class="sr-only">Actions</th>
+											<th class="table-actions">Actions</th>
 										</tr>
 									</thead>
 									<tbody>
@@ -647,7 +647,7 @@
 												<td class="text-muted" data-testid="api-keys-row-last-used">
 													{key.last_used_at ? formatRelative(key.last_used_at) : 'never'}
 												</td>
-												<td class="text-right">
+												<td class="table-actions">
 													<button
 														type="button"
 														class="btn-icon-danger"

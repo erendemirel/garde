@@ -255,7 +255,7 @@
 									{/if}
 								</button>
 							</th>
-							<th>Actions</th>
+							<th class="table-actions">Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -297,7 +297,7 @@
 								<td data-testid="sessions-row-place">{s.approx_place || s.ip_display || 'unknown'}</td>
 								<td class="whitespace-nowrap">{formatWhen(s.last_seen_at)}</td>
 								<td class="whitespace-nowrap">{formatWhen(s.created_at)}</td>
-								<td>
+								<td class="table-actions">
 									<button
 										type="button"
 										class="inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-1 py-1 text-sm font-semibold text-accent shadow-none transition-colors duration-150 ease-out hover:bg-accent/10 hover:text-accent"
