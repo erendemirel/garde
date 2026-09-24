@@ -139,11 +139,16 @@ a {
 	}
 
 	.settings-row {
-		@apply flex items-center gap-3 px-3.5 py-3 text-inherit no-underline outline-none transition-colors duration-150 ease-out hover:bg-accent/5 focus-visible:bg-accent/5;
+		@apply flex items-center gap-3 px-3.5 py-3 text-inherit no-underline outline-none transition-all duration-150 ease-out hover:bg-[#a39eb0]/10 focus-visible:bg-[#a39eb0]/10 motion-reduce:transition-none;
 	}
 
 	.settings-row-icon {
-		@apply inline-flex shrink-0 text-accent/80;
+		@apply inline-flex shrink-0 text-accent/80 transition-colors duration-150 ease-out motion-reduce:transition-none;
+	}
+
+	.settings-row:hover .settings-row-icon,
+	.settings-row:focus-visible .settings-row-icon {
+		@apply text-[#a39eb0];
 	}
 
 	.settings-row-body {
@@ -159,7 +164,12 @@ a {
 	}
 
 	.settings-row-chevron {
-		@apply shrink-0 text-muted;
+		@apply shrink-0 text-muted transition-all duration-150 ease-out motion-reduce:transition-none;
+	}
+
+	.settings-row:hover .settings-row-chevron,
+	.settings-row:focus-visible .settings-row-chevron {
+		@apply translate-x-0.5 text-[#a39eb0];
 	}
 
 	.pill-card {
