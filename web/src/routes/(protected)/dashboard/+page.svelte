@@ -40,34 +40,34 @@
 		</div>
 
 		{#if $user}
-			<div class="info-grid">
-				<div class="info-card">
-					<p class="info-label">Email</p>
-					<p class="info-value" data-testid="dashboard-email">{$user.email}</p>
+			<dl class="props-list">
+				<div class="props-row">
+					<dt class="props-label">Email</dt>
+					<dd class="props-value" data-testid="dashboard-email">{$user.email}</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">Status</p>
-					<p class="info-value" data-testid="dashboard-status">
+				<div class="props-row">
+					<dt class="props-label">Status</dt>
+					<dd class="props-value" data-testid="dashboard-status">
 						<StatusBadge status={$user.status} />
-					</p>
+					</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">MFA</p>
-					<p class="info-value" data-testid="dashboard-mfa">
+				<div class="props-row">
+					<dt class="props-label">MFA</dt>
+					<dd class="props-value" data-testid="dashboard-mfa">
 						<MfaLabel enabled={$user.mfa_enabled} enforced={$user.mfa_enforced} />
-					</p>
+					</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">Last Login</p>
-					<p class="info-value"
-						>{$user.last_login ? new Date($user.last_login).toLocaleString() : 'Never'}</p
+				<div class="props-row">
+					<dt class="props-label">Last Login</dt>
+					<dd class="props-value"
+						>{$user.last_login ? new Date($user.last_login).toLocaleString() : 'Never'}</dd
 					>
 				</div>
-				<div class="info-card">
-					<p class="info-label">Created</p>
-					<p class="info-value">{new Date($user.created_at).toLocaleDateString()}</p>
+				<div class="props-row">
+					<dt class="props-label">Created</dt>
+					<dd class="props-value">{new Date($user.created_at).toLocaleDateString()}</dd>
 				</div>
-			</div>
+			</dl>
 
 			<div class="pill-card space-y-3" data-testid="dashboard-permissions">
 				<h2 class="section-title">Permissions</h2>
