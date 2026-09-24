@@ -11,7 +11,8 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 - [Quick Start](#quick-start)
 - [Endpoint Documentation](#endpoint-documentation)
 - [Installation](#installation)
-- [Integration Guide](#integration-guide)
+- [Deploy (multi node)](#deploy-multi-node)
+- [API Integration](#api-integration)
 - [Contributing](#contributing)
 
 ---
@@ -60,7 +61,7 @@ garde splits **who** can reach **what**, because browsers and backend services n
 - **Browsers** use ordinary HTTPS (proxy, load balancer, or garde itself) — not client certificates in the usual setup.
 - **Partner systems** that cannot join your private network can still call session validation with a per-tenant API key over HTTPS, when you choose to expose that path.
 
-Email verification and optional admin approval for new accounts are configurable. How to wire listeners and certificates is in the install guide: [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration), [Integration Guide](docs/API_INTEGRATION_GUIDE.md).
+How to wire listeners and certificates is in the install guide: [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration), [Integration Guide](docs/API_INTEGRATION_GUIDE.md).
 
 #### Secrets and storage:
 Vault Agent writes secrets to a tmpfs; garde reloads many of them without a restart. PostgreSQL is the durable store (users, permissions, tokens, encrypted MFA secrets); Redis holds ephemeral state (sessions, OTPs, rate limits). Same image for single-VPS and multi-node HA.
@@ -73,6 +74,16 @@ Vault Agent writes secrets to a tmpfs; garde reloads many of them without a rest
 │             │                  │   secrets)   │   on rotation)  │             │               │   rotation) │
 └─────────────┘                  └─────────────┘                  └─────────────┘               └─────────────┘
 ```
+
+#### Web UI:
+An optional SvelteKit app in `web/` talks to the same API as any other client (cookie sessions). It covers:
+
+- **Sign-in flows** — login, register, forgot password, email verification (when those are enabled on the public surface)
+- **Account** — dashboard, password change, MFA setup/disable, active sessions (revoke one or the rest), personal access tokens, and requesting permission/group updates
+- **Admin** — list and edit users in shared groups (approve/reject pending updates, lock/unlock, MFA enforce, revoke sessions)
+- **Superuser** — permissions and groups catalogue, tenant API keys for `/validate`, and full user management
+
+Production can serve the built UI from its own container or static host; locally you run it with Bun against the API on port 8443 (see Quick Start).
 
 ---
 
@@ -114,7 +125,7 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 > The Vault Agent token is created automatically; secrets are seeded from `dev.secrets`.
 
 > [!TIP]
-> A web UI is included in the `web/` directory. To run it, navigate to the `web/` folder and use `bun start`. The UI connects to the API at `http://localhost:8443`.
+> **Web UI:** from `web/`, run `bun install` then `bun start` (or `bun run dev`). It connects to the API at `http://localhost:8443`. Sign in with the same superuser or admin accounts above to explore account, admin, and superuser screens.
 
 ---
 
@@ -127,14 +138,15 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 
 ## Installation
 
-See [Installation Guide](docs/INSTALLATION.md)
+See the [Installation Guide](docs/INSTALLATION.md) for development setup, single-VPS production, secrets, TLS/mTLS, and the web UI.
 
-For a multi-node active-active layout (Vault Raft, shared PostgreSQL + Redis, ALB or floating IP, AWS/GCP or VPS providers), see [Deploy](docs/DEPLOY.md).
+## Deploy (multi node)
 
+For an active-active layout (Vault Raft, shared PostgreSQL + Redis, load balancer or floating IP), see [Deploy](docs/DEPLOY.md). AWS-specific checklist: [AWS bring-up](docs/AWS_BRINGUP.md).
 
-## Integration Guide
+## API Integration
 
-For how garde works and how to integrate (sessions, tokens, private vs public validation, turning the public auth surface off), see the [API Integration Guide](docs/API_INTEGRATION_GUIDE.md).
+For calling garde from your apps (sessions, tokens, private vs public validation, permissions), see the [API Integration Guide](docs/API_INTEGRATION_GUIDE.md).
 
 ## Contributing
 
