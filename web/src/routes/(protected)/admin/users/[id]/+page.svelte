@@ -832,12 +832,15 @@
 					/>
 
 					<button
-						class="btn-secondary min-w-[9rem]"
+						class="btn-secondary btn-stable min-w-[9rem]"
 						type="submit"
 						data-testid="user-detail-save"
 						disabled={saving || !hasChanges}
 					>
-						{saving ? 'Saving...' : hasChanges ? 'Save Changes' : 'No changes'}
+						<span data-btn-sizer aria-hidden="true">Save Changes</span>
+						<span data-btn-label
+							>{saving ? 'Saving...' : hasChanges ? 'Save Changes' : 'No changes'}</span
+						>
 					</button>
 				</form>
 			</div>
@@ -968,7 +971,7 @@
 						onclick={requestMfaEnforceToggle}
 						disabled={saving}
 					>
-						<ShieldLock size={24} strokeWidth={1.5} />
+						<ShieldLock size={20} strokeWidth={1.5} />
 						{userData.mfa_enforced ? 'Stop enforcing' : 'Enforce MFA'}
 					</button>
 				</div>

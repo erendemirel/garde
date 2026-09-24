@@ -42,7 +42,7 @@ a {
 	}
 
 	.btn-danger {
-		@apply inline-flex items-center justify-center gap-2 rounded-md border-2 border-error/25 bg-error px-4 py-2.5 text-sm font-semibold text-white no-underline shadow-none min-w-[9rem] transition-all duration-150 ease-out hover:bg-[#b43d5c] hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none;
+		@apply inline-flex items-center justify-center gap-2 rounded-md border-2 border-error/25 bg-error px-4 py-2 text-sm font-semibold text-white no-underline shadow-none transition-all duration-150 ease-out hover:bg-[#b43d5c] hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none;
 	}
 
 	.input {
@@ -396,6 +396,47 @@ a {
 
 	.modal-footer {
 		@apply mt-auto flex shrink-0 justify-end gap-3 border-t border-borderc pt-4;
+	}
+
+	/* Equal-width Cancel / Submit pairs: both match the wider label, stay right-aligned. */
+	.modal-actions,
+	.modal-footer > .contents:has(> button + button),
+	.form-actions:has(> button + button) {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: 1fr;
+		gap: 0.75rem;
+		width: max-content;
+		max-width: 100%;
+		margin-left: auto;
+	}
+
+	.modal-actions > button,
+	.modal-footer > .contents:has(> button + button) > button,
+	.form-actions:has(> button + button) > button {
+		@apply w-full justify-center;
+	}
+
+	/* Keep width stable when the visible label swaps (e.g. No changes → Save Changes). */
+	.btn-stable {
+		@apply relative inline-flex items-center justify-center;
+	}
+
+	.btn-stable > [data-btn-sizer] {
+		visibility: hidden;
+		white-space: nowrap;
+		pointer-events: none;
+		user-select: none;
+	}
+
+	.btn-stable > [data-btn-label] {
+		position: absolute;
+		inset: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: inherit;
+		white-space: nowrap;
 	}
 
 	.btn-primary,

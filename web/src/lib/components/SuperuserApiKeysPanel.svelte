@@ -814,7 +814,7 @@
 		</div>
 	</form>
 	{#snippet footer()}
-		<div class="flex justify-end gap-3">
+		<div class="modal-actions">
 			<button
 				type="button"
 				class="btn-secondary"

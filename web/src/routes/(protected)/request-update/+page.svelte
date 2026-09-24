@@ -227,14 +227,19 @@
 
 			<div class="flex justify-center sm:justify-start">
 				<button
-					class="btn-secondary w-full sm:w-auto min-w-[9rem]"
+					class="btn-secondary btn-stable w-full sm:w-auto min-w-[9rem]"
 					type="button"
 					data-testid="request-update-submit"
 					onclick={handleSubmit}
 					disabled={!catalogReady || loading || !hasChanges}
 				>
-					<Send size={18} />
-					{loading ? 'Submitting...' : !catalogReady ? 'Loading...' : hasChanges ? 'Submit Request' : 'No changes'}
+					<span data-btn-sizer aria-hidden="true" class="inline-flex items-center gap-1">
+						<Send size={18} />Submit Request
+					</span>
+					<span data-btn-label class="inline-flex items-center gap-1">
+						<Send size={18} />
+						{loading ? 'Submitting...' : !catalogReady ? 'Loading...' : hasChanges ? 'Submit Request' : 'No changes'}
+					</span>
 				</button>
 			</div>
 		</div>
