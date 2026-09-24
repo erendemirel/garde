@@ -83,8 +83,14 @@ echo "Wrote AppRole credentials to /vault/role-id and /vault/secret-id (mode 600
 if [ -f /prod.secrets ]; then
   echo "Seeding secrets from /prod.secrets..."
   # Trim with sed — do not use xargs; it strips quotes and corrupts JSON secrets.
-  while IFS='=' read -r key value || [ -n "$key" ]; do
-    case "$key" in ''|\#*) continue ;; esac
+  # Split on the first '=' only — base64 values (MFA_ENCRYPTION_KEY) contain '='.
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|\#*) continue ;; esac
+    key=${line%%=*}
+    value=${line#*=}
+    if [ "$key" = "$line" ]; then
+      value=
+    fi
     key=$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     # Allow empty values so optional keys (e.g. TRUSTED_PROXIES=) still exist for Vault Agent templates

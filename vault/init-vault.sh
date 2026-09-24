@@ -37,15 +37,23 @@ echo "Seeding secrets from dev.secrets..."
 # Read dev.secrets and write each noncomment, nonempty line to Vault
 # We'll store all secrets under secret/garde/
 
-# Parse the dev.secrets file and create individual secret files for Vault Agent
+# Parse the dev.secrets file and create individual secret files for Vault Agent.
+# Split on the first '=' only — base64 values (MFA_ENCRYPTION_KEY) contain '='.
 # Trim with sed — do not use xargs; it strips quotes and corrupts JSON secrets
 # such as ADMIN_USERS_JSON.
-while IFS='=' read -r key value || [ -n "$key" ]; do
+while IFS= read -r line || [ -n "$line" ]; do
   # Skip empty lines and comments
-  case "$key" in
+  case "$line" in
     ''|\#*) continue ;;
   esac
-  
+
+  key=${line%%=*}
+  value=${line#*=}
+  # Line with no '=' (malformed): treat as key-only empty value
+  if [ "$key" = "$line" ]; then
+    value=
+  fi
+
   key=$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
   value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
