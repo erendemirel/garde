@@ -113,20 +113,21 @@ a {
 		@apply text-orange-400;
 	}
 
-	.info-grid {
-		@apply grid gap-3 md:grid-cols-2 lg:grid-cols-3;
+	/* Read-only account/user facts — label over value, multi-column. */
+	.props-list {
+		@apply grid gap-3 rounded-lg border border-borderc bg-input p-3.5 md:grid-cols-2 lg:grid-cols-3;
 	}
 
-	.info-card {
-		@apply rounded-lg border border-borderc bg-input px-3.5 py-3 text-sm text-gray-600;
+	.props-row {
+		@apply flex min-w-0 flex-col gap-0.5 overflow-hidden;
 	}
 
-	.info-label {
-		@apply text-muted text-xs;
+	.props-label {
+		@apply text-xs text-muted;
 	}
 
-	.info-value {
-		@apply text-sm font-semibold text-gray-600;
+	.props-value {
+		@apply min-w-0 break-all text-sm font-semibold text-gray-600;
 	}
 
 	.actions {
@@ -426,6 +427,19 @@ a {
 
 	.form-actions-center {
 		@apply flex justify-center gap-3;
+	}
+
+	.list-panel {
+		@apply space-y-6;
+	}
+
+	/* Same band height across tabs so search/CTA rows stay vertically aligned when switching. */
+	.list-panel-header {
+		@apply min-h-[5.75rem];
+	}
+
+	.list-panel-body {
+		@apply space-y-4;
 	}
 
 	.page-title {

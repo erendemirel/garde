@@ -317,8 +317,8 @@
 	}
 </script>
 
-<div class="space-y-4" data-testid="admin-catalog" data-mode={mode}>
-	<div>
+<div class="list-panel" data-testid="admin-catalog" data-mode={mode}>
+	<div class="list-panel-header">
 		<h2 class="section-title" data-testid="admin-catalog-title">{title}</h2>
 		<p class="section-subtitle">{subtitle}</p>
 	</div>
@@ -330,6 +330,7 @@
 	{:else if $usersCacheError}
 		<p class="error" data-testid="admin-catalog-users-error">{$usersCacheError}</p>
 	{:else}
+		<div class="list-panel-body">
 		<label class="form-label w-[28rem] max-w-full">
 			<span>Search</span>
 			<input
@@ -405,6 +406,7 @@
 			bind:pageSize={catalogPageSize}
 			total={filteredCatalog.length}
 		/>
+		</div>
 	{/if}
 </div>
 

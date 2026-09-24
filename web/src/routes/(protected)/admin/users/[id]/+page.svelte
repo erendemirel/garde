@@ -581,38 +581,38 @@
 				>
 			</div>
 
-			<div class="info-grid">
-				<div class="info-card">
-					<p class="info-label">ID</p>
-					<p class="info-value font-mono text-[13px]" data-testid="user-detail-id">{userData.id}</p>
+			<dl class="props-list">
+				<div class="props-row">
+					<dt class="props-label">ID</dt>
+					<dd class="props-value font-mono text-[13px]" data-testid="user-detail-id">{userData.id}</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">Email</p>
-					<p class="info-value" data-testid="user-detail-email">{userData.email}</p>
+				<div class="props-row">
+					<dt class="props-label">Email</dt>
+					<dd class="props-value" data-testid="user-detail-email">{userData.email}</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">Status</p>
-					<p class="info-value" data-testid="user-detail-status">
+				<div class="props-row">
+					<dt class="props-label">Status</dt>
+					<dd class="props-value" data-testid="user-detail-status">
 						<StatusBadge status={userData.status} />
-					</p>
+					</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">MFA</p>
-					<p class="info-value" data-testid="user-detail-mfa">
+				<div class="props-row">
+					<dt class="props-label">MFA</dt>
+					<dd class="props-value" data-testid="user-detail-mfa">
 						<MfaLabel enabled={userData.mfa_enabled} enforced={userData.mfa_enforced} />
-					</p>
+					</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">Created</p>
-					<p class="info-value">{new Date(userData.created_at).toLocaleString()}</p>
+				<div class="props-row">
+					<dt class="props-label">Created</dt>
+					<dd class="props-value">{new Date(userData.created_at).toLocaleString()}</dd>
 				</div>
-				<div class="info-card">
-					<p class="info-label">Last Login</p>
-					<p class="info-value"
-						>{userData.last_login ? new Date(userData.last_login).toLocaleString() : 'Never'}</p
+				<div class="props-row">
+					<dt class="props-label">Last Login</dt>
+					<dd class="props-value"
+						>{userData.last_login ? new Date(userData.last_login).toLocaleString() : 'Never'}</dd
 					>
 				</div>
-			</div>
+			</dl>
 
 			{#if isEmailUnverified}
 				<div

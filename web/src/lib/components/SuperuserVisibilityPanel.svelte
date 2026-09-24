@@ -372,8 +372,8 @@
 	}
 </script>
 
-<div class="space-y-4" data-testid="superuser-visibility-panel">
-	<div>
+<div class="list-panel" data-testid="superuser-visibility-panel">
+	<div class="list-panel-header">
 		<h2 class="section-title">Permission Visibility</h2>
 		<p class="section-subtitle">
 			A permission is usable only by groups linked here. Without a visibility link, regular users
@@ -390,6 +390,7 @@
 			You need at least one permission and one group to manage visibility.
 		</p>
 	{:else}
+		<div class="list-panel-body">
 		<div class="flex flex-wrap items-end justify-between gap-3">
 			<label class="form-label w-[28rem] max-w-full">
 				<span>Search</span>
@@ -548,6 +549,7 @@
 			bind:pageSize={visibilityPageSize}
 			total={filteredVisibilityPermissions.length}
 		/>
+		</div>
 	{/if}
 </div>
 

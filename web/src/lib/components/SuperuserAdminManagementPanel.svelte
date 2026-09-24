@@ -309,8 +309,8 @@
 	}
 </script>
 
-<div class="space-y-4" data-testid="superuser-admin-management-panel">
-	<div>
+<div class="list-panel" data-testid="superuser-admin-management-panel">
+	<div class="list-panel-header">
 		<h2 class="section-title">Admin-User Management</h2>
 		<p class="section-subtitle">
 			Derived from shared groups: each admin can manage users who share at least one group with them.
@@ -325,6 +325,7 @@
 	{:else if $usersCacheError}
 		<p class="error" data-testid="admin-mgmt-users-error">{$usersCacheError}</p>
 	{:else}
+		<div class="list-panel-body">
 		<label class="form-label w-[28rem] max-w-full">
 			<span>Search</span>
 			<input
@@ -408,6 +409,7 @@
 			bind:pageSize={adminManagementPageSize}
 			total={filteredAdminManagementRows.length}
 		/>
+		</div>
 	{/if}
 </div>
 

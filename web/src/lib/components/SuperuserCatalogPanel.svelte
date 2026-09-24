@@ -432,8 +432,8 @@
 	}
 </script>
 
-<div class="space-y-4" data-testid="superuser-catalog" data-mode={mode}>
-	<div>
+<div class="list-panel" data-testid="superuser-catalog" data-mode={mode}>
+	<div class="list-panel-header">
 		<h2 class="section-title">{title}</h2>
 		<p class="section-subtitle">{subtitle}</p>
 	</div>
@@ -445,29 +445,30 @@
 	{:else if $usersCacheError}
 		<p class="error" data-testid="superuser-catalog-users-error">{$usersCacheError}</p>
 	{:else}
-		<div class="flex flex-wrap items-end justify-between gap-3">
-			<label class="form-label w-[28rem] max-w-full">
-				<span>Search</span>
-				<input
-					class="input"
-					type="search"
-					data-testid="superuser-catalog-search"
-					placeholder="Search by name or description..."
-					bind:value={search}
-				/>
-			</label>
-			<button
-				class="btn-primary shrink-0"
-				type="button"
-				data-testid="superuser-catalog-create"
-				onclick={() => openItemModal()}
-			>
-				<Plus size={16} class="-ml-0.5" />
-				{createLabel}
-			</button>
-		</div>
+		<div class="list-panel-body">
+			<div class="flex flex-wrap items-end justify-between gap-3">
+				<label class="form-label w-[28rem] max-w-full">
+					<span>Search</span>
+					<input
+						class="input"
+						type="search"
+						data-testid="superuser-catalog-search"
+						placeholder="Search by name or description..."
+						bind:value={search}
+					/>
+				</label>
+				<button
+					class="btn-primary shrink-0"
+					type="button"
+					data-testid="superuser-catalog-create"
+					onclick={() => openItemModal()}
+				>
+					<Plus size={16} class="-ml-0.5" />
+					{createLabel}
+				</button>
+			</div>
 
-		<div class="table-scroll">
+			<div class="table-scroll">
 			<table class="table-base" data-testid="superuser-catalog-table">
 				<thead>
 					<tr>
@@ -556,6 +557,7 @@
 			bind:pageSize={catalogPageSize}
 			total={filteredCatalog.length}
 		/>
+		</div>
 	{/if}
 </div>
 

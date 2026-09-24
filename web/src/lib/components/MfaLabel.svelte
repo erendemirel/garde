@@ -1,4 +1,5 @@
 <script>
+	import { ShieldAlert, ShieldCheck, ShieldX } from '@lucide/svelte';
 	import { formatMfaLabel, getMfaKind, mfaToneClass } from '$lib/userStatus';
 
 	/** @type {{ enabled?: boolean, enforced?: boolean, compact?: boolean }} */
@@ -9,4 +10,15 @@
 	let full = $derived(formatMfaLabel(kind, false));
 </script>
 
-<span class={mfaToneClass(kind)} title={full}>{label}</span>
+<span class="status-display {mfaToneClass(kind)}" title={full}>
+	<span class="status-icon">
+		{#if kind === 'enforced-missing'}
+			<ShieldX size={18} />
+		{:else if kind === 'none'}
+			<ShieldAlert size={18} />
+		{:else}
+			<ShieldCheck size={18} />
+		{/if}
+	</span>
+	<span class="status-text">{label}</span>
+</span>
