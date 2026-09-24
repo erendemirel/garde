@@ -17,7 +17,7 @@
 		message = 'Are you sure you want to proceed?',
 		confirmText = 'Confirm',
 		cancelText = 'Cancel',
-		confirmClass = 'btn-secondary',
+		confirmClass = 'btn-primary',
 		onConfirm,
 		onCancel
 	} = $props();
@@ -41,7 +41,7 @@
 
 <Modal bind:open {title} onClose={handleCancel}>
 	<p class="text-text mb-6 whitespace-pre-line" data-testid="confirm-modal-message">{message}</p>
-	<div class="flex gap-3 justify-end">
+	<div class="modal-actions">
 		<button type="button" class="btn-secondary" data-testid="confirm-modal-cancel" onclick={handleCancel}>
 			{cancelText}
 		</button>

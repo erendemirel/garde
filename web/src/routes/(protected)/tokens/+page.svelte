@@ -248,7 +248,7 @@
 				/>
 			{/if}
 		</div>
-		<div class="flex justify-end gap-2">
+		<div class="modal-actions">
 			<button
 				type="button"
 				class="btn-secondary"
@@ -316,6 +316,7 @@
 		? `Revoke "${revoking.name}" (${revoking.id})?\n\nAnything using this token will be refused immediately.`
 		: ''}
 	confirmText="Revoke"
+	confirmClass="btn-danger"
 	onConfirm={confirmRevoke}
 	onCancel={() => {
 		showRevokeConfirm = false;

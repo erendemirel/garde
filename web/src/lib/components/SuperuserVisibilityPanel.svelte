@@ -625,12 +625,15 @@
 				>
 				<button
 					type="button"
-					class="btn-primary"
+					class="btn-primary btn-stable"
 					data-testid="superuser-visibility-manage-save"
 					onclick={requestMembershipSave}
 					disabled={membershipSaving || !membershipDirty}
 				>
-					{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
+					<span data-btn-sizer aria-hidden="true">Save Changes</span>
+					<span data-btn-label
+						>{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}</span
+					>
 				</button>
 			{/if}
 		</div>

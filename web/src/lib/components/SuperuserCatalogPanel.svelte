@@ -628,12 +628,15 @@
 			>
 			<button
 				type="button"
-				class="btn-primary"
+				class="btn-primary btn-stable"
 				data-testid="superuser-catalog-item-save"
 				onclick={saveItem}
 				disabled={!itemDirty}
 			>
-				{editingItem ? (itemDirty ? 'Save Changes' : 'No changes') : 'Create'}
+				<span data-btn-sizer aria-hidden="true">{editingItem ? 'Save Changes' : 'Create'}</span>
+				<span data-btn-label
+					>{editingItem ? (itemDirty ? 'Save Changes' : 'No changes') : 'Create'}</span
+				>
 			</button>
 		</div>
 	</div>
@@ -706,12 +709,15 @@
 				>
 				<button
 					type="button"
-					class="btn-primary"
+					class="btn-primary btn-stable"
 					data-testid="superuser-catalog-manage-save"
 					onclick={requestMembershipSave}
 					disabled={membershipSaving || !membershipDirty}
 				>
-					{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}
+					<span data-btn-sizer aria-hidden="true">Save Changes</span>
+					<span data-btn-label
+						>{membershipSaving ? 'Saving...' : membershipDirty ? 'Save Changes' : 'No changes'}</span
+					>
 				</button>
 			{/if}
 		</div>

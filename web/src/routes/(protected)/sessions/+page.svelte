@@ -346,7 +346,7 @@
 				placeholder="6-digit code"
 			/>
 		</label>
-		<div class="flex gap-3 justify-end">
+		<div class="modal-actions">
 			<button
 				type="button"
 				class="btn-secondary"
@@ -359,7 +359,7 @@
 			>
 			<button
 				type="button"
-				class="btn-secondary"
+				class="btn-danger"
 				data-testid="confirm-modal-confirm"
 				onclick={confirmRevokeOne}>Revoke</button
 			>
@@ -373,6 +373,7 @@
 			? 'You will need to sign in again on this browser.'
 			: `Revoke ${revoking?.ua_summary || 'this session'} (${revoking?.approx_place || 'unknown'})?`}
 		confirmText={revoking?.current ? 'Sign out' : 'Revoke'}
+		confirmClass="btn-danger"
 		onConfirm={confirmRevokeOne}
 		onCancel={() => {
 			revoking = null;
@@ -405,7 +406,7 @@
 				placeholder="6-digit code"
 			/>
 		</label>
-		<div class="flex gap-3 justify-end">
+		<div class="modal-actions">
 			<button
 				type="button"
 				class="btn-secondary"
@@ -417,7 +418,7 @@
 			>
 			<button
 				type="button"
-				class="btn-secondary"
+				class="btn-danger"
 				data-testid="confirm-modal-confirm"
 				onclick={confirmRevokeOthers}>Sign out others</button
 			>
@@ -429,6 +430,7 @@
 		title="Sign out other sessions?"
 		message="All sessions except this device will be revoked immediately."
 		confirmText="Sign out others"
+		confirmClass="btn-danger"
 		onConfirm={confirmRevokeOthers}
 		onCancel={() => {
 			mfaCode = '';
