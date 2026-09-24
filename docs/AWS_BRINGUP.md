@@ -38,9 +38,10 @@ Pick the traffic mode before applying — it changes which resources exist:
 - [ ] WireGuard mesh configs installed (`wg-gen` / playbook)
 - [ ] Vault cluster initialized with KMS auto-unseal; recovery keys stored **offline**
 - [ ] Seed Vault with shared `redis_host` / `DATABASE_URL` or `POSTGRES_*` (from terraform outputs when using RDS/ElastiCache)
-- [ ] Existing Shamir cluster? Run `vault-seal-migrate.sh` after sync-config (see DEPLOY.md)
+- [ ] Existing Shamir cluster? Run `vault-seal-migrate.sh` after sync-config ([seal-migrate runbook](DEPLOY.md#runbook-shamir--kms-seal-migrate))
 - [ ] Service CA via Vault PKI: enabled by `init-vault-prod` (or `vault-pki.sh enable`); Agent auto-issues/renews server leaf to `/run/secrets/service_tls_*.pem`; client certs via `vault-pki.sh issue-client <name>`; cron `service-tls-reload.sh --remote`
-- [ ] Vault holds `service_listener=true`, `service_mtls=required`, Agent PEM paths, and **`mfa_encryption_key`**
+- [ ] Vault holds `service_listener=true`, `service_mtls=required`, Agent PEM paths, and **`mfa_encryption_key`** (`openssl rand -base64 32` — not a dig/test key)
+- [ ] Registration gates and kill switch set deliberately (`require_email_verification` default on, `require_admin_approval` default off; `public_self_service` only off when the service listener carries auth)
 - [ ] Issue per-caller `/validate` keys with `POST /admin/api-keys` for each internal service
 - [ ] Images built and shipped; `./deploy/scripts/deploy.sh …`
 - [ ] `REDIS_PASSWORD` (and other secrets) available to sync-config / CI

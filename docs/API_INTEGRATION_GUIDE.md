@@ -11,11 +11,13 @@ This guide explains how to integrate and use garde in your applications.
   - [1. Browser-based Authentication](#1-browser-based-authentication)
   - [2. API Authentication](#2-api-authentication)
   - [2b. Personal Access Tokens](#2b-personal-access-tokens)
+  - [2c. Sessions (self-service)](#2c-sessions-self-service)
   - [3. Internal Service Authentication (mTLS + API Key)](#3-internal-service-authentication-mtls--api-key)
   - [4. External Callers (Per-Tenant API Keys)](#4-external-callers-per-tenant-api-keys)
 - [Common Workflows](#common-workflows)
   - [1. User Registration and Account Management](#1-user-registration-and-account-management)
     - [Initial Registration](#initial-registration)
+    - [Email Verification](#email-verification)
     - [View Current User Info](#view-current-user-info)
   - [2. Authentication Flows](#2-authentication-flows)
     - [Regular Login](#regular-login)
@@ -52,6 +54,8 @@ This guide explains how to integrate and use garde in your applications.
 ## Authentication Methods
 
 garde supports five authentication styles, and they are meant to coexist: browser sessions, API sessions, personal access tokens, certificate-authenticated service calls, and per-tenant keys for callers outside your network. Browsers are never asked for a client certificate. Service calls to `/validate` are, on any listener configured to verify one — which in the recommended layout is a separate private listener rather than the public API host. See [TLS and mTLS](INSTALLATION.md#tls-and-mtls-configuration).
+
+**Public kill switch (`PUBLIC_SELF_SERVICE`).** When on (default), login, registration, password OTP/reset, email verify/resend, and user self-service mount on the public listener. When off, the public listener keeps only probes and `GET /public/config`; those routes (and public `/validate`) remount on the **service listener** (`SERVICE_LISTENER=true` required — startup fails if both are off). Admin/superuser routes follow the service listener when it is enabled. Flipping the kill switch needs a process restart; `REQUIRE_*` registration gates apply live. Discover the current surface with `GET /public/config`.
 
 ### 1. Browser-based Authentication
 For web applications where users log in through a browser interface.
@@ -113,10 +117,11 @@ For applications making API calls (mobile apps, SPAs, etc.).
 1. Login to get session token
 2. Include token in Authorization header
 
-Example:
+Example (API/Bearer clients must opt in to a body session id):
 ```http
 POST /login
 Content-Type: application/json
+X-Return-Session: true
 
 {
     "email": "user@example.com",
@@ -132,6 +137,8 @@ Success Response:
     }
 }
 ```
+
+Without `X-Return-Session`, the body is `{}` and the session is only in the HttpOnly cookie (browser default).
 
 Error Response:
 ```json
@@ -170,7 +177,20 @@ Content-Type: application/json
 API session cannot be upgraded into a long-lived PAT.
 
 The plaintext (`garde_pat_<id>_<secret>`) is returned once in `data.token`.
-#### Sessions (self-service)
+
+Default lifetime is 90 days; pass `never_expires: true` to opt out (max 25
+tokens per user).
+
+**Use:**
+
+```http
+GET /users/me
+Authorization: Bearer garde_pat_…
+```
+
+PATs are refused on `/validate` (that endpoint accepts issued per-caller keys only).
+
+### 2c. Sessions (self-service)
 
 List active sessions (opaque ids + display metadata; never the cookie secret):
 
@@ -191,18 +211,6 @@ Revoke all other sessions (keep current; MFA required when enabled):
 POST /users/me/sessions/revoke-others
 {"mfa_code":"123456"}
 ```
-
-Default lifetime is 90 days; pass `never_expires: true` to opt out (max 25
-tokens per user).
-
-**Use:**
-
-```http
-GET /users/me
-Authorization: Bearer garde_pat_…
-```
-
-PATs are refused on `/validate` (that endpoint accepts issued per-caller keys only).
 
 ### 3. Internal Service Authentication (mTLS + API Key)
 For internal services communicating within your infrastructure.
@@ -263,7 +271,7 @@ Error Response:
 }
 ```
 
-**Important Note:** The `/validate` endpoint is reachable only with an API key, plus a client certificate on any listener configured to verify one. Cookie/Bearer admin authentication is not supported for this endpoint.
+**Important Note:** The `/validate` endpoint is reachable only with an issued per-caller API key, plus a client certificate on any listener configured to verify one. Cookie/Bearer authentication is not supported. When `PUBLIC_SELF_SERVICE` is off, public `/validate` is forced off — call the service listener. When the kill switch is on, public `/validate` follows `PUBLIC_VALIDATE` (defaults to the opposite of `SERVICE_LISTENER`).
 
 ### 4. External Callers (Per-Tenant API Keys)
 
@@ -354,17 +362,17 @@ Content-Type: application/json
 }
 ```
 
-Success Response:
+Success Response (product defaults: email verification on → `verify_email`):
 ```json
 {
     "data": {
         "user_id": "usr_xyz...",
-        "next": "await_admin"
+        "next": "verify_email"
     }
 }
 ```
 
-`next` is config-derived (`verify_email` | `await_admin` | `ready`) and is the same for real creates and anti-enumeration fake successes.
+`next` is config-derived (`verify_email` | `await_admin` | `ready`) and is the same for real creates and anti-enumeration fake successes. With admin approval on and email verification off, expect `await_admin`.
 
 Important Notes:
 - Registration (and password OTP/reset / email verify / **login** / user self-service) is on the public listener only when `PUBLIC_SELF_SERVICE` is on (default). When off, the public listener keeps probes + `/public/config` only; those routes (and public `/validate`) remount on the **service listener** (`SERVICE_LISTENER=true` is required — process refuses to start if both are off). Admin/superuser routes are always on the service listener when it is enabled. See `GET /public/config`. Flipping `PUBLIC_SELF_SERVICE` needs a process restart (route mounts are boot-time); `REQUIRE_*` gates apply live.
@@ -376,6 +384,36 @@ Important Notes:
 - Password-reset OTP sends are throttled per account (5/hour, opaque when exceeded). OTP/reset remains available regardless of account status (including `email not verified`); login still fails until the account is verified/approved/`ok`.
 - Admin status is determined by the `ADMIN_USERS_JSON` configuration and admins are automatically created. You cannot create admins via API.
 - Password must meet complexity requirements (min 8 chars, max 64 chars, at least one uppercase, lowercase, number, and special char)
+
+#### Email Verification
+
+When `REQUIRE_EMAIL_VERIFICATION` is on (default), registration emails a high-entropy token (24h TTL). Complete verification:
+
+```http
+POST /users/email/verify
+Content-Type: application/json
+
+{
+    "email": "user@example.com",
+    "token": "<token-from-email>"
+}
+```
+
+Resend (throttled; responses stay opaque for unknown addresses):
+
+```http
+POST /users/email/verify/resend
+Content-Type: application/json
+
+{
+    "email": "user@example.com"
+}
+```
+
+Notes:
+- Wrong tokens are attempt-limited (same ceiling as password-reset OTP) and lock the account by security when exceeded
+- After verify: status becomes `pending admin approval` if approval is required, otherwise `ok`
+- Mounted with other self-service routes (public when the kill switch is on; otherwise on the service listener)
 
 #### View Current User Info
 ```http
@@ -429,6 +467,7 @@ POST /login
 ```
 
 Important Notes:
+- Login follows the same public kill switch as registration: when `PUBLIC_SELF_SERVICE` is off, call the **service listener** (see Authentication Methods)
 - MFA code is required at login only if `mfa_enabled=true` (user has MFA set up)
 - If MFA is enforced (`mfa_enforced=true`) but not set up (`mfa_enabled=false`):
   1. Login succeeds without MFA code
@@ -440,6 +479,7 @@ Important Notes:
 - Do not send both a session cookie and `Authorization` on the same request
 - Rate limited per IP (configurable via `RATE_LIMIT`, default 60 requests per minute for public endpoints)
 - Locked / pending / unknown accounts share the same opaque login failure
+- Unknown emails still run a dummy Argon2 verify so response timing stays close to a real password check
 
 #### Logout
 ```http
@@ -488,7 +528,7 @@ POST /users/password/otp
 POST /users/password/reset
 {
     "email": "user@example.com",
-    "otp": "ABCDE",          // From email
+    "otp": "ABCD1234",       // 8-character OTP from email
     "new_password": "newPass123!",
     "mfa_code": "123456"     // Required if MFA enabled
 }
@@ -497,7 +537,7 @@ POST /users/password/reset
 Success Response:
 ```json
 {
-    "data": "Password reset successful. Waiting for admin approval."
+    "data": "Password reset successful."
 }
 ```
 
@@ -1176,7 +1216,7 @@ For internal services to validate sessions of other applications.
 
 ```http
 GET /validate
-X-API-Key: your_api_key
+X-API-Key: garde_<id>_<secret>
 X-Session-ID: 2e8aa13e-3c...
 // plus a client certificate, on any listener configured to verify one
 ```
@@ -1300,9 +1340,9 @@ When a session is blacklisted:
 
 #### E. Security Measures and Recovery
 1. For locked accounts:
-   - Only administrators can unlock
-   - User must complete additional verification
-   - Status changes to "pending admin approval" after unlock
+   - Only administrators can unlock (set status via `PUT /users/{id}`, typically to `ok`)
+   - There is no automatic transition to pending admin approval on unlock
+   - If your gates require approval after a lock, set status to `pending admin approval` explicitly
 
 2. For blocked IPs:
    - Block expires automatically after 30 minutes (configurable via `FailedLoginBlockDuration` in code)
@@ -1320,7 +1360,7 @@ When a session is blacklisted:
 ## Email Management
 
 ### Email Configuration
-The service requires a valid SMTP server configuration for sending password reset emails (OTP). Configure the following secrets in Vault (or in `dev.secrets` for development):
+The service requires a valid SMTP server configuration for password-reset OTPs and, with the default gate, email-verification messages. Configure the following secrets in Vault (or in `dev.secrets` for development):
 
 | Secret Path | Description |
 |-------------|-------------|

@@ -9,7 +9,6 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 - [Key Concepts](#key-concepts)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
-- [Endpoint Documentation](#endpoint-documentation)
 - [Installation](#installation)
 - [Deploy (multi node)](#deploy-multi-node)
 - [API Integration](#api-integration)
@@ -17,43 +16,25 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 
 ---
 
-### Key Concepts
+## Key Concepts
 
-#### Authentication modes:
+### Authentication modes
+
 - **Browser / API session**: Cookie or `Authorization: Bearer <session_id>`
 - **PAT** (`garde_pat_…`): User-issued script/CI credential; managed under **Access tokens**; not valid on `/validate`
 - **Internal `/validate`**: Private network — client certificate + issued API key
 - **External `/validate`**: Per-tenant API key over ordinary HTTPS when you publish it
 
-#### Hierarchical Admin System:
-- **Superuser** / **Admins** / **Users** — bootstrap privilege tiers (email config), not application permissions. App access uses named permissions and groups.
+### Privilege tiers and permissions
 
-#### Security Without Scope Paradoxes:
-Named permissions (not OAuth scopes) with a request/approval workflow. Visibility is group-scoped: users and admins only see or act on permissions visible to their groups.
+**Superuser / Admin / User** come from Vault email lists — bootstrap who can administer the system. Application access is separate: named permissions and groups in PostgreSQL, with a request/approve flow instead of OAuth-style scopes.
 
-> [!TIP]
-> garde avoids OAuth-style "scopes" that often lead to insecure permission paradoxes. Application access is expressed as named permissions visible to groups. Users can request permission changes from admins. A fixed Superuser / Admin / User privilege tier still exists for bootstrap administration.
+Admins are not global operators. They can only touch users who share a group, and they can only grant permissions their own groups can see (`permission_visibility`). Superuser is exempt and is the only principal that can assign a user’s first group.
 
-#### Group-Based Access Control and Permission Visibility:
-Admins can manage a user only if they share at least one group with that user. They may add a group only if they themselves are in that group, and they may remove any groups once that shared-group requirement is met. In addition to this, permissions have visibility to groups. A permission is visible to a group if there's a mapping in the `permission_visibility` table that controls what users see and perform. Admins and users can see only the permissions visible to their groups:
+Capability matrix and a request → approve walkthrough: [Permission and Group Management](docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management).
 
-| Admin Groups | Target User Groups | Permissions: Add | Permissions: Remove | Groups: Add | Groups: Remove |
-|--------------|-------------------|------------------|---------------------|-------------|----------------|
-| `[]` | `[A]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
-| `[A]` | `[A]` | Permissions visible to A | Any permission | ❌ None | A |
-| `[A]` | `[A, B]` | Permissions visible to A only | Any permission | ❌ None | A, B |
-| `[A, B]` | `[A]` | Permissions visible to A or B | Any permission | B | A |
-| `[A]` | `[B]` | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
-| `[A]` | `[]` (none) | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups | ❌ No shared groups |
+### Listeners, TLS, and public surface
 
-Initial group assignments can only be done by Superuser.
-
-> [!NOTE]
-> Superuser is exempt from all permissions and groups logic, maintaining full access regardless of configuration
-
-For a worked example of request → approve, see [Permission and Group Management](docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management).
-
-#### Listeners, TLS, and public surface:
 garde splits **who** can reach **what**, because browsers and backend services need different trust models:
 
 - **Public side** — what the internet (or your users) hit. By default that includes login, registration, and self-service. You can turn that surface off so the public side only answers health checks and a tiny config endpoint; people then sign in only on the private network.
@@ -61,21 +42,16 @@ garde splits **who** can reach **what**, because browsers and backend services n
 - **Browsers** use ordinary HTTPS (proxy, load balancer, or garde itself) — not client certificates in the usual setup.
 - **Partner systems** that cannot join your private network can still call session validation with a per-tenant API key over HTTPS, when you choose to expose that path.
 
-How to wire listeners and certificates is in the install guide: [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration), [Integration Guide](docs/API_INTEGRATION_GUIDE.md).
+How to wire listeners and certificates: [TLS and mTLS](docs/INSTALLATION.md#tls-and-mtls-configuration), [Integration Guide](docs/API_INTEGRATION_GUIDE.md).
 
-#### Secrets and storage:
-Vault Agent writes secrets to a tmpfs; garde reloads many of them without a restart. PostgreSQL is the durable store (users, permissions, tokens, encrypted MFA secrets); Redis holds ephemeral state (sessions, OTPs, rate limits). Same image for single-VPS and multi-node HA.
+### Secrets and storage
 
-```
-┌─────────────┐    injects       ┌─────────────┐    writes to     ┌─────────────┐    watches    ┌─────────────┐
-│     CI      │ ───────────────→ │    Vault    │ ───────────────→ │   tmpfs     │ ←─────────────│    garde    │
-│    /CD      │   AppRole +      │   Server    │   Vault Agent    │ /run/secrets│   file watcher│    app      │
-│  Pipeline   │   Secrets        │   (dynamic   │   (auto-updates │             │   (hot reload)│   (handles  │
-│             │                  │   secrets)   │   on rotation)  │             │               │   rotation) │
-└─────────────┘                  └─────────────┘                  └─────────────┘               └─────────────┘
-```
+CI/CD seeds Vault; Vault Agent renders into a tmpfs (`/run/secrets`); garde watches the files and hot-reloads what it can without a restart. PostgreSQL holds durable state (users, permissions, tokens, encrypted MFA secrets); Redis holds ephemeral state (sessions, OTPs, rate limits). Same image for local dig and multi-node HA.
 
-#### Web UI:
+Pipeline diagram and operator notes: [Vault Architecture](vault/README.md#architecture).
+
+### Web UI
+
 An optional SvelteKit app in `web/` talks to the same API as any other client (cookie sessions). It covers:
 
 - **Sign-in flows** — login, register, forgot password, email verification (when those are enabled on the public surface)
@@ -99,7 +75,7 @@ Production can serve the built UI from its own container or static host; locally
 
 ## Quick Start
 
-**Run the application in seconds:**
+You can start the dev stack in seconds without configuring anything:
 
 ```bash
 # Clone the repository
@@ -110,29 +86,13 @@ cd garde
 docker compose --profile dev up --build
 ```
 
-This automatically sets up:
-- **Vault** (dev mode)
-- **PostgreSQL**
-- **Redis**
-- **garde** application
+This starts Vault (dev mode), PostgreSQL, Redis, and garde. Secrets are seeded from `dev.secrets`; the Vault Agent token is created automatically.
 
-> [!TIP]
-> The development setup is fully self-contained and includes everything you need to get started immediately
+Access the API at `http://localhost:8443`. Login: `test.superuser@test.com` or `test.admin@test.com`, password `DevAdminTest123!` for both.
 
-Access your application at `http://localhost:8443` once it starts up. You can login with `test.superuser@test.com` (Superuser) or `test.admin@test.com` (Admin) using the password `DevAdminTest123!` for both.
+Swagger: `http://localhost:8443/swagger/index.html`. Probes: `GET /live`, `GET /ready`, `GET /health`.
 
-> [!NOTE]
-> The Vault Agent token is created automatically; secrets are seeded from `dev.secrets`.
-
-> [!TIP]
-> **Web UI:** from `web/`, run `bun install` then `bun start` (or `bun run dev`). It connects to the API at `http://localhost:8443`. Sign in with the same superuser or admin accounts above to explore account, admin, and superuser screens.
-
----
-
-## Endpoint Documentation
-
-> [!TIP]
-> Swagger is available at http://localhost:8443/swagger/index.html in the default local setup. Health checks: `GET /live`, `GET /ready`, and `GET /health`.
+**Web UI:** from `web/`, run `bun install` then `bun run dev` (Vite proxies `/api` to `http://localhost:8443`). Sign in with the same accounts to explore account, admin, and superuser screens.
 
 ---
 

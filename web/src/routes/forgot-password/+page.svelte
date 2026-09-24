@@ -69,7 +69,7 @@
 		loading = true;
 		try {
 			await resetPassword(email, otp, newPassword, mfaCode || undefined, capToken || undefined);
-			success = 'Password reset successful. Waiting for admin approval.';
+			success = 'Password reset successful.';
 			redirectTimer = setTimeout(() => goto('/'), 3000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Password reset failed';

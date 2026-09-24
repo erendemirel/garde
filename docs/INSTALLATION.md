@@ -29,7 +29,7 @@
    - Secrets are managed via `dev.secrets` (already populated with defaults, including `POSTGRES_*` and `REDIS_*`). Permissions and groups live in PostgreSQL with the rest of the durable user data; the `dev` compose profile starts Postgres for you.
    - Modify as needed for your environment. The easiest way to learn about secrets and permission system is:
        - **For secrets:** Following the comments inside `dev.secrets` file,  
-       - **For permission and group system:** Following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) section in integration guide to understand how they work. You can also have a look at this section in [Key Concepts](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#security-without-scope-paradoxes) to have the bigger picture.
+       - **For permission and group system:** Following [Permission and Group Management](https://github.com/erendemirel/garde/blob/master/docs/API_INTEGRATION_GUIDE.md#5-permission-and-group-management) in the integration guide (capability matrix and request → approve walkthrough). For the short overview, see [Privilege tiers and permissions](https://github.com/erendemirel/garde/tree/master?tab=readme-ov-file#privilege-tiers-and-permissions) in the README.
 
 3. **Start the development stack**
    ```bash
@@ -43,7 +43,7 @@
 
 5. **Web UI (Optional)**   
 
-   - Navigate to `web/` directory and run `bun start`. No configuration needed, everything is set up. It automatically proxies `/api` requests to `http://localhost:8443` via Vite dev server.
+   - Navigate to `web/`, run `bun install`, then `bun run dev` (Vite proxies `/api` to `http://localhost:8443`). Use `bun start` only after `bun run build` to preview a production build (no Vite proxy — set `PUBLIC_API_URL` if needed).
 
 ### What happens automatically
 - Vault starts in development mode
@@ -89,7 +89,10 @@
 
 2. **Get the project** on the VPS (clone the repo or copy files, e.g. with `rsync` or `scp`).
 
-3. **Create `prod.secrets`** (copy from `dev.secrets`, set production values). For the single-VPS stack, set `REDIS_HOST=redis` and `POSTGRES_HOST=postgres` (Compose service names), or set `DATABASE_URL`. Set `CORS_ALLOW_ORIGINS` to the URL users will use for the UI. Create a `.env` in the project root with `REDIS_PASSWORD` and `POSTGRES_PASSWORD` (same values as in `prod.secrets`) and optionally `PUBLIC_API_URL`. You will add `VAULT_TOKEN` after the next step.
+3. **Create `prod.secrets`** (copy from `dev.secrets`, then replace every dig-only value). Dig intentionally differs from product defaults (e.g. admin approval on / email verify off for e2e, fixed MFA test key, `GIN_MODE=debug`, Cap bypass). For production: generate `MFA_ENCRYPTION_KEY` with `openssl rand -base64 32`, set strong passwords, `GIN_MODE=release`, empty Cap bypass, and choose registration gates for your threat model. For the single-VPS stack, set `REDIS_HOST=redis` and `POSTGRES_HOST=postgres` (Compose service names), or set `DATABASE_URL`. Set `CORS_ALLOW_ORIGINS` to the UI URL. Create a `.env` in the project root with `REDIS_PASSWORD` and `POSTGRES_PASSWORD` (same values as in `prod.secrets`) and optionally `PUBLIC_API_URL`. You will add `VAULT_TOKEN` after the next step.
+
+> [!NOTE]
+> `vault/init-vault.sh` and `init-vault-prod.sh` split each `KEY=value` line on the **first** `=` only so base64 padding in `MFA_ENCRYPTION_KEY` is preserved. Do not re-parse `*.secrets` with tools that split on every `=`.
 
 4. **Start Vault (server mode) and initialize once:**
    ```bash
@@ -163,7 +166,7 @@ They are easy to confuse, so start here:
 |----------|---------------|---------|---------|
 | **Browsers / UI** | HTTPS, and **never** a client certificate prompt | `browser_mtls` | `off` |
 | **Your services calling `/validate`** | A client certificate **and** an API key, on a private path | `service_mtls` | `required` |
-| **External callers of `/validate`** | HTTPS and a key issued to them alone, with no certificate to maintain | `public_validate` | unset (endpoint is private) |
+| **External callers of `/validate`** | HTTPS and a key issued to them alone, with no certificate to maintain | `public_validate` | unset (= opposite of `service_listener`: **on** public when single-listener, **off** public when the service listener is enabled) |
 
 One process-wide switch cannot do both: a listener that demands certificates
 cannot serve a login page, and a listener that never asks for one cannot
@@ -270,7 +273,7 @@ not have one. The service listener is unaffected either way.
 
 ### Additional production configuration (optional)
 
-**Email/SMTP** (for password reset, MFA):
+**Email/SMTP** (password-reset OTP and, with the default gate, email verification):
 | Secret Path | Description |
 |-------------|-------------|
 | `secret/garde/smtp_host` | SMTP server hostname |
@@ -280,7 +283,7 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/smtp_from` | Sender email address |
 
 > [!WARNING]
-> Without sending emails, garde cannot reset users' passwords.
+> Without SMTP, garde cannot send password-reset OTPs or email-verification codes (`REQUIRE_EMAIL_VERIFICATION` defaults **on**).
 
 **Security & Behavior Settings**:
 | Vault Secret Path | Description |
@@ -301,7 +304,7 @@ not have one. The service listener is unaffected either way.
 | `secret/garde/trusted_proxies` | Optional. Comma-separated proxy CIDRs/IPs trusted for `X-Forwarded-For`. When unset, forwarded headers are ignored. |
 | `secret/garde/testing_mode` | Set to `true` to relax mTLS checks (e.g. for testing). Do not use in production. |
 | `secret/garde/browser_mtls` | Client certificates on the public listener: `off` (default), `optional`, `required`. Needs `use_tls` and `tls_ca_path`. Leave `off` for anything browsers reach. |
-| `secret/garde/service_listener` | `true` to serve `/validate` on a separate private listener. Moves it off the public listener unless `public_validate` says otherwise. |
+| `secret/garde/service_listener` | `true` to serve `/validate` (and admin/superuser) on a separate private listener. Moves `/validate` off the public listener unless `public_validate` says otherwise. Required when `public_self_service=false`. |
 | `secret/garde/service_port` | Port for that listener. Default `8444`; must differ from `port`. |
 | `secret/garde/service_mtls` | `required` (default) or `off`. `off` leaves `/validate` on the API key and the network alone. |
 | `secret/garde/service_tls_cert_path`, `…_key_path`, `…_ca_path` | The listener's keypair and the CA that signs callers. Required when `service_listener` is `true`. |
@@ -389,7 +392,7 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 | `enable_swagger` | Swagger routes are registered only at startup |
 | `log_level` | Logger level is configured at startup |
 
-**Ops tip:** After rotating TLS material, trusted proxies, rate limits, rapid-request thresholds, or log level, restart the `garde` container/process. After rotating only API keys, CORS, cookies, SMTP, feature flags, or admin passwords, a Vault Agent rewrite of `/run/secrets` is enough.
+**Ops tip:** After rotating TLS material, trusted proxies, rate limits, rapid-request thresholds, log level, **or** listener topology (`public_self_service`, `service_listener`, `public_validate`, mTLS policy), restart the `garde` container/process. After rotating only per-caller API keys (admin API), CORS, cookies, SMTP, Cap, registration `REQUIRE_*` / email-domain gates, or admin passwords, a Vault Agent rewrite of `/run/secrets` is enough.
 
 > [!NOTE]
 > `RATE_LIMIT=0` / `0,0` is inspected in some middleware paths live, but changing from e.g. `100,60` to `200,60` still needs a restart.
@@ -408,15 +411,18 @@ Vault Agent (or a manual edit under `/run/secrets`) updates secret files; garde 
 
 ## Verifying Installation
 
-Try a login after the stack is up:
+Confirm the process is up, then try a login (assumes `PUBLIC_SELF_SERVICE` is on — the default). If the public kill switch is off, hit the **service listener** instead of the public hostname:
 
 ```bash
+# Readiness (Postgres + Redis)
+curl -sS http://localhost:8443/ready
+
 # With TLS (replace with your domain):
 curl -X POST https://your-domain/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"your_superuser_email\",\"password\":\"your_superuser_password\"}"
 
-# Without TLS (e.g. single-VPS stack or dev):
+# Without TLS (e.g. single-VPS stack or local dig):
 curl -X POST http://localhost:8443/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"your_superuser_email\",\"password\":\"your_superuser_password\"}"

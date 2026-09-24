@@ -20,6 +20,7 @@ instead.
 - [Traffic modes: floating IP or managed load balancer](#traffic-modes-floating-ip-or-managed-load-balancer)
 - [Day-to-day operations](#day-to-day-operations)
 - [Runbook: unsealing Vault](#runbook-unsealing-vault)
+- [Runbook: Shamir → KMS seal migrate](#runbook-shamir--kms-seal-migrate)
 - [Runbook: rotate AppRole secret-id](#runbook-rotate-approle-secret-id)
 - [AWS bring-up checklist](AWS_BRINGUP.md)
 - [What is not automated](#what-is-not-automated)
@@ -153,6 +154,11 @@ $EDITOR prod.secrets
 ./deploy/scripts/vault-cluster-init.sh --secrets prod.secrets
 ```
 
+Do not leave dig-only values in `prod.secrets`: regenerate `mfa_encryption_key` with
+`openssl rand -base64 32`, set strong passwords, `GIN_MODE=release`, empty Cap bypass,
+and choose registration gates for production (product defaults: email verification **on**,
+admin approval **off**). Dig flips those for e2e.
+
 Move `vault-credentials.json` offline.
 
 ### 6. Point DNS / register edge
@@ -189,6 +195,9 @@ Compose health probes HTTPS then HTTP on `127.0.0.1:8443/ready` (works with or w
 | `redis_tls` | `true` for ElastiCache in-transit encryption | Optional; also set when using a `rediss://` URL |
 | `database_url` **or** `postgres_host` + `postgres_*` | RDS / external Postgres | Required for durable state |
 | `postgres_sslmode` | `require` on RDS | Optional if using `database_url` |
+| `mfa_encryption_key` | `openssl rand -base64 32` | Required; strict base64 of 32 bytes (not a passphrase) |
+| `public_self_service` | usually `true` | Kill switch; `false` requires `service_listener=true` and a restart to remount |
+| `require_email_verification` / `require_admin_approval` | product defaults on/off | Dig may flip these — set deliberately for production |
 | other keys | as in `dev.secrets` / INSTALLATION.md | Unchanged |
 
 Terraform outputs `postgres_endpoint` and `redis_primary_endpoint` when you pass
@@ -241,6 +250,22 @@ use Postgres 16 and `CGO_ENABLED=0`.
 
 AWS/KMS: wait for auto-unseal. Shamir: `./deploy/scripts/unseal.sh <node>` with
 offline keys.
+
+## Runbook: Shamir → KMS seal migrate
+
+For an **existing** Shamir-sealed Raft cluster moving to AWS KMS auto-unseal
+(operator-only; never from CI):
+
+1. Apply `terraform/aws` so the Vault KMS key and instance profile exist; merge
+   `VAULT_KMS_KEY_ID` / `AWS_REGION` into `deploy/inventory.env`.
+2. `./deploy/scripts/sync-config.sh --all`
+3. Keep offline Shamir unseal keys ready (`VAULT_UNSEAL_KEYS_FILE` or prompts).
+4. `./deploy/scripts/vault-seal-migrate.sh`
+
+The script restarts each member with `seal "awskms"` and runs
+`vault operator unseal -migrate`. Store recovery material from
+`vault-credentials.json` offline afterward; day-to-day reboots auto-unseal via KMS.
+See the header comments in `deploy/scripts/vault-seal-migrate.sh`.
 
 ## Runbook: rotate AppRole secret-id
 

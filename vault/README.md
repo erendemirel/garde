@@ -14,6 +14,8 @@
 
 ## Architecture
 
+Secrets never land on the app disk as durable files: CI/CD (or an operator) writes them into Vault; Vault Agent renders them into a tmpfs; garde watches `/run/secrets` and hot-reloads what it can. Same path for dig and production.
+
 ```
 ┌─────────────┐    injects       ┌─────────────┐    writes to     ┌─────────────┐    watches    ┌─────────────┐
 │     CI      │ ───────────────→ │    Vault    │ ───────────────→ │   tmpfs     │ ←─────────────│    garde    │
@@ -177,7 +179,10 @@ Full step-by-step: [Deploying to a VPS](../docs/INSTALLATION.md#deploying-to-a-v
 - Vault Agent authenticates with AppRole and auto-renews tokens
 - Templates rerender when secrets rotate
 - Prod Vault listens on `127.0.0.1:8200` only in single-VPS Compose; HA Vault speaks on the WireGuard mesh only. Never publish `:8200` on a public interface.
-- The app reloads the in-memory secret map when files under `/run/secrets` change. Only some keys apply live (API key, CORS, cookies, feature flags including Cap, SMTP, Redis reconnect, superuser/admin bootstrap). **TLS binding, trusted proxies, rate-limit / rapid-request thresholds, log level, and PostgreSQL DSN settings require a restart.** See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
+- The app reloads the in-memory secret map when files under `/run/secrets` change. Live: CORS, cookies, Cap, SMTP, registration `REQUIRE_*` / email-domain gates, Redis reconnect, Postgres pool rebuild (`database_url` / `postgres_*`), superuser/admin bootstrap, per-caller API keys (admin API). **Restart required:** TLS binding, trusted proxies, rate-limit / rapid-request thresholds, log level, and listener topology (`public_self_service`, `service_listener`, `public_validate`, mTLS policy). See [Configuration hot reload](../docs/INSTALLATION.md#configuration-hot-reload).
+- `init-vault.sh` / `init-vault-prod.sh` split each `KEY=value` line on the **first** `=` only so base64 padding in `mfa_encryption_key` is preserved.
+- Do not copy `dev.secrets` into production unchanged: dig flips registration gates for e2e, ships a fixed MFA test key, and often enables Cap bypass / debug mode. Generate `mfa_encryption_key` with `openssl rand -base64 32` (strict base64 of 32 bytes). Product defaults: email verification **on**, admin approval **off**. Optional kill switch: `public_self_service=false` (requires `service_listener=true`).
+
 ## Development (dev profile)
 
 - The `dev` Docker Compose profile seeds secrets from `dev.secrets`, starts Vault in dev mode, and runs Vault Agent with `agent-config-dev.hcl`. Cap Standalone also starts on `:3000` (dashboard + siteverify); leave `CAP_ENABLED=false` until you create a site key.
