@@ -166,7 +166,7 @@
 							<th>Created</th>
 							<th>Expires</th>
 							<th>Last used</th>
-							<th></th>
+							<th class="table-actions">Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -178,7 +178,7 @@
 									{token.expires_at ? formatWhen(token.expires_at) : 'Never'}
 								</td>
 								<td class="text-muted">{formatWhen(token.last_used_at)}</td>
-								<td class="text-right">
+								<td class="table-actions">
 									<button
 										type="button"
 										class="btn-icon-danger"

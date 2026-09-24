@@ -475,7 +475,7 @@
 						<th>Name</th>
 						<th>Description</th>
 						<th class="w-24">Users</th>
-						<th>Actions</th>
+						<th class="table-actions">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -505,8 +505,8 @@
 									{item.description || '—'}
 								</td>
 								<td class="tabular-nums">{userCounts[item.name] || 0}</td>
-								<td>
-									<div class="flex flex-nowrap gap-0.5">
+								<td class="table-actions">
+									<div class="table-actions-inner">
 										<button
 											class="btn-icon"
 											type="button"

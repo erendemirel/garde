@@ -349,7 +349,7 @@
 						<th>Name</th>
 						<th>Description</th>
 						<th class="w-24">Users</th>
-						<th>Actions</th>
+						<th class="table-actions">Actions</th>
 					</tr>
 				</thead>
 				<tbody data-testid="admin-catalog-tbody">
@@ -382,7 +382,7 @@
 									{item.description || '—'}
 								</td>
 								<td class="tabular-nums">{userCounts[item.name] || 0}</td>
-								<td>
+								<td class="table-actions">
 									<button
 										class="btn-icon"
 										type="button"

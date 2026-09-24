@@ -305,6 +305,16 @@ a {
 		@apply hover:bg-accent/5;
 	}
 
+	/* Trailing action column — same left edge as other columns; shrink to controls. */
+	.table-base th.table-actions,
+	.table-base td.table-actions {
+		@apply w-px whitespace-nowrap;
+	}
+
+	.table-actions-inner {
+		@apply inline-flex flex-nowrap items-center gap-0.5;
+	}
+
 	.navbar {
 		@apply sticky top-0 z-10 flex items-center justify-between border-b border-borderc bg-card/95 px-6 py-3 backdrop-blur;
 	}
