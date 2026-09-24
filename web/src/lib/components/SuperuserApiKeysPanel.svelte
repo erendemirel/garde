@@ -358,8 +358,8 @@
 	}
 </script>
 
-<div class="space-y-4" data-testid="superuser-api-keys-panel">
-	<div>
+<div class="list-panel" data-testid="superuser-api-keys-panel">
+	<div class="list-panel-header">
 		<h2 class="section-title">API Keys</h2>
 		<p class="section-subtitle">
 			Per-caller credentials. <code class="text-xs">validate</code> covers
@@ -375,6 +375,7 @@
 	{:else if error}
 		<p class="text-error" data-testid="api-keys-error">{error}</p>
 	{:else}
+		<div class="list-panel-body">
 		<div class="flex flex-wrap items-end justify-between gap-3">
 			<div class="flex min-w-0 flex-wrap items-end gap-3">
 				<label class="form-label w-[28rem] max-w-full">
@@ -667,6 +668,7 @@
 				{/each}
 			</div>
 		{/if}
+		</div>
 	{/if}
 </div>
 

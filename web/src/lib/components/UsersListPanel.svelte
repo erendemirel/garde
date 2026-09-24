@@ -97,7 +97,7 @@
 {:else if error}
 	<p class="error" data-testid="users-list-error">{error}</p>
 {:else}
-	<div class="space-y-4" data-testid="users-list">
+	<div class="list-panel-body" data-testid="users-list">
 		<label class="form-label w-[28rem] max-w-full">
 			<span>Search by email</span>
 			<input

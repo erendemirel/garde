@@ -428,6 +428,19 @@ a {
 		@apply flex justify-center gap-3;
 	}
 
+	.list-panel {
+		@apply space-y-6;
+	}
+
+	/* Same band height across tabs so search/CTA rows stay vertically aligned when switching. */
+	.list-panel-header {
+		@apply min-h-[5.75rem];
+	}
+
+	.list-panel-body {
+		@apply space-y-4;
+	}
+
 	.page-title {
 		@apply text-2xl font-bold text-accent;
 	}

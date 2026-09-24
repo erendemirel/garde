@@ -183,13 +183,13 @@
 
 			{#if activeTab === 'users'}
 				<div
-					class="space-y-4"
+					class="list-panel"
 					role="tabpanel"
 					id="panel-users"
 					aria-labelledby="tab-users"
 					data-testid="superuser-users-panel"
 				>
-					<div>
+					<div class="list-panel-header">
 						<h2 class="section-title">Users</h2>
 						<p class="section-subtitle">
 							All accounts in the system. Superuser can change status, access, and membership for any
