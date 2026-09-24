@@ -11,7 +11,8 @@ A lightweight yet secure authentication API. App nodes are stateless and active-
 - [Quick Start](#quick-start)
 - [Endpoint Documentation](#endpoint-documentation)
 - [Installation](#installation)
-- [Integration Guide](#integration-guide)
+- [Deploy (multi node)](#deploy-multi-node)
+- [API Integration](#api-integration)
 - [Contributing](#contributing)
 
 ---
@@ -137,14 +138,15 @@ Access your application at `http://localhost:8443` once it starts up. You can lo
 
 ## Installation
 
-See [Installation Guide](docs/INSTALLATION.md)
+See the [Installation Guide](docs/INSTALLATION.md) for development setup, single-VPS production, secrets, TLS/mTLS, and the web UI.
 
-For a multi-node active-active layout (Vault Raft, shared PostgreSQL + Redis, ALB or floating IP, AWS/GCP or VPS providers), see [Deploy](docs/DEPLOY.md).
+## Deploy (multi node)
 
+For an active-active layout (Vault Raft, shared PostgreSQL + Redis, load balancer or floating IP), see [Deploy](docs/DEPLOY.md). AWS-specific checklist: [AWS bring-up](docs/AWS_BRINGUP.md).
 
-## Integration Guide
+## API Integration
 
-For how garde works and how to integrate (sessions, tokens, private vs public validation, turning the public auth surface off), see the [API Integration Guide](docs/API_INTEGRATION_GUIDE.md).
+For calling garde from your apps (sessions, tokens, private vs public validation, permissions), see the [API Integration Guide](docs/API_INTEGRATION_GUIDE.md).
 
 ## Contributing
 
