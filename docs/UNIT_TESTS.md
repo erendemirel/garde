@@ -56,8 +56,9 @@ pkg/*/                 # pure units: validators, crypto, session, mail shape,
   harness racing itself, not the app. Postgres timestamps may be coarser than
   wall-clock nanoseconds; re-fetch before a second write even in the same test.
 - **MFA secrets are encrypted at rest in PostgreSQL:** any store carrying
-  `MFASecret` needs `mfa_encryption_key` configured
-  *before* the write, or the store fails. Temp MFA during setup stays in Redis.
+  `MFASecret` needs `mfa_encryption_key` set to base64 of exactly 32 bytes
+  *before* the write, or the store fails (passphrases are rejected). Temp MFA
+  during setup stays in Redis.
 - **Sessions bind IP + UA:** `httptest` defaults to `192.0.2.1` with an empty
   agent — pass the same values to `Login` and the request. A different IP
   blacklists and deletes the session by design; use a second session for

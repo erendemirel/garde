@@ -1477,7 +1477,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Password reset successful but pending admin approval",
+                        "description": "Password reset successful",
                         "schema": {
                             "$ref": "#/definitions/models.SuccessResponse"
                         }

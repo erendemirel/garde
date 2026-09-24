@@ -539,7 +539,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body models.PasswordResetRequest true "Password reset request"
-// @Success 200 {object} models.SuccessResponse "Password reset successful but pending admin approval"
+// @Success 200 {object} models.SuccessResponse "Password reset successful"
 // @Failure 400 {object} models.ErrorResponse "Invalid request format, invalid OTP, invalid MFA code, or password requirements not met"
 // @Failure 403 {object} models.ErrorResponse "Unauthorized, too many unsuccessful attempts"
 // @Failure 404 {object} models.ErrorResponse "User not found"
@@ -567,7 +567,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, models.NewSuccessResponse("Password reset successful. Waiting for admin approval."))
+	c.JSON(http.StatusOK, models.NewSuccessResponse("Password reset successful."))
 }
 
 // @Summary Revoke user sessions
