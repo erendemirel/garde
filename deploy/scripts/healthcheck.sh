@@ -94,7 +94,7 @@ done
 # --- public edge -----------------------------------------------------------
 if [ "$CHECK_PUBLIC" = "true" ]; then
   step "Public edge"
-  for url in "https://${API_DOMAIN}/health" "https://${APP_DOMAIN}/"; do
+  for url in "https://${API_DOMAIN}/ready" "https://${APP_DOMAIN}/"; do
     code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)"
     if [ "$code" = "200" ]; then ok "$url -> $code"; else fail "$url -> $code"; fi
   done

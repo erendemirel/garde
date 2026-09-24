@@ -27,7 +27,7 @@ const (
 type APIKeyAuthOptions struct {
 	// Repo resolves issued per-caller keys. Required: /validate no longer
 	// accepts a shared configuration secret.
-	Repo *repository.RedisRepository
+	Repo *repository.Store
 
 	// RequiredScope, when set, must be carried by the presented key.
 	RequiredScope string
@@ -108,10 +108,6 @@ func authenticateServiceAPIKey(c *gin.Context, opts APIKeyAuthOptions, id, secre
 		c.AbortWithStatusJSON(http.StatusForbidden, models.NewErrorResponse(errors.ErrAPIKeyNotPermitted))
 		return
 	}
-	if opts.RequiredAudience != "" && key.Audience == "" {
-		slog.Info("API key has no audience; allowing for compatibility — re-issue with audience set",
-			"api_key_id", id, "name", key.Name, "listener_audience", opts.RequiredAudience)
-	}
 
 	if err := opts.Repo.TouchServiceAPIKey(c.Request.Context(), id); err != nil {
 		slog.Warn("Failed to record API key use", "error", err, "api_key_id", id)
@@ -138,7 +134,7 @@ func rejectAPIKey(c *gin.Context, reason string) {
 // key that carries scope. Failures (missing, malformed, wrong secret, missing
 // scope) return false without aborting — Cap and other optional gates use this
 // as a privilege check, not as required authentication.
-func serviceAPIKeyHasScope(c *gin.Context, repo *repository.RedisRepository, scope string) bool {
+func serviceAPIKeyHasScope(c *gin.Context, repo *repository.Store, scope string) bool {
 	if repo == nil || scope == "" {
 		return false
 	}

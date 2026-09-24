@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -69,26 +70,26 @@ func InitRapidRequestConfig() {
 	}
 
 	parts := strings.Split(configValue, ",")
-	if len(parts) >= 2 {
-		threshold, err1 := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
-		timeoutMs, err2 := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	if len(parts) != 2 {
+		slog.Warn("RAPID_REQUEST_CONFIG must be threshold,timeout_ms (e.g. 50,100 or 0,0 to disable); ignoring",
+			"value", configValue)
+		return
+	}
 
-		// If both are 0, disable rapid request checking
-		if err1 == nil && err2 == nil && threshold == 0 && timeoutMs == 0 {
-			rapidRequestCheckDisabled = true
-			return
-		}
+	threshold, err1 := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	timeoutMs, err2 := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
 
-		if err1 == nil && threshold > 0 {
-			RapidRequestThreshold = threshold
-		}
-		if err2 == nil && timeoutMs > 0 {
-			AutomatedRequestTimeout = time.Duration(timeoutMs) * time.Millisecond
-		}
-	} else if len(parts) == 1 {
-		if threshold, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64); err == nil && threshold > 0 {
-			RapidRequestThreshold = threshold
-		}
+	// If both are 0, disable rapid request checking
+	if err1 == nil && err2 == nil && threshold == 0 && timeoutMs == 0 {
+		rapidRequestCheckDisabled = true
+		return
+	}
+
+	if err1 == nil && threshold > 0 {
+		RapidRequestThreshold = threshold
+	}
+	if err2 == nil && timeoutMs > 0 {
+		AutomatedRequestTimeout = time.Duration(timeoutMs) * time.Millisecond
 	}
 }
 

@@ -35,9 +35,6 @@ type Store struct {
 	mu     sync.RWMutex
 }
 
-// RedisRepository is an alias for Store kept for test helpers mid-migration; prefer Store.
-type RedisRepository = Store
-
 // NewStore opens PostgreSQL, brings the schema up to date, and connects Redis.
 func NewStore() (*Store, error) {
 	db, err := OpenPostgres()
@@ -76,13 +73,11 @@ func NewStoreFromClients(db *sql.DB, client *redis.Client) *Store {
 	return &Store{db: db, client: client}
 }
 
-func NewRedisRepository() (*Store, error) { return NewStore() }
-
-// NewRedisRepositoryFromClient wraps an existing Redis client for tests that
-// only exercise ephemeral state (sessions, rate limits, OTPs). The durable
-// half is absent, so user/PAT/API-key methods return errPostgresUnavailable;
-// use NewStoreFromClients when those are needed.
-func NewRedisRepositoryFromClient(client *redis.Client) *Store {
+// NewStoreFromRedisClient wraps an existing Redis client for tests that only
+// exercise ephemeral state (sessions, rate limits, OTPs). The durable half is
+// absent, so user/PAT/API-key methods return errPostgresUnavailable; use
+// NewStoreFromClients when those are needed.
+func NewStoreFromRedisClient(client *redis.Client) *Store {
 	return &Store{client: client}
 }
 

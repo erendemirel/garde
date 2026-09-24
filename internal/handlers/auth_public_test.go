@@ -21,7 +21,7 @@ import (
 
 // Full-stack handler tests with a real service on miniredis. Validated
 // requests are seeded the way ValidateRequestParameters would leave them.
-func newAuthTestStack(t *testing.T) (*AuthHandler, *repository.RedisRepository) {
+func newAuthTestStack(t *testing.T) (*AuthHandler, *repository.Store) {
 	t.Helper()
 	testutil.InitConfig(t, map[string]string{
 		"superuser_email":    "root@example.com",
@@ -31,7 +31,7 @@ func newAuthTestStack(t *testing.T) (*AuthHandler, *repository.RedisRepository) 
 	return NewAuthHandler(service.NewAuthService(repo)), repo
 }
 
-func seedHandlerUser(t *testing.T, repo *repository.RedisRepository, id, email, password string) {
+func seedHandlerUser(t *testing.T, repo *repository.Store, id, email, password string) {
 	t.Helper()
 	hash, err := crypto.HashPassword(password)
 	if err != nil {

@@ -155,11 +155,9 @@ func validatePostgresConfig() error {
 	return nil
 }
 
-// ADMIN_SCOPES_JSON is checked hard rather than warned about, because both of
-// its likely mistakes fail the same silent way at runtime: an entry that
-// names nobody, and a scope name with a typo, each leave the admin you meant
-// to restrict holding their full bundle with nothing to tell you. Refusing to
-// start is the only place that failure is visible.
+// ADMIN_SCOPES_JSON is checked hard rather than warned about. Mistakes that
+// used to leave admins unrestricted (unknown emails, typos, missing admins)
+// refuse to start instead.
 func validateAdminScopes() error {
 	raw := strings.TrimSpace(config.Get(config.AdminScopesKey))
 	if raw == "" {
@@ -172,22 +170,31 @@ func validateAdminScopes() error {
 	}
 
 	admins := config.GetAdminUsersMap()
-	superuser := config.Get("SUPERUSER_EMAIL")
+	superuser := strings.ToLower(strings.TrimSpace(config.Get("SUPERUSER_EMAIL")))
 
+	normalized := make(map[string][]string, len(scopeMap))
 	for email, scopes := range scopeMap {
 		if err := ValidateEmail(email); err != nil {
 			return fmt.Errorf("ADMIN_SCOPES_JSON email validation failed")
 		}
-		if email == superuser {
+		key := strings.ToLower(strings.TrimSpace(email))
+		if key == superuser {
 			return fmt.Errorf("ADMIN_SCOPES_JSON must not list the superuser, who holds every scope by definition")
 		}
-		if _, isAdmin := admins[email]; !isAdmin {
+		if _, isAdmin := admins[key]; !isAdmin {
 			return fmt.Errorf("ADMIN_SCOPES_JSON names an address absent from ADMIN_USERS_JSON, so it would restrict nobody")
 		}
 		for _, scope := range scopes {
 			if !config.IsKnownAdminScope(scope) {
 				return fmt.Errorf("ADMIN_SCOPES_JSON contains an unknown scope; known scopes are %s", strings.Join(config.AllAdminScopes(), ", "))
 			}
+		}
+		normalized[key] = scopes
+	}
+
+	for email := range admins {
+		if _, ok := normalized[email]; !ok {
+			return fmt.Errorf("ADMIN_SCOPES_JSON must list every ADMIN_USERS_JSON address when set (missing %s)", email)
 		}
 	}
 

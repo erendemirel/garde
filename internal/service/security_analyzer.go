@@ -12,10 +12,10 @@ import (
 )
 
 type SecurityAnalyzer struct {
-	repo *repository.RedisRepository
+	repo *repository.Store
 }
 
-func NewSecurityAnalyzer(repo *repository.RedisRepository) *SecurityAnalyzer {
+func NewSecurityAnalyzer(repo *repository.Store) *SecurityAnalyzer {
 	return &SecurityAnalyzer{repo: repo}
 }
 

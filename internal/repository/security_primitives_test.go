@@ -11,12 +11,12 @@ import (
 
 // Second-wave repository coverage: the security primitives around users and
 // sessions. Ephemeral paths run on miniredis; durable user listing needs Postgres.
-func newSecRepo(t *testing.T) *RedisRepository {
+func newSecRepo(t *testing.T) *Store {
 	t.Helper()
-	return NewRedisRepositoryFromClient(newMiniRedisClient(t))
+	return NewStoreFromRedisClient(newMiniRedisClient(t))
 }
 
-func newDurableSecRepo(t *testing.T) *RedisRepository {
+func newDurableSecRepo(t *testing.T) *Store {
 	t.Helper()
 	return newDurableStore(t)
 }

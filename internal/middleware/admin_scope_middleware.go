@@ -51,10 +51,9 @@ func RequireAdminScope(scope string) gin.HandlerFunc {
 			return
 		}
 
-		// No entry in ADMIN_SCOPES_JSON means no restriction, which is the
-		// access this admin had before scopes existed. Restricting is opt-in
-		// per admin so that introducing the secret cannot lock out everyone
-		// who is not listed in it yet.
+		// When ADMIN_SCOPES_JSON is unset, scoped routes stay open for every
+		// admin (feature off). When it is set, AuthMiddleware marks enforcement
+		// and missing/empty scope lists deny.
 		if !c.GetBool(contextAdminScopesEnforced) {
 			c.Next()
 			return

@@ -26,7 +26,7 @@ const (
 )
 
 type RateLimiter struct {
-	repo                 *repository.RedisRepository
+	repo                 *repository.Store
 	maxReqs              int
 	authenticatedMaxReqs int
 	adminMaxReqs         int
@@ -38,7 +38,7 @@ type RateLimiter struct {
 // e.g. "100,60,300,1000" means 100 for unauthenticated (IP), 300 for regular users, 1000 for admins and superusers
 // Window is a true sliding window (Redis sorted set), independent of RAPID_REQUEST_CONFIG.
 // Use "0" or "0,0" to disable rate limiting (all tiers: IP, authenticated, admin).
-func NewRateLimiter(repo *repository.RedisRepository) *RateLimiter {
+func NewRateLimiter(repo *repository.Store) *RateLimiter {
 	maxReqs := defaultRequestsPerWindow
 	authenticatedMaxReqs := defaultAuthenticatedRequests
 	adminMaxReqs := defaultAdminRequests

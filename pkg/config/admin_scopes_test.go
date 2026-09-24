@@ -9,7 +9,7 @@ func TestAdminScopesUnsetLeavesAdminsUnrestricted(t *testing.T) {
 
 	scopes, enforced := AdminScopesFor(scopedAdmin)
 	if enforced {
-		t.Fatal("AdminScopesFor enforced with no ADMIN_SCOPES_JSON — admins must keep the access they had before scopes existed")
+		t.Fatal("AdminScopesFor enforced with no ADMIN_SCOPES_JSON — feature off means unrestricted")
 	}
 	if len(scopes) != 0 {
 		t.Fatalf("scopes = %v, want none", scopes)
@@ -30,15 +30,19 @@ func TestAdminScopesListedAdminIsRestrictedToTheirEntry(t *testing.T) {
 	}
 }
 
-// Restricting is opt-in per admin, so introducing the secret must not lock
-// out the admins nobody has got round to listing.
-func TestAdminScopesUnlistedAdminStaysUnrestricted(t *testing.T) {
+// When the secret is set, every admin is under enforcement — missing from the
+// map means deny all scoped routes (same as an explicit []).
+func TestAdminScopesUnlistedAdminIsDenied(t *testing.T) {
 	withSecrets(t, map[string]string{
 		"admin_scopes_json": `{"helpdesk@example.com":["garde:users:read"]}`,
 	})
 
-	if _, enforced := AdminScopesFor("someone-else@example.com"); enforced {
-		t.Fatal("AdminScopesFor enforced for an admin with no entry")
+	scopes, enforced := AdminScopesFor("someone-else@example.com")
+	if !enforced {
+		t.Fatal("AdminScopesFor must enforce for an unlisted admin when the secret is set")
+	}
+	if len(scopes) != 0 {
+		t.Fatalf("scopes = %v, want none (deny)", scopes)
 	}
 }
 

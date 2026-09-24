@@ -9,7 +9,7 @@ import (
 	"garde/pkg/crypto"
 )
 
-func newPATRepo(t *testing.T) *RedisRepository {
+func newPATRepo(t *testing.T) *Store {
 	t.Helper()
 	repo := newDurableStore(t)
 	ctx := context.Background()

@@ -38,7 +38,7 @@
 
 4. **Access the application**
    - API: `http://localhost:8443`
-   - Ready: `http://localhost:8443/ready` (Postgres + Redis); also `/live` and `/health`
+   - Ready: `http://localhost:8443/ready` (Postgres + Redis); also `/live`
    - Swagger docs (when `ENABLE_SWAGGER=true`): `http://localhost:8443/swagger/index.html`
 
 5. **Web UI (Optional)**   
@@ -337,7 +337,7 @@ not have one. The service listener is unaffected either way.
 | Secret Path | Description |
 |-------------|-------------|
 | `secret/garde/admin_users_json` | JSON object: `{"admin1@example.com":"Pass1!","admin2@example.com":"Pass2!"}`. Admins are auto-created/updated at startup and on secret reload. Public/admin-created signup cannot create these accounts. |
-| `secret/garde/admin_scopes_json` | Optional. JSON object of email→scope list, e.g. `{"helpdesk@example.com":["garde:users:read","garde:users:write"]}`. Narrows what the admins it names may do on the admin routes. Known scopes: `garde:users:read`, `garde:users:write`, `garde:users:delete`, `garde:sessions:revoke`. An admin with no entry keeps all four. An explicit `[]` denies all four. Every address must also appear in `admin_users_json` or startup fails. |
+| `secret/garde/admin_scopes_json` | Optional. JSON object of email→scope list, e.g. `{"helpdesk@example.com":["garde:users:read","garde:users:write"]}`. When set, narrows admin routes and **must list every** `admin_users_json` address. Known scopes: `garde:users:read`, `garde:users:write`, `garde:users:delete`, `garde:sessions:revoke`. An explicit `[]` (or a missing entry) denies all four. Unset = feature off (all admins unrestricted). |
 
 Admin scopes are provisioned here rather than through the admin API on purpose: an admin's own authorization data must not live somewhere an admin can write it. Superusers are unaffected — they hold every scope and may not be listed.
 

@@ -29,7 +29,7 @@ const (
 	AuthMethodPAT     = "pat"
 )
 
-func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.SecurityAnalyzer, repo *repository.RedisRepository) gin.HandlerFunc {
+func AuthMiddleware(authService *service.AuthService, securityAnalyzer *service.SecurityAnalyzer, repo *repository.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 		userAgent := c.Request.UserAgent()
@@ -117,7 +117,7 @@ func authenticatePAT(
 	c *gin.Context,
 	authService *service.AuthService,
 	securityAnalyzer *service.SecurityAnalyzer,
-	repo *repository.RedisRepository,
+	repo *repository.Store,
 	id, secret, ip, userAgent string,
 ) {
 	if repo == nil {

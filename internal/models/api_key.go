@@ -90,8 +90,8 @@ type ServiceAPIKey struct {
 	// which is what makes deliberate rotation and "revoke everything this
 	// caller has" possible — the questions that matter during an incident.
 	TenantID string `json:"tenant_id"`
-	// Audience is which /validate surface may accept this key. Empty means a
-	// pre-audience record: still usable on any surface until re-issued.
+	// Audience is which /validate surface may accept this key: internal or
+	// tenant. Required on every issued key.
 	Audience   string     `json:"audience,omitempty"`
 	Name       string     `json:"name"`
 	SecretHash string     `json:"secret_hash"`
@@ -125,16 +125,13 @@ func (k *ServiceAPIKey) HasScope(scope string) bool {
 
 // MatchesAudience reports whether this key may be used on a mount that
 // requires the given audience. An empty required value means the mount does
-// not restrict by audience (single-listener). An empty key audience is a
-// pre-audience record and is accepted on every surface until re-issued.
+// not restrict by audience (single-listener). Otherwise the key must carry
+// exactly that audience — empty key audience is refused.
 func (k *ServiceAPIKey) MatchesAudience(required string) bool {
 	if required == "" {
 		return true
 	}
-	if k.Audience == "" {
-		return true
-	}
-	return k.Audience == required
+	return k.Audience != "" && k.Audience == required
 }
 
 type CreateAPIKeyRequest struct {

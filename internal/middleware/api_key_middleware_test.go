@@ -15,14 +15,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func newKeyRepo(t *testing.T) *repository.RedisRepository {
+func newKeyRepo(t *testing.T) *repository.Store {
 	t.Helper()
 	return testutil.NewTestStore(t)
 }
 
 // issueKey mints a real key through the same path the admin handler uses and
 // returns the plaintext the caller would present.
-func issueKey(t *testing.T, repo *repository.RedisRepository, mutate func(*models.ServiceAPIKey)) string {
+func issueKey(t *testing.T, repo *repository.Store, mutate func(*models.ServiceAPIKey)) string {
 	t.Helper()
 	plaintext, id, hash, err := crypto.GenerateAPIKey()
 	if err != nil {
@@ -138,9 +138,9 @@ func TestAPIKeyAuthAcceptsMatchingAudience(t *testing.T) {
 	}
 }
 
-func TestAPIKeyAuthEmptyAudienceStillWorks(t *testing.T) {
+func TestAPIKeyAuthRejectsEmptyAudience(t *testing.T) {
 	repo := newKeyRepo(t)
-	presented := issueKey(t, repo, nil) // no audience — pre-migration shape
+	presented := issueKey(t, repo, nil) // no audience
 
 	res := runAPIKeyAuth(t, APIKeyAuthOptions{
 		Repo:             repo,
@@ -148,8 +148,8 @@ func TestAPIKeyAuthEmptyAudienceStillWorks(t *testing.T) {
 		RequiredAudience: models.AudienceInternal,
 	}, presented)
 
-	if !res.reached || res.status != http.StatusOK {
-		t.Fatalf("status=%d reached=%v, want empty audience accepted for compatibility", res.status, res.reached)
+	if res.reached || res.status != http.StatusForbidden {
+		t.Fatalf("status=%d reached=%v, want 403 for empty key audience on a restricted mount", res.status, res.reached)
 	}
 }
 

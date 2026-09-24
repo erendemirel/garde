@@ -62,8 +62,6 @@ func TestValidateAdminScopes(t *testing.T) {
 			wantError: true,
 		},
 		{
-			// The dangerous typo: restricts nobody, and the real admin keeps
-			// their full bundle.
 			name:      "an address absent from ADMIN_USERS_JSON stops startup",
 			scopes:    `{"helpdsek@example.com":["garde:users:read"]}`,
 			wantError: true,
@@ -101,6 +99,26 @@ func TestValidateAdminScopes(t *testing.T) {
 				t.Fatalf("validateAdminScopes() = %v, want nil", err)
 			}
 		})
+	}
+}
+
+func TestValidateAdminScopesRequiresEveryAdmin(t *testing.T) {
+	withSecrets(t, map[string]string{
+		"superuser_email":  testSuperuser,
+		"admin_users_json": `{"helpdesk@example.com":"DevAdminTest123!","ops@example.com":"DevAdminTest123!"}`,
+		"admin_scopes_json": `{"helpdesk@example.com":["garde:users:read"]}`,
+	})
+	if err := validateAdminScopes(); err == nil {
+		t.Fatal("expected error when an ADMIN_USERS_JSON address is missing from ADMIN_SCOPES_JSON")
+	}
+
+	withSecrets(t, map[string]string{
+		"superuser_email":  testSuperuser,
+		"admin_users_json": `{"helpdesk@example.com":"DevAdminTest123!","ops@example.com":"DevAdminTest123!"}`,
+		"admin_scopes_json": `{"helpdesk@example.com":["garde:users:read"],"ops@example.com":["garde:users:read","garde:users:write"]}`,
+	})
+	if err := validateAdminScopes(); err != nil {
+		t.Fatalf("unexpected error when every admin is listed: %v", err)
 	}
 }
 

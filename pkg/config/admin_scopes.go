@@ -98,20 +98,16 @@ func GetAdminScopesMap() map[string][]string {
 
 // AdminScopesFor resolves one admin's scopes.
 //
-// enforced is false when no restriction applies, and the caller should then
-// treat the admin as holding everything — which is what an admin held before
-// scopes existed. Listing an admin is therefore opt-in: adding the secret
-// does not lock out admins who have no entry yet. The cost is that a
-// misspelled email leaves the real admin unrestricted, which is why
-// ValidateConfig refuses to start on an entry naming nobody.
+// When ADMIN_SCOPES_JSON is unset, enforced is false and the caller treats the
+// admin as holding every scope (feature off). When the secret is set, every
+// admin is under enforcement: listed addresses get their scope list; an
+// address missing from the map gets an empty list (deny all scoped routes).
+// An explicit `[]` is the same as missing — deny. Startup validation requires
+// every ADMIN_USERS_JSON address to appear in the map when the secret is set.
 //
-// An explicit empty list is a restriction, not an absence: it denies every
-// scoped route.
-//
-// A malformed secret is the one case that fails closed. Startup validation
-// rejects bad JSON, so the only way to reach that branch is a hot reload of a
-// broken secret, and there the safe answer is to deny rather than quietly
-// hand every admin back their full bundle.
+// A malformed secret fails closed (enforced with no scopes). Startup rejects
+// bad JSON; the only way to reach that branch is a hot reload of a broken
+// secret.
 func AdminScopesFor(email string) (scopes []string, enforced bool) {
 	m, configured, ok := adminScopes()
 	if !configured {
@@ -123,7 +119,7 @@ func AdminScopesFor(email string) (scopes []string, enforced bool) {
 
 	scopes, listed := m[strings.ToLower(strings.TrimSpace(email))]
 	if !listed {
-		return nil, false
+		return nil, true
 	}
 	return scopes, true
 }

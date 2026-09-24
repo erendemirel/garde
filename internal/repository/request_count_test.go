@@ -11,7 +11,7 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-func newTestRepo(t *testing.T) (*RedisRepository, *miniredis.Miniredis) {
+func newTestRepo(t *testing.T) (*Store, *miniredis.Miniredis) {
 	t.Helper()
 	mr, err := miniredis.Run()
 	if err != nil {
@@ -20,7 +20,7 @@ func newTestRepo(t *testing.T) (*RedisRepository, *miniredis.Miniredis) {
 	t.Cleanup(mr.Close)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	return &RedisRepository{client: client}, mr
+	return &Store{client: client}, mr
 }
 
 func TestRequestCountSlidingWindow(t *testing.T) {
